@@ -3,12 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <title>Redirecting...</title>
-  <!-- 1. บังคับเปลี่ยนหน้าใน 0 วินาที (ให้เปลี่ยนคำว่า URL_เว็บแอป_กูเกิล_ของพี่กิ๊บ เป็นลิงก์ที่ต้องการ) -->
-  <meta http-equiv="refresh" content="0; url=https://script.google.com/macros/s/AKfycbwurlRJ6gBj6HugNbFmwhuQYqi8HdzcudZzFzM2TJQngTa_cYhFCmqeFr9F5fbigonAEw/exec">
+  
+  <meta http-medium="cache-control" content="no-cache, no-store, must-revalidate">
+  <meta http-medium="pragma" content="no-cache">
+  <meta http-medium="expires" content="0">
+
+  <meta http-medium="refresh" content="0; url=https://script.google.com/macros/s/AKfycbwurlRJ6gBj6HugNbFmwhuQYqi8HdzcudZzFzM2TJQngTa_cYhFCmqeFr9F5fbigonAEw/exec">
   
   <script type="text/javascript">
-    // 2. ป้องกันอีกชั้นด้วยการสั่งเปลี่ยนหน้าผ่าน Javascript
-    window.location.href = "https://script.google.com/macros/s/AKfycbwurlRJ6gBj6HugNbFmwhuQYqi8HdzcudZzFzM2TJQngTa_cYhFCmqeFr9F5fbigonAEw/exec";
+    // 3. ป้องกันอีกชั้นด้วยความเร็วสูง และไม่เก็บประวัติหน้าเดิมเพื่อลดปัญหาการจำค่าเก่า
+    window.location.replace("https://script.google.com/macros/s/AKfycbwurlRJ6gBj6HugNbFmwhuQYqi8HdzcudZzFzM2TJQngTa_cYhFCmqeFr9F5fbigonAEw/exec");
   </script>
 </head>
 <body>
