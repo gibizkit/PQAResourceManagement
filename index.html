@@ -3,26 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PQA Resource Management</title>
+  <title>PQA Asset Update</title>
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
+    :root{
+      --dk-bg:#0d1829; --dk-card:#111c30; --dk-text:#e8edf5;
+      --dk-text2:rgba(232,237,245,.6); --dk-accent:#5cd9aa; --dk-accent-d:rgba(92,217,170,.15);
     }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
+    *{box-sizing:border-box}
+    body,html{margin:0;padding:0;height:100%;overflow:hidden;background:var(--dk-bg);font-family:"Sukhumvit Set","Segoe UI",sans-serif;}
+    iframe{width:100%;height:100%;border:none;display:none;}
+
+    #launcher{
+      height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;
     }
+    #launcher h1{color:var(--dk-text);font-size:22px;margin:0;}
+    #launcher p{color:var(--dk-text2);font-size:13px;margin:-16px 0 0;}
+    .btn-group{display:flex;flex-direction:column;gap:14px;width:280px;}
+    .btn{
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      padding:14px 20px;border-radius:10px;border:1px solid rgba(255,255,255,.1);
+      background:var(--dk-card);color:var(--dk-text);font-size:15px;cursor:pointer;
+      transition:.15s;text-decoration:none;
+    }
+    .btn:hover{background:var(--dk-accent-d);border-color:var(--dk-accent);color:var(--dk-accent);}
+    .btn .ico{font-size:18px;}
+    .fallback{margin-top:6px;color:var(--dk-text2);font-size:12px;text-align:center;}
+    .fallback a{color:var(--dk-accent);}
   </style>
 </head>
 <body>
 
-  <iframe src="https://script.google.com/macros/s/AKfycbwQfTEzmzjf51-poF95yLgBHYtQ2F3Y1n-RLj_pRw3dp_9XO0HJDGVCCv5TSR6vlEUE/exec">
-    เบราว์เซอร์ของคุณไม่รองรับการใช้งาน กรุณาเข้าสู่ระบบโดยตรงที่ <a href="https://script.google.com/macros/s/AKfycbwQfTEzmzjf51-poF95yLgBHYtQ2F3Y1n-RLj_pRw3dp_9XO0HJDGVCCv5TSR6vlEUE/exec">คลิกที่นี่</a>
+  <div id="launcher">
+    <h1>PQA Asset Update</h1>
+    <p>เลือกวิธีเปิดใช้งานตามอุปกรณ์ของคุณ</p>
+    <div class="btn-group">
+      <button class="btn" onclick="openIframe()"><span class="ico">🖥️</span> เปิดใน Chrome</button>
+      <button class="btn" onclick="openMobile()"><span class="ico">📱</span> เปิดด้วยมือถือ</button>
+    </div>
+    <div class="fallback">
+      หากปุ่มไม่ทำงาน <a id="fallbackLink" href="#">คลิกที่นี่</a>
+    </div>
+  </div>
+
+  <iframe id="appFrame" src="about:blank">
+    เบราว์เซอร์ของคุณไม่รองรับการใช้งาน กรุณาเข้าสู่ระบบโดยตรงที่ <a id="noFrameLink" href="#">คลิกที่นี่</a>
   </iframe>
+
+<script>
+  // ================================================================
+  // แก้ URL ของ Google App Script ที่บรรทัดเดียวนี้จุดเดียวพอ
+  // ================================================================
+  var GAS_URL = "https://script.google.com/macros/s/AKfycbwQfTEzmzjf51-poF95yLgBHYtQ2F3Y1n-RLj_pRw3dp_9XO0HJDGVCCv5TSR6vlEUE/exec";
+  // ================================================================
+
+  document.getElementById('fallbackLink').href = GAS_URL;
+  document.getElementById('noFrameLink').href = GAS_URL;
+
+  function openIframe() {
+    var frame = document.getElementById('appFrame');
+    frame.src = GAS_URL;
+    frame.style.display = 'block';
+    document.getElementById('launcher').style.display = 'none';
+  }
+
+  function openMobile() {
+    // Redirect ตรงไปยัง URL ของ Google App Script (ไม่ใช้ iframe) เพื่อให้เปิดจากมือถือได้ปกติ
+    window.location.href = GAS_URL;
+  }
+</script>
 
 </body>
 </html>
