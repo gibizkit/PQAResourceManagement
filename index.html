@@ -1,76 +1,362 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PQA Asset Update</title>
-  <style>
-    :root{
-      --dk-bg:#0d1829; --dk-card:#111c30; --dk-text:#e8edf5;
-      --dk-text2:rgba(232,237,245,.6); --dk-accent:#5cd9aa; --dk-accent-d:rgba(92,217,170,.15);
-    }
-    *{box-sizing:border-box}
-    body,html{margin:0;padding:0;height:100%;overflow:hidden;background:var(--dk-bg);font-family:"Sukhumvit Set","Segoe UI",sans-serif;}
-    iframe{width:100%;height:100%;border:none;display:none;}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PQA Directory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBF6EF;
+    --surface:#FFFFFF;
+    --surface-2:#F7EEE1;
+    --border:rgba(34,28,21,.10);
+    --border-strong:rgba(34,28,21,.18);
+    --text:#221C15;
+    --text-secondary:rgba(34,28,21,.62);
+    --accent:#B75B36;
+    --accent-soft:rgba(183,91,54,.12);
+    --accent-press:rgba(183,91,54,.22);
+    --resource:#2563A6;
+    --resource-soft:rgba(37,99,166,.12);
+    --asset:#B75B36;
+    --asset-soft:rgba(183,91,54,.12);
+    --radius-lg:18px;
+    --radius-md:12px;
+    --dur:200ms;
+    --ease:cubic-bezier(.4,0,.2,1);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  body{
+    min-height:100dvh;
+    font-family:'Noto Sans Thai','Noto Sans',system-ui,sans-serif;
+    font-weight:500;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px;}
+  @media (prefers-reduced-motion: reduce){
+    *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
+  }
 
-    #launcher{
-      height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;
-    }
-    #launcher h1{color:var(--dk-text);font-size:22px;margin:0;}
-    #launcher p{color:var(--dk-text2);font-size:13px;margin:-16px 0 0;}
-    .btn-group{display:flex;flex-direction:column;gap:14px;width:280px;}
-    .btn{
-      display:flex;align-items:center;justify-content:center;gap:10px;
-      padding:14px 20px;border-radius:10px;border:1px solid rgba(255,255,255,.1);
-      background:var(--dk-card);color:var(--dk-text);font-size:15px;cursor:pointer;
-      transition:.15s;text-decoration:none;
-    }
-    .btn:hover{background:var(--dk-accent-d);border-color:var(--dk-accent);color:var(--dk-accent);}
-    .btn .ico{font-size:18px;}
-    .fallback{margin-top:6px;color:var(--dk-text2);font-size:12px;text-align:center;}
-    .fallback a{color:var(--dk-accent);}
-  </style>
+  /* ---------- Directory screen ---------- */
+  #directory{
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:48px 20px calc(32px + env(safe-area-inset-bottom));
+  }
+  .header{
+    width:100%;
+    max-width:480px;
+    text-align:center;
+    margin-bottom:32px;
+  }
+  .kicker{
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.12em;
+    color:var(--accent);
+    text-transform:uppercase;
+    margin:0 0 10px;
+  }
+  .header h1{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 8px;
+    line-height:1.35;
+  }
+  .header p{
+    font-size:14px;
+    color:var(--text-secondary);
+    margin:0;
+    line-height:1.5;
+  }
+
+  .app-list{
+    width:100%;
+    max-width:480px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .app{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    overflow:hidden;
+  }
+  .app-trigger{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:16px;
+    min-height:64px;
+    background:transparent;
+    border:none;
+    color:var(--text);
+    cursor:pointer;
+    text-align:left;
+    transition:background var(--dur) var(--ease);
+  }
+  .app-trigger:hover{background:rgba(34,28,21,.04);}
+  .app-trigger:active{background:rgba(34,28,21,.06);}
+  .app-icon{
+    flex:none;
+    width:44px;height:44px;
+    border-radius:var(--radius-md);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .app-icon svg{width:22px;height:22px;stroke-width:2;}
+  .app[data-accent="resource"] .app-icon{background:var(--resource-soft);color:var(--resource);}
+  .app[data-accent="asset"] .app-icon{background:var(--asset-soft);color:var(--asset);}
+  .app-meta{flex:1;min-width:0;}
+  .app-name{display:block;font-size:15px;font-weight:700;line-height:1.4;}
+  .app-desc{display:block;font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
+  .app-chevron{
+    flex:none;
+    width:32px;height:32px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--text-secondary);
+  }
+  .app-chevron svg{
+    width:18px;height:18px;stroke-width:2;
+    transition:transform var(--dur) var(--ease);
+  }
+  .app-trigger[aria-expanded="true"] .app-chevron svg{transform:rotate(180deg);color:var(--text);}
+
+  .app-panel{
+    display:grid;
+    grid-template-rows:0fr;
+    transition:grid-template-rows var(--dur) var(--ease);
+  }
+  .app-panel.open{grid-template-rows:1fr;}
+  .app-panel-inner{overflow:hidden;min-height:0;}
+  .app-panel-content{
+    padding:0 16px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .mode-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    min-height:48px;
+    padding:12px 16px;
+    border-radius:var(--radius-md);
+    border:1px solid var(--border-strong);
+    background:var(--surface-2);
+    color:var(--text);
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .mode-btn svg{width:18px;height:18px;stroke-width:2;flex:none;}
+  .mode-btn:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+  .mode-btn:active{transform:scale(.98);background:var(--accent-press);}
+  .fallback{
+    margin:2px 0 0;
+    font-size:12px;
+    color:var(--text-secondary);
+    text-align:center;
+    line-height:1.5;
+  }
+  .fallback a{color:var(--accent);}
+
+  .footer-note{
+    max-width:480px;
+    width:100%;
+    text-align:center;
+    font-size:12px;
+    color:var(--text-secondary);
+    margin-top:28px;
+    line-height:1.6;
+  }
+
+  /* ---------- Fullscreen app viewer ---------- */
+  .viewer{
+    position:fixed;inset:0;
+    background:var(--bg);
+    display:flex;
+    flex-direction:column;
+    z-index:100;
+  }
+  .viewer[hidden]{display:none;}
+  .viewer-bar{
+    flex:none;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+  }
+  .back-btn{
+    display:flex;align-items:center;gap:6px;
+    min-height:40px;
+    padding:8px 12px;
+    border-radius:10px;
+    border:1px solid var(--border-strong);
+    background:var(--surface-2);
+    color:var(--text);
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    transition:background var(--dur) var(--ease);
+  }
+  .back-btn svg{width:16px;height:16px;stroke-width:2;}
+  .back-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);}
+  .viewer-title{
+    font-size:14px;
+    font-weight:600;
+    color:var(--text-secondary);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .viewer iframe{
+    flex:1;
+    width:100%;
+    border:none;
+    background:#fff;
+  }
+
+  @media (min-width:640px){
+    #directory{padding-top:72px;}
+    .header h1{font-size:26px;}
+    .app{border-radius:20px;}
+  }
+</style>
 </head>
 <body>
 
-  <div id="launcher">
-    <h1>PQA Asset Update</h1>
-    <p>เลือกวิธีเปิดใช้งานตามอุปกรณ์ของคุณ</p>
-    <div class="btn-group">
-      <button class="btn" onclick="openIframe()"><span class="ico">🖥️</span> เปิดใน Chrome</button>
-      <button class="btn" onclick="openMobile()"><span class="ico">📱</span> เปิดด้วยมือถือ</button>
+  <main id="directory">
+    <div class="header">
+      <p class="kicker">PQA System Directory</p>
+      <h1>เลือกระบบที่ต้องการใช้งาน</h1>
+      <p>แตะที่รายการเพื่อเลือกวิธีเปิดใช้งานตามอุปกรณ์ของคุณ</p>
     </div>
-    <div class="fallback">
-      หากปุ่มไม่ทำงาน <a id="fallbackLink" href="#">คลิกที่นี่</a>
-    </div>
-  </div>
 
-  <iframe id="appFrame" src="about:blank">
-    เบราว์เซอร์ของคุณไม่รองรับการใช้งาน กรุณาเข้าสู่ระบบโดยตรงที่ <a id="noFrameLink" href="#">คลิกที่นี่</a>
-  </iframe>
+    <div class="app-list" id="appList"></div>
+
+    <p class="footer-note">หากเปิดผ่าน Chrome แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
+  </main>
+
+  <div class="viewer" id="viewer" hidden>
+    <div class="viewer-bar">
+      <button class="back-btn" id="backBtn" onclick="closeViewer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        กลับไปที่ Directory
+      </button>
+      <span class="viewer-title" id="viewerTitle"></span>
+    </div>
+    <iframe id="viewerFrame" src="about:blank" title="PQA App"></iframe>
+  </div>
 
 <script>
   // ================================================================
-  // แก้ URL ของ Google App Script ที่บรรทัดเดียวนี้จุดเดียวพอ
+  // แก้ URL ของแต่ละระบบที่จุดนี้จุดเดียวพอ
   // ================================================================
-  var GAS_URL = "https://script.google.com/macros/s/AKfycbwQfTEzmzjf51-poF95yLgBHYtQ2F3Y1n-RLj_pRw3dp_9XO0HJDGVCCv5TSR6vlEUE/exec";
+  var APPS = [
+    {
+      id: "resource",
+      accent: "resource",
+      name: "PQA Resource Management",
+      desc: "จัดการทรัพยากรและกำลังคนของทีม",
+      url: "https://script.google.com/macros/s/AKfycbyUZrcaCYJYLUxcS33PvgmFr_Ng_TY_xKIq4Ki9Arm4mMJuLKsTt7r-8aGTPU-seR5POg/exec",
+      icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+    },
+    {
+      id: "asset",
+      accent: "asset",
+      name: "PQA Asset Management",
+      desc: "อัปเดตและติดตามสถานะทรัพย์สิน",
+      url: "https://script.google.com/macros/s/AKfycbxQidQQuJnbCWU3vGX0wUlDu-Qr2G5AMvZ2qixMzgIR-PTJiwpzxAZLAv0JIHQMoR8m/exec",
+      icon: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/>'
+    }
+  ];
   // ================================================================
 
-  document.getElementById('fallbackLink').href = GAS_URL;
-  document.getElementById('noFrameLink').href = GAS_URL;
+  var ICON_MONITOR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>';
+  var ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>';
+  var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-  function openIframe() {
-    var frame = document.getElementById('appFrame');
-    frame.src = GAS_URL;
-    frame.style.display = 'block';
-    document.getElementById('launcher').style.display = 'none';
+  var listEl = document.getElementById('appList');
+  var viewer = document.getElementById('viewer');
+  var viewerFrame = document.getElementById('viewerFrame');
+  var viewerTitle = document.getElementById('viewerTitle');
+  var backBtn = document.getElementById('backBtn');
+  var lastTrigger = null;
+
+  APPS.forEach(function(app){
+    var wrap = document.createElement('div');
+    wrap.className = 'app';
+    wrap.setAttribute('data-accent', app.accent);
+    wrap.innerHTML =
+      '<button class="app-trigger" aria-expanded="false" aria-controls="panel-' + app.id + '">' +
+        '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
+        '<span class="app-meta">' +
+          '<span class="app-name">' + app.name + '</span>' +
+          '<span class="app-desc">' + app.desc + '</span>' +
+        '</span>' +
+        '<span class="app-chevron">' + ICON_CHEVRON + '</span>' +
+      '</button>' +
+      '<div class="app-panel" id="panel-' + app.id + '">' +
+        '<div class="app-panel-inner"><div class="app-panel-content">' +
+          '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Chrome</button>' +
+          '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>' +
+          '<p class="fallback">หากปุ่มไม่ทำงาน <a href="' + app.url + '" target="_blank" rel="noopener">คลิกที่นี่</a></p>' +
+        '</div></div>' +
+      '</div>';
+
+    var trigger = wrap.querySelector('.app-trigger');
+    var panel = wrap.querySelector('.app-panel');
+    trigger.addEventListener('click', function(){
+      var isOpen = trigger.getAttribute('aria-expanded') === 'true';
+      trigger.setAttribute('aria-expanded', String(!isOpen));
+      panel.classList.toggle('open', !isOpen);
+    });
+
+    wrap.querySelector('[data-action="browser"]').addEventListener('click', function(){
+      openBrowser(app, trigger);
+    });
+    wrap.querySelector('[data-action="mobile"]').addEventListener('click', function(){
+      openMobile(app);
+    });
+
+    listEl.appendChild(wrap);
+  });
+
+  function openBrowser(app, trigger){
+    lastTrigger = trigger || null;
+    viewerFrame.src = app.url;
+    viewerTitle.textContent = app.name;
+    viewer.hidden = false;
+    document.body.style.overflow = 'hidden';
+    backBtn.focus();
   }
 
-  function openMobile() {
-    // Redirect ตรงไปยัง URL ของ Google App Script (ไม่ใช้ iframe) เพื่อให้เปิดจากมือถือได้ปกติ
-    window.location.href = GAS_URL;
+  function closeViewer(){
+    viewer.hidden = true;
+    viewerFrame.src = 'about:blank';
+    document.body.style.overflow = '';
+    if (lastTrigger) lastTrigger.focus();
   }
+
+  function openMobile(app){
+    // Redirect ตรงไปยัง URL (ไม่ใช้ iframe) เพื่อให้เปิดจากมือถือได้ปกติ
+    window.location.href = app.url;
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && !viewer.hidden) closeViewer();
+  });
 </script>
-
 </body>
 </html>
