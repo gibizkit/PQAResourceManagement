@@ -245,7 +245,7 @@
 
     <div class="app-list" id="appList"></div>
 
-    <p class="footer-note">หากเปิดผ่าน Chrome แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
+    <p class="footer-note">หากเปิดผ่าน Desktop Browser แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
   </main>
 
   <div class="viewer" id="viewer" hidden>
@@ -262,6 +262,7 @@
 <script>
   // ================================================================
   // แก้ URL ของแต่ละระบบที่จุดนี้จุดเดียวพอ
+  // เพิ่ม modes: ['browser'] ถ้าระบบนั้นมีแค่โหมดเดียว (ไม่ต้องมีปุ่มมือถือ)
   // ================================================================
   var APPS = [
     {
@@ -279,6 +280,15 @@
       desc: "อัปเดตและติดตามสถานะทรัพย์สิน",
       url: "https://script.google.com/macros/s/AKfycbzPIplV1J5xUWsf3I1s7bOAqk1fPwhYgKYZrwPPYIXv0qYcLCoAP4LbulYUNTM8--w/exec",
       icon: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/>'
+    },
+    {
+      id: "automation",
+      accent: "asset",
+      name: "PQA Test Automation Dashboard",
+      desc: "ติดตามผลการทดสอบอัตโนมัติของทีม QA",
+      url: "http://34.87.95.167/userContent/robot-dashboard/dashboard.html",
+      modes: ["browser"],
+      icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'
     }
   ];
   // ================================================================
@@ -298,6 +308,16 @@
     var wrap = document.createElement('div');
     wrap.className = 'app';
     wrap.setAttribute('data-accent', app.accent);
+
+    var modes = app.modes || ['browser', 'mobile'];
+    var buttonsHtml = '';
+    if (modes.indexOf('browser') !== -1) {
+      buttonsHtml += '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Desktop Browser</button>';
+    }
+    if (modes.indexOf('mobile') !== -1) {
+      buttonsHtml += '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>';
+    }
+
     wrap.innerHTML =
       '<button class="app-trigger" aria-expanded="false" aria-controls="panel-' + app.id + '">' +
         '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
@@ -309,8 +329,7 @@
       '</button>' +
       '<div class="app-panel" id="panel-' + app.id + '">' +
         '<div class="app-panel-inner"><div class="app-panel-content">' +
-          '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Chrome</button>' +
-          '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>' +
+          buttonsHtml +
           '<p class="fallback">หากปุ่มไม่ทำงาน <a href="' + app.url + '" target="_blank" rel="noopener">คลิกที่นี่</a></p>' +
         '</div></div>' +
       '</div>';
@@ -323,12 +342,18 @@
       panel.classList.toggle('open', !isOpen);
     });
 
-    wrap.querySelector('[data-action="browser"]').addEventListener('click', function(){
-      openBrowser(app, trigger);
-    });
-    wrap.querySelector('[data-action="mobile"]').addEventListener('click', function(){
-      openMobile(app);
-    });
+    var browserBtn = wrap.querySelector('[data-action="browser"]');
+    if (browserBtn) {
+      browserBtn.addEventListener('click', function(){
+        openBrowser(app, trigger);
+      });
+    }
+    var mobileBtn = wrap.querySelector('[data-action="mobile"]');
+    if (mobileBtn) {
+      mobileBtn.addEventListener('click', function(){
+        openMobile(app);
+      });
+    }
 
     listEl.appendChild(wrap);
   });
