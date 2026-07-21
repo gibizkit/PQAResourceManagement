@@ -271,6 +271,7 @@
       name: "PQA Resource Management",
       desc: "จัดการทรัพยากรและกำลังคนของทีม",
       url: "https://script.google.com/macros/s/AKfycbz-uuXZlNVQEQXxhols66DzUr7afWQo2CgIYBuu6XycW1HXwJWVLfDwlJpRzZfOcnoRXQ/exec",
+      manual: "https://gibizkit.github.io/PQAResourceManagement/PQA-Resource-Management-Manual.html",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
     },
     {
@@ -295,6 +296,7 @@
 
   var ICON_MONITOR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>';
   var ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>';
+  var ICON_BOOK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
   var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
   var listEl = document.getElementById('appList');
@@ -316,6 +318,9 @@
     }
     if (modes.indexOf('mobile') !== -1) {
       buttonsHtml += '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>';
+    }
+    if (app.manual) {
+      buttonsHtml += '<a href="' + app.manual + '" target="_blank" rel="noopener" class="mode-btn" style="text-decoration:none;display:flex;">' + ICON_BOOK + ' ดูคู่มือ</a>';
     }
 
     wrap.innerHTML =
