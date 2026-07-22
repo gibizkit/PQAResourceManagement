@@ -6,107 +6,7 @@
 <title>PQA Resource Management — Supabase</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --dk-bg:#FBF6EF; --dk-card:#FFFFFF; --dk-surface:#F7EEE1; --dk-hover:#F1E4D4;
-  --dk-border:rgba(34,28,21,0.10); --dk-border-s:rgba(34,28,21,0.18);
-  --dk-text:#221C15; --dk-text2:rgba(34,28,21,0.62); --dk-text3:rgba(34,28,21,0.42);
-  --dk-accent:#B75B36; --dk-accent-d:#F5E4D8; --danger:#C0392B;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--dk-bg);color:var(--dk-text);
-  font-family:'Noto Sans Thai','Noto Sans',sans-serif;font-weight:500;font-size:14px;}
-button{font-family:inherit;cursor:pointer}
-input,select,textarea{font-family:inherit}
-a{color:var(--dk-accent)}
-.hidden{display:none !important}
-
-/* ---------- Login ---------- */
-#loginPage{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-  background:radial-gradient(1200px 600px at 20% 0%,rgba(183,91,54,0.10),transparent),
-             radial-gradient(1000px 500px at 90% 100%,rgba(183,91,54,0.08),transparent),var(--dk-bg);}
-.login-card{background:var(--dk-card);border:1px solid rgba(183,91,54,0.2);border-radius:16px;
-  padding:34px 30px;width:360px;box-shadow:0 20px 50px rgba(34,28,21,0.08);}
-.login-card h1{margin:0 0 4px;font-size:20px;color:var(--dk-text)}
-.login-card .sub{margin:0 0 22px;color:var(--dk-accent);font-size:13px}
-.login-card label{display:block;font-size:12px;color:var(--dk-text3);margin:12px 0 5px}
-.login-card input{width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--dk-border-s);
-  background:rgba(34,28,21,0.05);font-size:14px;color:var(--dk-text)}
-.login-card input:focus{outline:none;border-color:var(--dk-accent);background:#fff}
-.btn-primary{margin-top:20px;width:100%;padding:12px;border:none;border-radius:10px;color:#fff;font-weight:600;
-  font-size:14px;background:linear-gradient(135deg,#8F4527,#B75B36)}
-.btn-primary:disabled{opacity:.6;cursor:default}
-.login-err{color:var(--danger);font-size:12.5px;margin-top:12px;min-height:16px}
-
-/* ---------- App shell ---------- */
-#app{min-height:100vh;display:flex;flex-direction:column}
-.topbar{display:flex;align-items:center;gap:14px;padding:12px 20px;background:#fff;
-  border-bottom:1px solid var(--dk-border);position:sticky;top:0;z-index:10}
-.topbar .brand{font-weight:700;color:var(--dk-accent);font-size:16px}
-.topbar .brand small{color:var(--dk-text3);font-weight:500;font-size:11px;margin-left:6px}
-.topbar .spacer{flex:1}
-.topbar .who{font-size:12.5px;color:var(--dk-text2)}
-.topbar .who b{color:var(--dk-text)}
-.btn{padding:8px 14px;border-radius:8px;border:1px solid var(--dk-border-s);background:#fff;
-  color:var(--dk-text);font-size:13px;font-weight:600}
-.btn:hover{background:var(--dk-hover)}
-.btn.accent{background:var(--dk-accent);border-color:var(--dk-accent);color:#fff}
-.btn.accent:hover{filter:brightness(1.05)}
-.btn.sm{padding:5px 9px;font-size:12px}
-.btn.danger{color:var(--danger);border-color:rgba(192,57,43,.4)}
-.btn.danger:hover{background:rgba(192,57,43,.08)}
-
-.main{flex:1;padding:20px;max-width:1400px;width:100%;margin:0 auto}
-.page-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.page-head h2{margin:0;font-size:18px}
-.badge{background:var(--dk-accent-d);color:var(--dk-accent);border-radius:20px;padding:3px 11px;font-size:12px;font-weight:600}
-.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-.toolbar input.search{padding:8px 12px;border-radius:8px;border:1px solid var(--dk-border-s);min-width:240px;font-size:13px}
-
-/* ---------- Table ---------- */
-.table-wrap{background:#fff;border:1px solid var(--dk-border);border-radius:12px;overflow:auto;max-height:calc(100vh - 220px)}
-table{border-collapse:collapse;width:100%;font-size:13px}
-thead th{position:sticky;top:0;background:var(--dk-surface);text-align:left;padding:10px 12px;
-  font-weight:600;color:var(--dk-text2);white-space:nowrap;border-bottom:1px solid var(--dk-border)}
-tbody td{padding:9px 12px;border-bottom:1px solid var(--dk-border);white-space:nowrap;vertical-align:middle}
-tbody tr:hover{background:var(--dk-hover)}
-.status-pill{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11.5px;font-weight:600}
-.st-need{background:#fdecea;color:#c0392b}
-.st-ready{background:#eaf2fb;color:#2563A6}
-.st-prog{background:#fff4e0;color:#a15c12}
-.st-done{background:#e8f5e9;color:#2e7d32}
-.muted{color:var(--dk-text3)}
-.center{text-align:center}
-
-/* ---------- Modal ---------- */
-.overlay{position:fixed;inset:0;background:rgba(34,28,21,0.45);display:flex;align-items:flex-start;
-  justify-content:center;padding:40px 16px;z-index:50;overflow:auto}
-.modal{background:#fff;border-radius:14px;width:640px;max-width:100%;box-shadow:0 24px 60px rgba(0,0,0,.2)}
-.modal-head{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--dk-border)}
-.modal-head h3{margin:0;font-size:16px;color:var(--dk-accent)}
-.modal-head .x{margin-left:auto;border:none;background:none;font-size:20px;color:var(--dk-text3);cursor:pointer;line-height:1}
-.modal-body{padding:18px 20px;max-height:70vh;overflow:auto}
-.modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--dk-border)}
-.field{margin-bottom:13px}
-.field label{display:block;font-size:12px;color:var(--dk-text3);margin-bottom:5px}
-.field input,.field select,.field textarea{width:100%;padding:9px 11px;border-radius:8px;
-  border:1px solid var(--dk-border-s);font-size:13.5px;background:#fff;color:var(--dk-text)}
-.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--dk-accent)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.section-title{font-weight:700;font-size:13px;color:var(--dk-text);margin:18px 0 8px;
-  border-top:1px dashed var(--dk-border);padding-top:14px}
-.phase-row{display:grid;grid-template-columns:90px 1fr 1fr 80px 80px;gap:8px;align-items:center;margin-bottom:7px}
-.phase-row .ph-name{font-size:12.5px;font-weight:600;color:var(--dk-text2)}
-.phase-row input{padding:7px 8px;font-size:12.5px;border-radius:7px;border:1px solid var(--dk-border-s)}
-.form-err{color:var(--danger);font-size:12.5px;min-height:16px;margin-right:auto;align-self:center}
-.hint{font-size:11.5px;color:var(--dk-text3)}
-.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--dk-text);color:#fff;
-  padding:11px 20px;border-radius:10px;font-size:13px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;
-  transition:opacity .25s;pointer-events:none}
-.toast.show{opacity:1}
-.toast.err{background:var(--danger)}
-.loading{padding:40px;text-align:center;color:var(--dk-text3)}
-</style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 
@@ -234,21 +134,15 @@ tbody tr:hover{background:var(--dk-hover)}
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { supabase, $, toast, esc, statusPill, fmtDate } from './common.js';
 
 /* ============ CONFIG ============ */
-const SUPABASE_URL = 'https://nbjetmnqvvvqtmpuxsrn.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5iamV0bW5xdnZ2cXRtcHV4c3JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NzM5ODQsImV4cCI6MjEwMDI0OTk4NH0.5_new20_Vh37uRVLO_dBFmb9m05M_k5pzdvclOV4AjU';
-
-// ตารางทั้งหมดอยู่ใน schema 'pqa' (ต้องเปิด Exposed schemas = pqa,stg,public — ดู SETUP ขั้น 2.1)
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: 'pqa' } });
-
 const PHASES = [
-  { code:'SIT',     name:'SIT' },
-  { code:'TCPREP',  name:'TC Prep' },
-  { code:'UAT',     name:'UAT' },
-  { code:'REG',     name:'Reg' },
-  { code:'SUPPORT', name:'Support' },
+  { code: 'SIT',     name: 'SIT' },
+  { code: 'TCPREP',  name: 'TC Prep' },
+  { code: 'UAT',     name: 'UAT' },
+  { code: 'REG',     name: 'Reg' },
+  { code: 'SUPPORT', name: 'Support' },
 ];
 
 /* ============ STATE ============ */
@@ -258,88 +152,139 @@ let editingKey = null;         // null = add mode
 let existingPhases = {};       // phase_code -> project_phase_id (edit mode)
 
 /* ============ HELPERS ============ */
-const $ = id => document.getElementById(id);
-function toast(msg, isErr){
-  const t = $('toast'); t.textContent = msg;
-  t.className = 'toast show' + (isErr ? ' err' : '');
-  setTimeout(()=> t.className = 'toast', 2600);
+function buildPhaseRows(data) {
+  $('phaseRows').innerHTML = PHASES.map(ph => {
+    const d = (data && data[ph.code]) || {};
+    return `<div class="phase-row" data-phase="${ph.code}">
+      <div class="ph-name">${ph.name}</div>
+      <input type="date" class="ph-start" value="${d.start_date || ''}">
+      <input type="date" class="ph-end" value="${d.end_date || ''}">
+      <input type="number" step="0.5" min="0" class="ph-md" placeholder="MD" value="${d.md ?? ''}">
+      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${d.resource_count ?? ''}">
+    </div>`;
+  }).join('');
 }
-function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function statusPill(s){
-  const map={'Need Attention':'st-need','Ready to Start':'st-ready','In Progress':'st-prog','Completed':'st-done'};
-  if(!s) return '<span class="muted">—</span>';
-  return `<span class="status-pill ${map[s]||''}">${esc(s)}</span>`;
+
+function suggestKey() {
+  const now = new Date();
+  const ym = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = 'P' + ym;
+  let max = 0;
+  allProjects.forEach(p => {
+    if (p.project_key && p.project_key.startsWith(prefix)) {
+      const n = parseInt(p.project_key.slice(prefix.length), 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  });
+  return prefix + String(max + 1).padStart(4, '0');
 }
-function fmtDate(d){ return d ? d : '<span class="muted">—</span>'; }
 
 /* ============ AUTH ============ */
-$('loginForm').addEventListener('submit', async e=>{
+$('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const btn=$('loginBtn'); btn.disabled=true; btn.textContent='กำลังเข้าสู่ระบบ...'; $('loginErr').textContent='';
+  const btn = $('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังเข้าสู่ระบบ...';
+  $('loginErr').textContent = '';
+
   const { error } = await supabase.auth.signInWithPassword({
-    email:$('email').value.trim(), password:$('password').value
+    email: $('email').value.trim(),
+    password: $('password').value
   });
-  btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
-  if(error){ $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ'; }
-});
-$('logoutBtn').addEventListener('click', async ()=>{ await supabase.auth.signOut(); });
 
-supabase.auth.onAuthStateChange((_evt, session)=>{
-  if(session){ showApp(session); } else { showLogin(); }
+  btn.disabled = false;
+  btn.textContent = 'เข้าสู่ระบบ';
+
+  if (error) {
+    $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+  }
 });
+
+$('logoutBtn').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+});
+
+supabase.auth.onAuthStateChange((_evt, session) => {
+  if (session) {
+    showApp(session);
+  } else {
+    showLogin();
+  }
+});
+
 // เช็ค session ที่ค้างอยู่ตอนเปิดหน้า
-(async ()=>{ const { data } = await supabase.auth.getSession(); if(data.session) showApp(data.session); })();
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) showApp(data.session);
+})();
 
-function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
-async function showApp(session){
-  $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+function showLogin() {
+  $('app').classList.add('hidden');
+  $('loginPage').classList.remove('hidden');
+}
+
+async function showApp(session) {
+  $('loginPage').classList.add('hidden');
+  $('app').classList.remove('hidden');
+
   // ดึงชื่อ + role จาก app_user (ถ้ามีแถว)
-  let who = session.user.email, role='';
-  const { data:u } = await supabase.from('app_user').select('display_name,app_role')
+  let who = session.user.email;
+  let role = '';
+  const { data: u } = await supabase.from('app_user').select('display_name,app_role')
     .eq('email', session.user.email).maybeSingle();
-  if(u){ who = u.display_name; role = u.app_role; }
-  $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+  if (u) {
+    who = u.display_name;
+    role = u.app_role;
+  }
+  $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
+
   await loadApps();
   await loadProjects();
 }
 
 /* ============ LOAD ============ */
-async function loadApps(){
+async function loadApps() {
   const { data, error } = await supabase.from('app').select('app_code,app_name')
-    .eq('is_active', true).order('sort_order', { nullsFirst:false });
-  if(error){ console.warn('load apps', error); return; }
-  appList = data||[];
+    .eq('is_active', true).order('sort_order', { nullsFirst: false });
+  if (error) {
+    console.warn('load apps', error);
+    return;
+  }
+  appList = data || [];
   $('fApp').innerHTML = '<option value="">— เลือก App —</option>' +
-    appList.map(a=>`<option value="${esc(a.app_code)}">${esc(a.app_code)}</option>`).join('');
+    appList.map(a => `<option value="${esc(a.app_code)}">${esc(a.app_code)}</option>`).join('');
 }
 
-async function loadProjects(){
+async function loadProjects() {
   $('rows').innerHTML = '<tr><td colspan="9" class="loading">กำลังโหลด...</td></tr>';
   const { data, error } = await supabase.from('v_project_wide').select('*')
-    .eq('is_active', true).order('project_key', { ascending:false });
-  if(error){
+    .eq('is_active', true).order('project_key', { ascending: false });
+  if (error) {
     $('rows').innerHTML = `<tr><td colspan="9" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(error.message)}</td></tr>`;
     return;
   }
-  allProjects = data||[];
+  allProjects = data || [];
   renderRows();
 }
 
-function renderRows(){
+function renderRows() {
   const q = $('search').value.trim().toLowerCase();
-  const rows = allProjects.filter(p=>{
-    if(!q) return true;
-    return [p.project_key,p.project_name,p.app,p.other_app,p.uat_lead,p.status]
-      .some(v=>(v||'').toLowerCase().includes(q));
+  const rows = allProjects.filter(p => {
+    if (!q) return true;
+    return [p.project_key, p.project_name, p.app, p.other_app, p.uat_lead, p.status]
+      .some(v => (v || '').toLowerCase().includes(q));
   });
   $('projCount').textContent = rows.length;
-  if(!rows.length){ $('rows').innerHTML = '<tr><td colspan="9" class="loading">ไม่พบข้อมูล</td></tr>'; return; }
-  $('rows').innerHTML = rows.map(p=>`
+  if (!rows.length) {
+    $('rows').innerHTML = '<tr><td colspan="9" class="loading">ไม่พบข้อมูล</td></tr>';
+    return;
+  }
+  $('rows').innerHTML = rows.map(p => `
     <tr>
       <td><b>${esc(p.project_key)}</b></td>
       <td>${esc(p.project_name)}</td>
-      <td>${esc(p.app||p.other_app||'')}</td>
-      <td>${esc(p.uat_lead||'')||'<span class="muted">—</span>'}</td>
+      <td>${esc(p.app || p.other_app || '')}</td>
+      <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
       <td>${statusPill(p.status)}</td>
       <td>${fmtDate(p.uat_start)}</td>
       <td>${fmtDate(p.uat_end)}</td>
@@ -350,138 +295,166 @@ function renderRows(){
       </td>
     </tr>`).join('');
 }
+
 $('search').addEventListener('input', renderRows);
 $('refreshBtn').addEventListener('click', loadProjects);
 
 /* ============ MODAL ============ */
-function buildPhaseRows(data){
-  $('phaseRows').innerHTML = PHASES.map(ph=>{
-    const d = (data && data[ph.code]) || {};
-    return `<div class="phase-row" data-phase="${ph.code}">
-      <div class="ph-name">${ph.name}</div>
-      <input type="date" class="ph-start" value="${d.start_date||''}">
-      <input type="date" class="ph-end" value="${d.end_date||''}">
-      <input type="number" step="0.5" min="0" class="ph-md" placeholder="MD" value="${d.md??''}">
-      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${d.resource_count??''}">
-    </div>`;
-  }).join('');
-}
-
-function suggestKey(){
-  const now = new Date();
-  const ym = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0');
-  const prefix = 'P'+ym;
-  let max = 0;
-  allProjects.forEach(p=>{
-    if(p.project_key && p.project_key.startsWith(prefix)){
-      const n = parseInt(p.project_key.slice(prefix.length),10);
-      if(!isNaN(n) && n>max) max=n;
-    }
-  });
-  return prefix + String(max+1).padStart(4,'0');
-}
-
-window.openAdd = function(){
-  editingKey = null; existingPhases = {};
+window.openAdd = function() {
+  editingKey = null;
+  existingPhases = {};
   $('modalTitle').textContent = 'เพิ่ม Project';
-  $('fKey').value = suggestKey(); $('fKey').disabled = false;
-  $('fName').value=''; $('fApp').value=''; $('fOtherApp').value='';
-  $('fStatus').value=''; $('fSignoff').value=''; $('fDeploy').value='';
-  $('fSignoffUrl').value=''; $('fNote').value='';
+  $('fKey').value = suggestKey();
+  $('fKey').disabled = false;
+  $('fName').value = '';
+  $('fApp').value = '';
+  $('fOtherApp').value = '';
+  $('fStatus').value = '';
+  $('fSignoff').value = '';
+  $('fDeploy').value = '';
+  $('fSignoffUrl').value = '';
+  $('fNote').value = '';
   buildPhaseRows(null);
-  $('formErr').textContent=''; $('projOverlay').classList.remove('hidden');
+  $('formErr').textContent = '';
+  $('projOverlay').classList.remove('hidden');
 };
+
 $('addBtn').addEventListener('click', window.openAdd);
 
-window.openEdit = async function(key){
-  editingKey = key; existingPhases = {};
+window.openEdit = async function(key) {
+  editingKey = key;
+  existingPhases = {};
   $('modalTitle').textContent = 'แก้ไข Project — ' + key;
-  const p = allProjects.find(x=>x.project_key===key) || {};
-  $('fKey').value = key; $('fKey').disabled = true;
-  $('fName').value = p.project_name||''; $('fApp').value = p.app||'';
-  $('fOtherApp').value = p.other_app||''; $('fStatus').value = p.status||'';
-  $('fSignoff').value = p.signoff_date||''; $('fDeploy').value = p.deploy_date||'';
-  $('fSignoffUrl').value = p.signoff_url||''; $('fNote').value = p.project_note||'';
-  $('formErr').textContent=''; $('projOverlay').classList.remove('hidden');
+  const p = allProjects.find(x => x.project_key === key) || {};
+  $('fKey').value = key;
+  $('fKey').disabled = true;
+  $('fName').value = p.project_name || '';
+  $('fApp').value = p.app || '';
+  $('fOtherApp').value = p.other_app || '';
+  $('fStatus').value = p.status || '';
+  $('fSignoff').value = p.signoff_date || '';
+  $('fDeploy').value = p.deploy_date || '';
+  $('fSignoffUrl').value = p.signoff_url || '';
+  $('fNote').value = p.project_note || '';
+  $('formErr').textContent = '';
+  $('projOverlay').classList.remove('hidden');
 
   // โหลด phase จริงจาก project_phase
-  const { data:phs } = await supabase.from('project_phase')
+  const { data: phs } = await supabase.from('project_phase')
     .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
     .eq('project_key', key);
   const map = {};
-  (phs||[]).forEach(ph=>{ map[ph.phase_code]=ph; existingPhases[ph.phase_code]=ph.project_phase_id; });
+  (phs || []).forEach(ph => {
+    map[ph.phase_code] = ph;
+    existingPhases[ph.phase_code] = ph.project_phase_id;
+  });
   buildPhaseRows(map);
 };
 
-window.closeModal = function(){ $('projOverlay').classList.add('hidden'); };
+window.closeModal = function() {
+  $('projOverlay').classList.add('hidden');
+};
 
-function readPhases(){
-  return [...document.querySelectorAll('#phaseRows .phase-row')].map(r=>({
+function readPhases() {
+  return [...document.querySelectorAll('#phaseRows .phase-row')].map(r => ({
     phase_code: r.dataset.phase,
     start_date: r.querySelector('.ph-start').value || null,
-    end_date:   r.querySelector('.ph-end').value || null,
-    md:         r.querySelector('.ph-md').value===''? null : Number(r.querySelector('.ph-md').value),
-    resource_count: r.querySelector('.ph-res').value===''? null : Number(r.querySelector('.ph-res').value),
+    end_date: r.querySelector('.ph-end').value || null,
+    md: r.querySelector('.ph-md').value === '' ? null : Number(r.querySelector('.ph-md').value),
+    resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
   }));
 }
 
-window.saveProject = async function(){
-  const err = $('formErr'); err.textContent='';
+window.saveProject = async function() {
+  const err = $('formErr');
+  err.textContent = '';
   const key = $('fKey').value.trim();
   const name = $('fName').value.trim();
   const app = $('fApp').value || null;
   const otherApp = $('fOtherApp').value.trim() || null;
 
-  if(!/^[PU][0-9]{10}$/.test(key)){ err.textContent='Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก'; return; }
-  if(!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
-  if(!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
+  if (!/^[PU][0-9]{10}$/.test(key)) {
+    err.textContent = 'Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก';
+    return;
+  }
+  if (!name) {
+    err.textContent = 'กรุณากรอกชื่อ Project';
+    return;
+  }
+  if (!app && !otherApp) {
+    err.textContent = 'ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง';
+    return;
+  }
 
-  const btn=$('saveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
+  const btn = $('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
 
   const payload = {
-    project_key:key, project_name:name, app_code:app, other_app:otherApp,
-    status:$('fStatus').value||null, signoff_date:$('fSignoff').value||null,
-    deploy_date:$('fDeploy').value||null, signoff_url:$('fSignoffUrl').value.trim()||null,
-    project_note:$('fNote').value.trim()||null,
+    project_key: key,
+    project_name: name,
+    app_code: app,
+    other_app: otherApp,
+    status: $('fStatus').value || null,
+    signoff_date: $('fSignoff').value || null,
+    deploy_date: $('fDeploy').value || null,
+    signoff_url: $('fSignoffUrl').value.trim() || null,
+    project_note: $('fNote').value.trim() || null,
   };
 
   let res;
-  if(editingKey){
+  if (editingKey) {
     res = await supabase.from('project').update(payload).eq('project_key', editingKey);
   } else {
     res = await supabase.from('project').insert(payload);
   }
-  if(res.error){ btn.disabled=false; btn.textContent='บันทึก'; err.textContent='บันทึก Project ไม่สำเร็จ: '+res.error.message; return; }
+
+  if (res.error) {
+    btn.disabled = false;
+    btn.textContent = 'บันทึก';
+    err.textContent = 'บันทึก Project ไม่สำเร็จ: ' + res.error.message;
+    return;
+  }
 
   // ---- phases ----
   const phases = readPhases();
-  for(const ph of phases){
-    const hasData = ph.start_date || ph.end_date || ph.md!=null || ph.resource_count!=null;
+  for (const ph of phases) {
+    const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null;
     const existingId = existingPhases[ph.phase_code];
-    if(hasData){
-      const phPayload = { project_key:key, phase_code:ph.phase_code,
-        start_date:ph.start_date, end_date:ph.end_date, md:ph.md, resource_count:ph.resource_count };
-      if(existingId){
+    if (hasData) {
+      const phPayload = {
+        project_key: key,
+        phase_code: ph.phase_code,
+        start_date: ph.start_date,
+        end_date: ph.end_date,
+        md: ph.md,
+        resource_count: ph.resource_count
+      };
+      if (existingId) {
         await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);
       } else {
         await supabase.from('project_phase').insert(phPayload);
       }
-    } else if(existingId){
+    } else if (existingId) {
       // เคลียร์ข้อมูลออก → ลบเฟสนั้น
       await supabase.from('project_phase').delete().eq('project_phase_id', existingId);
     }
   }
 
-  btn.disabled=false; btn.textContent='บันทึก';
-  closeModal();
+  btn.disabled = false;
+  btn.textContent = 'บันทึก';
+  window.closeModal();
   toast(editingKey ? 'อัปเดตแล้ว ✓' : 'เพิ่ม Project แล้ว ✓');
   await loadProjects();
 };
 
-window.deleteProject = async function(key){
-  if(!confirm(`ยืนยันปิดใช้งาน (soft delete) โปรเจกต์ ${key}?\nBooking ทั้งหมดของโปรเจกต์นี้จะยังอยู่ในฐานข้อมูล`)) return;
-  const { error } = await supabase.from('project').update({ is_active:false }).eq('project_key', key);
-  if(error){ toast('ลบไม่สำเร็จ: '+error.message, true); return; }
+window.deleteProject = async function(key) {
+  if (!confirm(`ยืนยันปิดใช้งาน (soft delete) โปรเจกต์ ${key}?\nBooking ทั้งหมดของโปรเจกต์นี้จะยังอยู่ในฐานข้อมูล`)) return;
+  const { error } = await supabase.from('project').update({ is_active: false }).eq('project_key', key);
+  if (error) {
+    toast('ลบไม่สำเร็จ: ' + error.message, true);
+    return;
+  }
   toast('ปิดใช้งานแล้ว ✓');
   await loadProjects();
 };
