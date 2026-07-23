@@ -191,6 +191,32 @@ a {
   color: var(--dk-text);
 }
 
+/* topbar nav — เมนูสลับหน้า (มาตรฐานกลางทุกหน้า) */
+.topbar .nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.topbar .nav a {
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--dk-text2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.topbar .nav a:hover {
+  background: var(--dk-hover);
+  color: var(--dk-text);
+}
+
+.topbar .nav a.active {
+  background: var(--dk-accent-d);
+  color: var(--dk-accent);
+}
+
 /* ============ BUTTONS ============ */
 .btn {
   padding: 8px 14px;
