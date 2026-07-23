@@ -148,7 +148,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
     <nav class="nav">
-      <a href="index.html">Projects</a>
+      <a href="pqaResourceManagement.html">Projects</a>
       <a href="gantt.html" class="active">Gantt</a>
       <a href="outsource.html">Outsource</a>
       <a href="admin.html">Admin</a>
@@ -663,7 +663,7 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 $('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 $('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('refreshBtn').onclick     = loadAll;
-$('addBtn').onclick         = () => { window.location.href = 'index.html'; };
+$('addBtn').onclick         = () => { window.location.href = "pqaResourceManagement.html"; };
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
