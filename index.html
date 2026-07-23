@@ -288,7 +288,7 @@
       name: "PQA Test Automation Dashboard",
       desc: "ติดตามผลการทดสอบอัตโนมัติของทีม QA",
       url: "http://34.87.95.167/userContent/robot-dashboard/dashboard.html",
-      modes: ["app"],
+      modes: ["newtab"],
       icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'
     }
   ];
@@ -315,6 +315,9 @@
     var buttonsHtml = '';
     if (modes.indexOf('browser') !== -1) {
       buttonsHtml += '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Desktop Browser</button>';
+    }
+    if (modes.indexOf('newtab') !== -1) {
+      buttonsHtml += '<a href="' + app.url + '" target="_blank" rel="noopener" class="mode-btn" style="text-decoration:none;display:flex;">' + ICON_MONITOR + ' เปิดในแท็บใหม่</a>';
     }
     if (modes.indexOf('mobile') !== -1) {
       buttonsHtml += '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>';
