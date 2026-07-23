@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar — PQA Resource Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* ---- topbar nav ---- */
+  .topbar .nav { display:flex; gap:4px; margin-left:6px; }
+  .topbar .nav a {
+    font-size:13px; text-decoration:none; color:var(--dk-text2);
+    padding:6px 12px; border-radius:8px; font-weight:600;
+  }
+  .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
+
+  /* ---- toolbar ---- */
+  .cal-toolbar { align-items:center; }
+  .cal-nav-btn {
+    padding:7px 12px; font-size:15px; font-weight:700; min-width:38px; text-align:center;
+  }
+
+  /* ---- month picker ---- */
+  .cal-month-picker { position:relative; }
+  .cal-month-btn {
+    min-width:150px; font-size:14px; font-weight:700; color:var(--dk-accent);
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:8px; padding:8px 14px;
+  }
+  .cal-month-btn:hover { background:var(--dk-hover); }
+  .cal-month-panel {
+    position:absolute; top:calc(100% + 6px); left:0; z-index:40;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:10px;
+    box-shadow:0 12px 30px rgba(34,28,21,.15); padding:10px; width:230px;
+  }
+  .cal-month-panel.hidden { display:none; }
+  .cal-picker-year {
+    display:flex; align-items:center; justify-content:space-between;
+    font-weight:700; font-size:13px; color:var(--dk-text); margin-bottom:8px;
+  }
+  .cal-picker-year button { padding:3px 9px; }
+  .cal-picker-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .cal-picker-month {
+    padding:8px 4px; border-radius:7px; border:1px solid var(--dk-border-s);
+    background:#fff; color:var(--dk-text); font-size:12.5px; font-weight:600; text-align:center;
+  }
+  .cal-picker-month:hover { background:var(--dk-hover); }
+  .cal-picker-month.active { background:var(--dk-accent); border-color:var(--dk-accent); color:#fff; }
+
+  /* ---- calendar grid ---- */
+  .cal-wrap {
+    background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px;
+  }
+  .cal-weekdays {
+    display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-bottom:8px;
+  }
+  .cal-weekdays > div {
+    text-align:center; font-size:12px; font-weight:700; color:var(--dk-text2); padding:2px 0;
+  }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+  .cal-cell {
+    background:#fff; border:1px solid var(--dk-border); border-radius:10px;
+    min-height:104px; padding:8px; cursor:pointer;
+    display:flex; flex-direction:column; gap:3px; overflow:hidden;
+  }
+  .cal-cell:hover { background:var(--dk-hover); }
+  .cal-cell.other-month { background:transparent; border-color:transparent; cursor:default; opacity:.4; }
+  .cal-cell.other-month:hover { background:transparent; }
+  .cal-cell.weekend { background:var(--dk-surface); }
+  .cal-cell.holiday { background:var(--cell-wknd-hol); }
+  .cal-cell.holiday .cal-daynum,
+  .cal-cell.holiday .cal-meta,
+  .cal-cell.holiday .cal-projs,
+  .cal-cell.holiday .cal-holiday-tag { color:rgba(255,255,255,.92); }
+  .cal-cell.today { outline:2px solid var(--today); outline-offset:-2px; }
+  .cal-daynum { font-weight:700; font-size:13px; color:var(--dk-text); }
+  .cal-meta { font-size:11px; font-weight:700; color:var(--dk-text2); }
+  .cal-holiday-tag {
+    font-size:10.5px; color:var(--dk-text2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .cal-projs { font-size:10.5px; color:var(--dk-text3); line-height:1.35; }
+  .cal-more { color:var(--dk-accent); font-weight:700; }
+
+  /* ---- day detail modal ---- */
+  .modal.wide { width:640px; }
+  .cal-group { margin-bottom:16px; }
+  .cal-group:last-child { margin-bottom:0; }
+  .cal-group-head {
+    font-weight:700; font-size:13.5px; color:var(--dk-accent); margin-bottom:6px;
+  }
+  .cal-group-head .rng { color:var(--dk-text3); font-weight:500; font-size:12px; }
+  table.mini-table {
+    width:100%; border-collapse:collapse; font-size:13px; margin-bottom:4px;
+  }
+  .mini-table th {
+    text-align:left; padding:7px 9px; background:var(--dk-surface); color:var(--dk-text2);
+    font-weight:600; font-size:12px; border-bottom:1px solid var(--dk-border);
+  }
+  .mini-table td {
+    padding:6px 9px; border-bottom:1px solid var(--dk-border);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginPage">
+  <div class="login-card">
+    <h1>PQA Resource Mgmt</h1>
+    <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="you@infinitaskt.com">
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" type="password" required placeholder="••••••••">
+      <button id="loginBtn" class="btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <nav class="nav">
+      <a href="pqaResourceManagement.html">Projects</a>
+      <a href="gantt.html">Gantt</a>
+      <a href="outsource.html">Outsource</a>
+      <a href="calendar.html" class="active">Calendar</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+    <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <div class="main">
+    <div class="page-head">
+      <h2>Calendar</h2>
+    </div>
+
+    <div class="toolbar cal-toolbar">
+      <button class="btn cal-nav-btn" id="prevBtn">‹</button>
+      <div class="cal-month-picker" id="calMonthPicker">
+        <button type="button" class="btn cal-month-btn" id="monthBtn">—</button>
+        <div class="cal-month-panel hidden" id="monthPanel"></div>
+      </div>
+      <button class="btn cal-nav-btn" id="nextBtn">›</button>
+      <button class="btn" id="todayBtn">วันนี้</button>
+      <button class="btn" id="refreshBtn">🔄 Refresh</button>
+    </div>
+
+    <div class="cal-wrap">
+      <div class="cal-weekdays">
+        <div>อา</div><div>จ</div><div>อ</div><div>พ</div><div>พฤ</div><div>ศ</div><div>ส</div>
+      </div>
+      <div class="cal-grid" id="calGrid"><div class="loading">กำลังโหลด...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DAY DETAIL MODAL ============ -->
+<div id="dayOverlay" class="overlay hidden" onclick="if(event.target===this) window.closeDayModal()">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3 id="dayModalTitle">Booked Resource</h3>
+      <button class="x" onclick="closeDayModal()">×</button>
+    </div>
+    <div class="modal-body" id="dayModalBody"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeDayModal()">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import {
+  supabase, $, toast, esc, d2s, dDisp, dDispShort,
+  isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut
+} from './common.js';
+
+/* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
+const DEFAULT_ROLE_MAP = {
+  SENIOR: { name: '1.Senior Tester', rank: 1 },
+  TESTER: { name: '2.Tester',        rank: 2 },
+  JUNIOR: { name: '3.Junior Tester', rank: 3 }
+};
+const DEFAULT_PHASE_MAP = {
+  SIT:     { name: 'SIT',      sort: 10 },
+  TCPREP:  { name: 'TC Prep',  sort: 20 },
+  UAT:     { name: 'UAT',      sort: 30 },
+  REG:     { name: 'Reg',      sort: 40 },
+  SUPPORT: { name: 'Support',  sort: 50 }
+};
+const MONTH_NAMES_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const MONTH_SHORT_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+const TODAY = d2s(new Date());
+
+/* ============ STATE ============ */
+const S = {
+  holidays: {},           // 'yyyy-MM-dd' -> description
+  roleMap: {},            // role_code -> { name, rank }
+  phaseMap: {},           // phase_code -> { name, sort }
+  resourceMap: {},        // resource_id -> { full_name_en, nickname, role_code, resource_type }
+  projectMap: {},         // project_key -> project_name
+  phasesByProject: {},    // project_key -> [{ phase_code, start_date, end_date, resource_count }] (active only)
+  monthCache: {},         // 'yyyy-MM' -> { days:[...], byDate:{ds:[entries]} }
+  y: 0,                   // ปีที่แสดง (1-based month คู่กับ m)
+  m: 0
+};
+let pickerYear = null;
+
+/* ============ HELPERS ============ */
+function fmtNum(v) {
+  if (v == null || v === '') return '0';
+  const n = Number(v);
+  if (isNaN(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+function roleLabel(code) { return (S.roleMap[code] || {}).name || code || ''; }
+function roleRank(code) { return (S.roleMap[code] || {}).rank ?? 99; }
+function phaseLabel(code) { return (S.phaseMap[code] || {}).name || code; }
+function phaseSort(code) { return (S.phaseMap[code] || {}).sort ?? 99; }
+function monthKey(y, m) { return `${y}-${String(m).padStart(2, '0')}`; }
+
+/* ============ AUTH ============ */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังเข้าสู่ระบบ...';
+  $('loginErr').textContent = '';
+
+  const { error } = await signIn($('email').value, $('password').value);
+
+  btn.disabled = false;
+  btn.textContent = 'เข้าสู่ระบบ';
+
+  if (error) {
+    $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+  }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await signOut();
+});
+
+onAuth(session => {
+  if (session) showApp(session);
+  else showLogin();
+});
+
+(async () => {
+  const session = await getSession();
+  if (session) showApp(session);
+})();
+
+function showLogin() {
+  $('app').classList.add('hidden');
+  $('loginPage').classList.remove('hidden');
+}
+
+async function showApp(session) {
+  $('loginPage').classList.add('hidden');
+  $('app').classList.remove('hidden');
+
+  const profile = await getProfile(session);
+  $('who').innerHTML = `<b>${esc(profile.displayName)}</b>${profile.role ? ` · ${esc(profile.role)}` : ''}`;
+
+  const today = new Date();
+  S.y = today.getFullYear();
+  S.m = today.getMonth() + 1;
+
+  await loadMaster();
+  await renderMonth(false);
+}
+
+/* ============ LOAD MASTER DATA (โหลดครั้งเดียว, refresh() จะโหลดใหม่) ============ */
+async function loadMaster() {
+  try {
+    const [holidays, roleRows, phaseRows, projRows, resRows, phRows] = await Promise.all([
+      loadHolidays(),
+      supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
+      supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
+      supabase.from('v_project_wide').select('project_key,project_name,app,other_app').eq('is_active', true),
+      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type'),
+      supabase.from('project_phase').select('project_key,phase_code,start_date,end_date,resource_count')
+    ]);
+
+    S.holidays = holidays || {};
+
+    S.roleMap = {};
+    (roleRows.data || []).forEach((r, i) => { S.roleMap[r.role_code] = { name: r.role_name, rank: r.sort_order ?? i }; });
+    if (!Object.keys(S.roleMap).length) S.roleMap = DEFAULT_ROLE_MAP;
+
+    S.phaseMap = {};
+    (phaseRows.data || []).forEach((p, i) => { S.phaseMap[p.phase_code] = { name: p.phase_name, sort: p.sort_order ?? i }; });
+    if (!Object.keys(S.phaseMap).length) S.phaseMap = DEFAULT_PHASE_MAP;
+
+    S.projectMap = {};
+    (projRows.data || []).forEach(p => { S.projectMap[p.project_key] = p.project_name; });
+
+    S.resourceMap = {};
+    (resRows.data || []).forEach(r => { S.resourceMap[r.resource_id] = r; });
+
+    S.phasesByProject = {};
+    (phRows.data || []).forEach(ph => {
+      if (!(ph.project_key in S.projectMap)) return; // เฉพาะ project ที่ active
+      (S.phasesByProject[ph.project_key] = S.phasesByProject[ph.project_key] || []).push(ph);
+    });
+  } catch (e) {
+    console.error('loadMaster error', e);
+    toast('โหลดข้อมูลพื้นฐานไม่สำเร็จ: ' + (e.message || String(e)), true);
+  }
+}
+
+/* ============ GRID DATE HELPERS ============ */
+function computeGridDays(y, m) {
+  const firstOfMonth = new Date(y, m - 1, 1);
+  const startOffset = firstOfMonth.getDay();               // 0=Sun..6=Sat
+  const gridStart = new Date(y, m - 1, 1 - startOffset);
+  const lastOfMonth = new Date(y, m, 0);
+  const endOffset = 6 - lastOfMonth.getDay();
+  const gridEnd = new Date(y, m - 1, lastOfMonth.getDate() + endOffset);
+
+  const days = [];
+  const d = new Date(gridStart);
+  while (d <= gridEnd) {
+    days.push(d2s(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return { days, gridStartStr: d2s(gridStart), gridEndStr: d2s(gridEnd) };
+}
+
+/* ============ LOAD MONTH DATA (cache ต่อเดือน) ============ */
+async function loadMonthData(y, m, force) {
+  const key = monthKey(y, m);
+  if (!force && S.monthCache[key]) return S.monthCache[key];
+
+  const { days, gridStartStr, gridEndStr } = computeGridDays(y, m);
+  const { data, error } = await supabase
+    .from('v_booking_daily')
+    .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
+    .gte('work_date', gridStartStr)
+    .lte('work_date', gridEndStr);
+  if (error) throw error;
+
+  const byDate = {};
+  (data || []).forEach(e => { (byDate[e.work_date] = byDate[e.work_date] || []).push(e); });
+
+  const entry = { days, byDate };
+  S.monthCache[key] = entry;
+  return entry;
+}
+
+/* ============ REQUIRED-PER-DAY (client-side, ไม่รวม SIT) ============ */
+function requiredForDate(ds) {
+  let sum = 0;
+  Object.values(S.phasesByProject).forEach(arr => {
+    arr.forEach(ph => {
+      if (ph.phase_code === 'SIT') return;
+      if (ph.start_date && ph.end_date && ds >= ph.start_date && ds <= ph.end_date) {
+        sum += Number(ph.resource_count) || 0;
+      }
+    });
+  });
+  return sum;
+}
+
+/* ============ RENDER MONTH GRID ============ */
+async function renderMonth(force) {
+  $('monthBtn').textContent = `${MONTH_NAMES_TH[S.m - 1]} ${S.y}`;
+  $('calGrid').innerHTML = '<div class="loading">กำลังโหลด...</div>';
+  try {
+    const monthData = await loadMonthData(S.y, S.m, force);
+    const firstOfMonthStr = d2s(new Date(S.y, S.m - 1, 1));
+    const lastOfMonthStr = d2s(new Date(S.y, S.m, 0));
+
+    $('calGrid').innerHTML = monthData.days.map(ds => {
+      const inMonth = ds >= firstOfMonthStr && ds <= lastOfMonthStr;
+      return buildDayCell(ds, inMonth, monthData);
+    }).join('');
+  } catch (e) {
+    console.error('renderMonth error', e);
+    $('calGrid').innerHTML = `<div class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(e.message || String(e))}</div>`;
+  }
+}
+
+function buildDayCell(ds, inMonth, monthData) {
+  const dateObj = new Date(ds + 'T00:00:00');
+  const dayNum = dateObj.getDate();
+  const dow = dateObj.getDay();
+  const holidayDesc = S.holidays[ds];
+  const isWeekendDay = dow === 0 || dow === 6;
+
+  let cls = 'cal-cell';
+  if (!inMonth) cls += ' other-month';
+  if (holidayDesc) cls += ' holiday';
+  else if (isWeekendDay) cls += ' weekend';
+  if (ds === TODAY) cls += ' today';
+
+  let inner = `<div class="cal-daynum">${dayNum}</div>`;
+
+  if (!inMonth) {
+    return `<div class="${cls}">${inner}</div>`;
+  }
+
+  if (holidayDesc) {
+    inner += `<div class="cal-holiday-tag">🎌 ${esc(holidayDesc)}</div>`;
+  }
+
+  const entries = monthData.byDate[ds] || [];
+  const bookedCnt = new Set(entries.map(e => e.resource_id)).size;
+  const reqCnt = requiredForDate(ds);
+  if (bookedCnt > 0 || reqCnt > 0) {
+    inner += `<div class="cal-meta">${bookedCnt}/${fmtNum(reqCnt)}</div>`;
+  }
+
+  const projNames = [...new Set(entries.map(e => e.project_key))]
+    .map(pk => S.projectMap[pk] || pk)
+    .sort((a, b) => a.localeCompare(b));
+  if (projNames.length) {
+    const shown = projNames.slice(0, 3);
+    const more = projNames.length - shown.length;
+    inner += `<div class="cal-projs">${shown.map(n => esc(n)).join(', ')}${more > 0 ? ` <span class="cal-more">+${more}</span>` : ''}</div>`;
+  }
+
+  return `<div class="${cls}" onclick="openDayDetail('${ds}')">${inner}</div>`;
+}
+
+/* ============ TOOLBAR NAV ============ */
+function changeMonth(delta) {
+  let m = S.m + delta, y = S.y;
+  if (m < 1) { m = 12; y -= 1; }
+  else if (m > 12) { m = 1; y += 1; }
+  S.y = y; S.m = m;
+  renderMonth(false);
+}
+$('prevBtn').addEventListener('click', () => changeMonth(-1));
+$('nextBtn').addEventListener('click', () => changeMonth(1));
+$('todayBtn').addEventListener('click', () => {
+  const t = new Date();
+  S.y = t.getFullYear(); S.m = t.getMonth() + 1;
+  renderMonth(false);
+});
+$('refreshBtn').addEventListener('click', async () => {
+  S.monthCache = {};
+  await loadMaster();
+  await renderMonth(true);
+});
+
+/* ============ MONTH / YEAR PICKER ============ */
+function renderMonthPanel() {
+  $('monthPanel').innerHTML = `
+    <div class="cal-picker-year">
+      <button type="button" class="btn sm" onclick="calPickerYear(-1)">‹</button>
+      <span>${pickerYear}</span>
+      <button type="button" class="btn sm" onclick="calPickerYear(1)">›</button>
+    </div>
+    <div class="cal-picker-grid">
+      ${MONTH_SHORT_TH.map((nm, i) => {
+        const mm = i + 1;
+        const active = pickerYear === S.y && mm === S.m;
+        return `<button type="button" class="cal-picker-month${active ? ' active' : ''}" onclick="calPickMonth(${pickerYear},${mm})">${nm}</button>`;
+      }).join('')}
+    </div>`;
+}
+window.calPickerYear = function (delta) {
+  pickerYear += delta;
+  renderMonthPanel();
+};
+window.calPickMonth = function (y, m) {
+  S.y = y; S.m = m;
+  $('monthPanel').classList.add('hidden');
+  renderMonth(false);
+};
+$('monthBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const panel = $('monthPanel');
+  if (panel.classList.contains('hidden')) {
+    pickerYear = S.y;
+    renderMonthPanel();
+    panel.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+  }
+});
+$('monthPanel').addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', e => {
+  const wrap = $('calMonthPicker');
+  if (wrap && !wrap.contains(e.target)) $('monthPanel').classList.add('hidden');
+});
+
+/* ============ DAY DETAIL MODAL ============ */
+window.openDayDetail = function (ds) {
+  $('dayModalTitle').textContent = `${dDispShort(ds)} Booked Resource`;
+  $('dayModalBody').innerHTML = buildDayDetailHtml(ds);
+  $('dayOverlay').classList.remove('hidden');
+};
+window.closeDayModal = function () {
+  $('dayOverlay').classList.add('hidden');
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (!$('dayOverlay').classList.contains('hidden')) window.closeDayModal();
+    $('monthPanel').classList.add('hidden');
+  }
+});
+
+function buildDayDetailHtml(ds) {
+  const key = monthKey(S.y, S.m);
+  const monthData = S.monthCache[key];
+  const entries = (monthData && monthData.byDate[ds]) || [];
+  if (!entries.length) {
+    return '<div class="loading">ไม่มี Booking ในวันนี้</div>';
+  }
+
+  // group by project_key + phase_code — dedupe resource ภายใน group
+  const groups = {};
+  entries.forEach(e => {
+    const gk = e.project_key + '|' + e.phase_code;
+    if (!groups[gk]) groups[gk] = { project_key: e.project_key, phase_code: e.phase_code, resourceIds: new Set() };
+    groups[gk].resourceIds.add(e.resource_id);
+  });
+
+  const groupList = Object.values(groups).sort((a, b) => {
+    const an = S.projectMap[a.project_key] || a.project_key;
+    const bn = S.projectMap[b.project_key] || b.project_key;
+    return an.localeCompare(bn) || (phaseSort(a.phase_code) - phaseSort(b.phase_code));
+  });
+
+  return groupList.map(g => {
+    const projName = S.projectMap[g.project_key] || g.project_key;
+    const phRow = (S.phasesByProject[g.project_key] || []).find(ph => ph.phase_code === g.phase_code);
+    const rangeTxt = (phRow && phRow.start_date && phRow.end_date)
+      ? ` <span class="rng">(${dDispShort(phRow.start_date)} - ${dDispShort(phRow.end_date)})</span>` : '';
+
+    const rows = [...g.resourceIds].map(rid => {
+      const r = S.resourceMap[rid] || {};
+      return { name: r.nickname || r.full_name_en || rid, role: r.role_code };
+    }).sort((a, b) => (roleRank(a.role) - roleRank(b.role)) || String(a.name).localeCompare(String(b.name)));
+
+    return `<div class="cal-group">
+      <div class="cal-group-head">${esc(projName)} · ${esc(phaseLabel(g.phase_code))}${rangeTxt}</div>
+      <table class="mini-table">
+        <thead><tr><th>Outsource / Resource Name</th><th>Role</th></tr></thead>
+        <tbody>${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${esc(roleLabel(r.role))}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

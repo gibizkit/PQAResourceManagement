@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — PQA Resource Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<!-- Chart.js 4.4.1 — plain CDN <script>, NOT an ES module import. Exposes the global `Chart`. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ---- page-local phase color (theme.css has no --ph-support, mirrors gantt.html) ---- */
+  :root {
+    --ph-support: #CBB8A0;
+  }
+
+  /* ---- topbar nav (canonical, same markup/classes as other pages) ---- */
+  .topbar .nav { display:flex; gap:4px; margin-left:6px; }
+  .topbar .nav a {
+    font-size:13px; text-decoration:none; color:var(--dk-text2);
+    padding:6px 12px; border-radius:8px; font-weight:600;
+  }
+  .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
+
+  /* ---- mode toggle pill ---- */
+  .dash-mode-toggle {
+    display:flex; gap:2px; background:var(--dk-surface); border:1px solid var(--dk-border-s);
+    border-radius:10px; padding:3px;
+  }
+  .dash-mode-btn {
+    border:none; background:none; padding:6px 14px; border-radius:8px; font-size:12.5px;
+    font-weight:700; color:var(--dk-text2); cursor:pointer;
+  }
+  .dash-mode-btn.active { background:var(--dk-accent); color:#fff; }
+
+  /* ---- view tabs ---- */
+  .view-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+  .view-tab {
+    border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2);
+    padding:7px 13px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .view-tab:hover { background:var(--dk-hover); }
+  .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
+
+  /* ---- month navigator ---- */
+  .month-nav { display:flex; align-items:center; gap:8px; }
+  .month-nav button.nav-arrow {
+    border:1px solid var(--dk-border-s); background:#fff; border-radius:8px; width:30px; height:30px;
+    font-size:14px; color:var(--dk-text2); cursor:pointer;
+  }
+  .month-nav button.nav-arrow:hover { background:var(--dk-hover); }
+  .month-nav .lbl { font-weight:700; font-size:14px; color:var(--dk-text); min-width:120px; text-align:center; cursor:pointer; }
+  .month-nav .lbl:hover { color:var(--dk-accent); }
+
+  .range-badge {
+    background:var(--dk-accent-d); color:var(--dk-accent); border-radius:10px;
+    padding:8px 14px; font-size:13px; font-weight:600; margin-bottom:14px; display:inline-block;
+  }
+
+  /* ---- KPI cards ---- */
+  .kpi-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:16px; }
+  .kpi-card {
+    background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px 16px;
+    border-left:4px solid var(--dk-accent);
+  }
+  .kpi-card.kc-teal   { border-left-color:var(--dk-accent); }
+  .kpi-card.kc-purple { border-left-color:var(--ph-reg); }
+  .kpi-card.kc-blue   { border-left-color:var(--btn-blue); }
+  .kpi-card.kc-green  { border-left-color:var(--today); }
+  .kpi-label { font-size:11px; color:var(--dk-text3); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+  .kpi-value { font-size:24px; font-weight:800; color:var(--dk-text); margin-top:4px; }
+  .kpi-sub { font-size:11.5px; color:var(--dk-text3); margin-top:2px; }
+
+  /* ---- charts ---- */
+  .chart-row { display:grid; grid-template-columns:3fr 2fr; gap:14px; margin-bottom:16px; }
+  .dash-overall-charts { display:flex; flex-direction:column; gap:14px; margin-bottom:16px; }
+  .chart-card { background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px 16px; }
+  .chart-card-title { font-size:13px; font-weight:700; color:var(--dk-text); margin-bottom:10px; }
+  .donut-row { display:flex; align-items:center; gap:16px; }
+  .donut-canvas-wrap { flex:0 0 auto; }
+  .donut-legend { display:flex; flex-direction:column; gap:6px; flex:1; }
+  .donut-legend-row { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dk-text2); }
+  .donut-legend-sw { width:11px; height:11px; border-radius:3px; flex:0 0 auto; }
+  .donut-legend-val { margin-left:auto; font-weight:700; color:var(--dk-text); }
+
+  /* ---- dashboard tables (generic) ---- */
+  .dash-table-wrap { background:#fff; border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
+  table.dash-table { width:100%; border-collapse:collapse; font-size:13px; }
+  table.dash-table th {
+    position:sticky; top:0; background:var(--dk-surface); text-align:left; padding:9px 12px;
+    font-weight:700; color:var(--dk-text2); font-size:11.5px; border-bottom:1px solid var(--dk-border); white-space:nowrap;
+  }
+  table.dash-table td { padding:8px 12px; border-bottom:1px solid var(--dk-border); }
+  table.dash-table td.right, table.dash-table th.right { text-align:right; }
+  table.dash-table td.center, table.dash-table th.center { text-align:center; }
+  tr.dash-app-row { cursor:pointer; background:var(--dk-surface); font-weight:700; }
+  tr.dash-app-row:hover { background:var(--dk-hover); }
+  tr.dash-app-row td { border-bottom:1px solid var(--dk-border); }
+  tr.dash-proj-row td { color:var(--dk-text2); }
+  tr.dash-proj-row td:nth-child(2) { color:var(--dk-text); font-weight:600; }
+  tfoot.dash-total td, tr.dash-total-row td {
+    font-weight:800; color:var(--dk-text); background:var(--dk-hover); border-top:2px solid var(--dk-accent-d);
+  }
+  .toggle-ico { display:inline-block; width:14px; }
+
+  /* ---- By OS pivot: frozen left columns ---- */
+  .dash-os-scroll { background:#fff; border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
+  table.dash-os-table { border-collapse:separate; border-spacing:0; font-size:12.5px; white-space:nowrap; }
+  table.dash-os-table th, table.dash-os-table td {
+    padding:7px 10px; border-bottom:1px solid var(--dk-border); border-right:1px solid var(--dk-border);
+  }
+  table.dash-os-table thead th { position:sticky; top:0; background:var(--dk-surface); color:var(--dk-text2); font-weight:700; z-index:15; text-align:center; }
+  .th-os-name, .td-os-name { position:sticky; left:0; z-index:6; background:#fff; text-align:left; min-width:170px; }
+  thead .th-os-name { z-index:25; background:var(--dk-surface); }
+  .th-os-role, .td-os-role { position:sticky; left:170px; z-index:6; background:#fff; min-width:130px; text-align:left; }
+  thead .th-os-role { z-index:25; background:var(--dk-surface); }
+  .th-os-total, .td-os-total { position:sticky; left:300px; z-index:6; background:#fff; min-width:80px; text-align:right; box-shadow:2px 0 4px rgba(34,28,21,.08); }
+  thead .th-os-total { z-index:25; background:var(--dk-surface); }
+  .td-md-cell { text-align:right; }
+  tr.dash-total-row .td-os-name, tr.dash-total-row .td-os-role, tr.dash-total-row .td-os-total { background:var(--dk-hover); }
+
+  .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginPage">
+  <div class="login-card">
+    <h1>PQA Resource Mgmt</h1>
+    <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="you@infinitaskt.com">
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" type="password" required placeholder="••••••••">
+      <button id="loginBtn" class="btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <nav class="nav">
+      <a href="pqaResourceManagement.html">Projects</a>
+      <a href="gantt.html">Gantt</a>
+      <a href="outsource.html">Outsource</a>
+      <a href="calendar.html">Calendar</a>
+      <a href="dashboard.html" class="active">Dashboard</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+    <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <div class="main">
+    <div class="page-head">
+      <h2>📈 Dashboard</h2>
+      <div class="dash-mode-toggle" id="modeToggle">
+        <button class="dash-mode-btn active" data-mode="monthly">รายเดือน</button>
+        <button class="dash-mode-btn" data-mode="overall">ทั้งหมด</button>
+      </div>
+    </div>
+
+    <!-- ===== Monthly toolbar ===== -->
+    <div class="toolbar" id="monthlyToolbar">
+      <div class="view-tabs" id="viewTabs">
+        <button class="view-tab active" data-view="project">📊 By Project</button>
+        <button class="view-tab" data-view="os">👤 By OS</button>
+        <button class="view-tab" data-view="lead">👑 By Lead</button>
+        <button class="view-tab" data-view="signoff">📋 Signoff</button>
+      </div>
+      <div class="month-nav">
+        <button class="nav-arrow" id="prevMonthBtn">‹</button>
+        <span class="lbl" id="monthLbl">-</span>
+        <button class="nav-arrow" id="nextMonthBtn">›</button>
+      </div>
+      <button class="btn" id="todayBtn">Today</button>
+      <button class="btn" id="refreshBtn">🔄 Refresh</button>
+      <button class="btn hidden" id="collapseAllBtn">⊟ Collapse All</button>
+      <button class="btn hidden" id="expandAllBtn">⊞ Expand All</button>
+    </div>
+
+    <!-- ===== Overall toolbar ===== -->
+    <div class="toolbar hidden" id="overallToolbar">
+      <button class="btn" id="refreshOverallBtn">🔄 Refresh</button>
+    </div>
+    <div class="hidden" id="overallRangeWrap">
+      <span class="range-badge" id="overallRangeBadge">-</span>
+    </div>
+
+    <!-- ===== KPI (monthly only, hidden on By Lead) ===== -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card kc-teal">
+        <div class="kpi-label">Total MD (MTD)</div>
+        <div class="kpi-value" id="kpiTotalMD">0</div>
+        <div class="kpi-sub">Effective MD = Booked − Leave</div>
+      </div>
+      <div class="kpi-card kc-purple">
+        <div class="kpi-label">Total Booked OS</div>
+        <div class="kpi-value" id="kpiBookedOs">0</div>
+        <div class="kpi-sub">คนที่ถูกจองในเดือนนี้</div>
+      </div>
+      <div class="kpi-card kc-blue">
+        <div class="kpi-label">Active Projects</div>
+        <div class="kpi-value" id="kpiActiveProj">0</div>
+        <div class="kpi-sub">Project ที่ยัง Active</div>
+      </div>
+      <div class="kpi-card kc-green">
+        <div class="kpi-label">Working Days</div>
+        <div class="kpi-value" id="kpiWorkDays">0</div>
+        <div class="kpi-sub">ไม่รวมเสาร์-อาทิตย์ + วันหยุด</div>
+      </div>
+    </div>
+
+    <!-- ===== Charts: By Project / By OS (monthly) ===== -->
+    <div class="chart-row hidden" id="chartRow">
+      <div class="chart-card">
+        <div class="chart-card-title">MD by App (แยกตาม Phase)</div>
+        <canvas id="dashBarChart" height="90"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Phase Breakdown</div>
+        <div class="donut-row">
+          <div class="donut-canvas-wrap"><canvas id="dashDonutChart" width="170" height="170"></canvas></div>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Overall charts ===== -->
+    <div class="dash-overall-charts hidden" id="overallChartsWrap">
+      <div class="chart-card">
+        <div class="chart-card-title">MD by App (แยกตาม Phase) — ทั้งหมด</div>
+        <canvas id="overallBarChart" height="70"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Phase Breakdown — ทั้งหมด</div>
+        <div class="donut-row">
+          <div class="donut-canvas-wrap"><canvas id="overallDonutChart" width="150" height="150"></canvas></div>
+          <div class="donut-legend" id="overallDonutLegend"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Monthly view content ===== -->
+    <div id="viewContainer"></div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import {
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays
+} from './common.js';
+
+/* =====================================================================
+   CONSTANTS
+   ===================================================================== */
+const PHASE_META = {
+  SIT:     { name:'SIT',     color:'var(--ph-sit)',     order:10 },
+  TCPREP:  { name:'TC Prep', color:'var(--ph-tcprep)',  order:20 },
+  UAT:     { name:'UAT',     color:'var(--ph-uat)',     order:30 },
+  REG:     { name:'Reg',     color:'var(--ph-reg)',     order:40 },
+  SUPPORT: { name:'Support', color:'var(--ph-support)', order:50 },
+};
+const PHASE_CODES = Object.keys(PHASE_META).sort((a,b)=>PHASE_META[a].order-PHASE_META[b].order);
+function phaseName(c){ return (PHASE_META[c]||{}).name || c; }
+function phaseColorVar(c){ return (PHASE_META[c]||{}).color || '--dk-text3'; }
+function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='JUNIOR'?3 : 4; }
+function cssVar(nameWithVar){
+  // nameWithVar looks like 'var(--ph-uat)' — resolve to an actual color string
+  // because Chart.js / canvas fillStyle cannot resolve var() the way CSS can.
+  const m = /var\((--[a-z0-9-]+)\)/i.exec(nameWithVar);
+  const varName = m ? m[1] : nameWithVar;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  return v || '#999';
+}
+function fmtMD(v){
+  if (v == null || v === '') return '0';
+  const n = Number(v);
+  if (isNaN(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+const MONTH_NAMES_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = {
+  user: null,
+  holidays: {},                 // 'yyyy-MM-dd' -> desc (loaded once)
+
+  // "master" data — loaded once at app start, re-fetched on Refresh
+  activeProjects: [],           // v_project_wide rows where is_active = true
+  activeProjMap: {},            // project_key -> row (for monthly aggregation, app label lookup)
+  allProjMap: {},                // project_key -> {app, other_app} for ALL projects (used in Overall mode so
+                                 // completed / inactive projects still get a proper App label on the charts)
+  appList: [],                  // app table rows {app_code, app_name, sort_order}
+  appOrder: {},                 // app_code -> sort_order (for consistent column/legend ordering)
+  resourceMap: {},              // resource_id -> {nickname, full_name_en, role_code, resource_type}
+  leadsAll: [],                 // pqa_lead rows (is_active = true)
+  projectLeadRows: [],          // project_lead rows (project_key, pqa_emp_id, is_main)
+
+  // monthly mode
+  dashMode: 'monthly',          // 'monthly' | 'overall'
+  dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
+  dashY: 0, dashM: 0,           // selected year / 1-based month
+  monthCacheKey: '',            // 'YYYY-MM' of the currently loaded month, '' = not loaded
+  bookingDaily: [],             // v_booking_daily rows for selected month
+  leaveDaily: [],                // v_leave_daily rows for selected month
+  monthAgg: null,                // computed aggregates for selected month (see computeMonthAgg)
+  dashCollapsed: {},             // appKey -> true = collapsed (By Project view)
+
+  // overall mode
+  overallCacheKey: '',          // '' = not loaded, 'loaded' = loaded
+  overallRange: { s:'', e:'' },
+  overallBookingDaily: [],
+  overallAgg: null,
+};
+
+const charts = { bar:null, donut:null, overallBar:null, overallDonut:null };
+
+/* =====================================================================
+   DATE HELPERS
+   ===================================================================== */
+function monthFirstLast(y, m){
+  // m is 1-based (1..12)
+  const first = `${y}-${pad2(m)}-01`;
+  const lastDate = new Date(y, m, 0);           // day 0 of "next month" (0-based m) = last day of month m
+  const last = d2s(lastDate);
+  return { first, last };
+}
+function isWkndDate(ds){
+  const dow = new Date(ds+'T00:00:00').getDay();
+  return dow===0 || dow===6 || (ds in S.holidays);
+}
+function workingDaysInMonth(y, m){
+  const { first, last } = monthFirstLast(y, m);
+  let d = new Date(first+'T00:00:00');
+  const end = new Date(last+'T00:00:00');
+  let n = 0;
+  while (d <= end) { if (!isWkndDate(d2s(d))) n++; d.setDate(d.getDate()+1); }
+  return n;
+}
+
+/* =====================================================================
+   AUTH (copied pattern from pqaResourceManagement.html / gantt.html)
+   ===================================================================== */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...'; $('loginErr').textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({
+    email: $('email').value.trim(), password: $('password').value
+  });
+  btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
+  if (error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+});
+$('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
+supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
+(async () => { const { data } = await supabase.auth.getSession(); if (data.session) showApp(data.session); })();
+
+function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
+
+async function showApp(session){
+  $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+  let who = session.user.email, role = '';
+  const { data:u } = await supabase.from('app_user').select('display_name,app_role')
+    .eq('email', session.user.email).maybeSingle();
+  if (u) { who = u.display_name; role = u.app_role; }
+  $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+  S.user = { displayName: who, role };
+
+  const now = new Date();
+  S.dashY = now.getFullYear();
+  S.dashM = now.getMonth()+1;
+
+  wireToolbar();
+  await loadMasterData();
+  await loadMonthly(true);
+}
+
+/* =====================================================================
+   MASTER DATA (loaded once, cached — Refresh reloads it)
+   ===================================================================== */
+async function loadMasterData(){
+  const [holidays, projRes, allProjRes, appRes, resRes, leadRes, plRes] = await Promise.all([
+    loadHolidays(),
+    supabase.from('v_project_wide')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,is_active')
+      .eq('is_active', true),
+    supabase.from('v_project_wide').select('project_key,app,other_app'),
+    supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
+    supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
+    supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role').eq('is_active', true),
+    supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
+  ]);
+
+  S.holidays = holidays || {};
+
+  S.activeProjects = projRes.data || [];
+  S.activeProjMap = {};
+  S.activeProjects.forEach(p => { S.activeProjMap[p.project_key] = p; });
+
+  S.allProjMap = {};
+  (allProjRes.data || []).forEach(p => { S.allProjMap[p.project_key] = p; });
+
+  S.appList = appRes.data || [];
+  S.appOrder = {};
+  S.appList.forEach(a => { S.appOrder[a.app_code] = a.sort_order ?? 999; });
+
+  S.resourceMap = {};
+  (resRes.data || []).forEach(r => { S.resourceMap[r.resource_id] = r; });
+
+  S.leadsAll = (leadRes.data || []).slice().sort((a,b)=>String(a.short_name).localeCompare(String(b.short_name)));
+  S.projectLeadRows = plRes.data || [];
+
+  for (const r of [projRes, appRes, resRes, leadRes, plRes]) {
+    if (r.error) { console.warn('master data load error', r.error); }
+  }
+}
+
+/* =====================================================================
+   MONTHLY DATA + AGGREGATION
+   ===================================================================== */
+async function loadMonthly(force){
+  const key = `${S.dashY}-${pad2(S.dashM)}`;
+  updateMonthLabel();
+  if (!force && S.monthCacheKey === key) { renderAll(); return; }
+
+  setViewLoading();
+  const { first, last } = monthFirstLast(S.dashY, S.dashM);
+  try {
+    const [bkRes, lvRes] = await Promise.all([
+      supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
+        .gte('work_date', first).lte('work_date', last),
+      supabase.from('v_leave_daily').select('leave_id,resource_id,leave_date,leave_slot,leave_md')
+        .gte('leave_date', first).lte('leave_date', last),
+    ]);
+    if (bkRes.error) throw bkRes.error;
+    if (lvRes.error) throw lvRes.error;
+
+    S.bookingDaily = bkRes.data || [];
+    S.leaveDaily = lvRes.data || [];
+    S.monthCacheKey = key;
+    S.monthAgg = computeMonthAgg();
+    renderAll();
+  } catch (err) {
+    console.error(err);
+    $('viewContainer').innerHTML = `<div class="empty-state" style="color:var(--danger)">โหลดข้อมูลไม่สำเร็จ: ${esc(err.message||String(err))}</div>`;
+  }
+}
+
+/**
+ * Aggregate the month's booking/leave rows.
+ *
+ * NOTE on MD calculation (per task spec):
+ *  - byAppPhase / phaseTotals / byProject / byOsApp all use RAW booked MD
+ *    (sum of md_per_day from v_booking_daily) — this feeds the charts,
+ *    the By Project table, and the By OS pivot cells.
+ *  - kpiEffectiveMD (used ONLY for the "Total MD (MTD)" KPI card) nets out
+ *    leave: for every resource+day that has a booking, effective MD =
+ *    max(0, sum(booked md_per_day that day) - leave_md that day), then
+ *    summed across the month. Days with leave but no booking don't count
+ *    (nothing to net against).
+ *  - Everything here is restricted to bookings whose project is in the
+ *    ACTIVE project set (S.activeProjMap) — matches spec: "Only count
+ *    bookings whose project is in the active-projects set."
+ */
+function computeMonthAgg(){
+  const byAppPhase = {};     // app -> phase -> md
+  const phaseTotals = {};    // phase -> md
+  const byProject = {};      // project_key -> md
+  const byOsApp = {};        // resource_id -> app -> md
+  const byOsTotal = {};      // resource_id -> md
+  const bookedOsSet = new Set();
+  const dailyBookedByResDay = {}; // 'resId|date' -> md sum (active projects only)
+
+  S.bookingDaily.forEach(row => {
+    const proj = S.activeProjMap[row.project_key];
+    if (!proj) return; // skip bookings whose project isn't in the active set
+    const md = Number(row.md_per_day) || 0;
+    const app = proj.app || proj.other_app || '— ไม่มี App —';
+
+    byAppPhase[app] = byAppPhase[app] || {};
+    byAppPhase[app][row.phase_code] = (byAppPhase[app][row.phase_code] || 0) + md;
+    phaseTotals[row.phase_code] = (phaseTotals[row.phase_code] || 0) + md;
+    byProject[row.project_key] = (byProject[row.project_key] || 0) + md;
+
+    const res = S.resourceMap[row.resource_id];
+    if (res && res.resource_type === 'outsource') {
+      byOsApp[row.resource_id] = byOsApp[row.resource_id] || {};
+      byOsApp[row.resource_id][app] = (byOsApp[row.resource_id][app] || 0) + md;
+      byOsTotal[row.resource_id] = (byOsTotal[row.resource_id] || 0) + md;
+      bookedOsSet.add(row.resource_id);
+    }
+
+    const dayKey = row.resource_id + '|' + row.work_date;
+    dailyBookedByResDay[dayKey] = (dailyBookedByResDay[dayKey] || 0) + md;
+  });
+
+  // leave map (unrestricted by project — leave is per-person, not per-project)
+  const leaveByResDay = {};
+  S.leaveDaily.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
+
+  let kpiEffectiveMD = 0;
+  Object.keys(dailyBookedByResDay).forEach(k => {
+    const booked = dailyBookedByResDay[k];
+    const leave = leaveByResDay[k] || 0;
+    kpiEffectiveMD += Math.max(0, booked - leave);
+  });
+
+  return { byAppPhase, phaseTotals, byProject, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
+}
+
+/* =====================================================================
+   RENDER — ORCHESTRATION
+   ===================================================================== */
+function renderAll(){
+  if (S.dashMode === 'overall') { renderOverall(); return; }
+  renderKPI();
+  renderCharts();
+  renderView();
+}
+
+function setViewLoading(){
+  $('viewContainer').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+}
+
+function updateMonthLabel(){
+  $('monthLbl').textContent = `${MONTH_NAMES_TH[S.dashM-1]} ${S.dashY}`;
+}
+
+/* =====================================================================
+   KPI
+   ===================================================================== */
+function renderKPI(){
+  const hide = S.dashView === 'lead';
+  $('kpiGrid').classList.toggle('hidden', hide);
+  if (hide) return;
+  const agg = S.monthAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
+  $('kpiTotalMD').textContent = fmtMD(agg.kpiEffectiveMD);
+  $('kpiBookedOs').textContent = agg.bookedOsCount;
+  $('kpiActiveProj').textContent = S.activeProjects.length;
+  $('kpiWorkDays').textContent = workingDaysInMonth(S.dashY, S.dashM);
+}
+
+/* =====================================================================
+   CHARTS (By Project + By OS views only)
+   ===================================================================== */
+function sortedApps(appKeys){
+  return appKeys.slice().sort((a,b) => {
+    const oa = S.appOrder[a] ?? 999, ob = S.appOrder[b] ?? 999;
+    return (oa-ob) || a.localeCompare(b);
+  });
+}
+
+function renderCharts(){
+  const show = S.dashView === 'project' || S.dashView === 'os';
+  $('chartRow').classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const agg = S.monthAgg || { byAppPhase:{}, phaseTotals:{} };
+  const apps = sortedApps(Object.keys(agg.byAppPhase));
+
+  // ---- stacked bar: MD by App, stacked by phase ----
+  const barDatasets = PHASE_CODES.map(code => ({
+    label: phaseName(code),
+    backgroundColor: cssVar(phaseColorVar(code)),
+    data: apps.map(app => Math.round((agg.byAppPhase[app]?.[code] || 0) * 100) / 100),
+  }));
+
+  if (charts.bar) charts.bar.destroy();
+  charts.bar = new Chart($('dashBarChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: apps, datasets: barDatasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position:'bottom', labels:{ font:{ size:11 } } } },
+      scales: { x: { stacked:true, ticks:{ font:{ size:10 } } }, y: { stacked:true, beginAtZero:true } }
+    }
+  });
+
+  // ---- donut: phase breakdown ----
+  const phaseLabels = PHASE_CODES.filter(c => agg.phaseTotals[c]);
+  const phaseValues = phaseLabels.map(c => Math.round((agg.phaseTotals[c]||0)*100)/100);
+  const phaseColors = phaseLabels.map(c => cssVar(phaseColorVar(c)));
+
+  if (charts.donut) charts.donut.destroy();
+  charts.donut = new Chart($('dashDonutChart').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: phaseLabels.map(phaseName), datasets: [{ data: phaseValues, backgroundColor: phaseColors }] },
+    options: { responsive:false, plugins: { legend: { display:false } }, cutout:'62%' }
+  });
+
+  const total = phaseValues.reduce((a,b)=>a+b, 0);
+  $('donutLegend').innerHTML = phaseLabels.length ? phaseLabels.map((c,i) => `
+    <div class="donut-legend-row">
+      <span class="donut-legend-sw" style="background:${phaseColors[i]}"></span>
+      <span>${esc(phaseName(c))}</span>
+      <span class="donut-legend-val">${fmtMD(phaseValues[i])} MD${total?` (${Math.round(phaseValues[i]/total*100)}%)`:''}</span>
+    </div>`).join('') : '<div class="donut-legend-row muted">ไม่มีข้อมูล</div>';
+}
+
+/* =====================================================================
+   VIEW SWITCHING
+   ===================================================================== */
+function renderView(){
+  $('collapseAllBtn').classList.toggle('hidden', S.dashView !== 'project');
+  $('expandAllBtn').classList.toggle('hidden', S.dashView !== 'project');
+  const c = $('viewContainer');
+  if (S.dashView === 'project') renderProjectView(c);
+  else if (S.dashView === 'os') renderOsView(c);
+  else if (S.dashView === 'lead') renderLeadView(c);
+  else renderSignoffView(c);
+}
+
+/* ---- By Project ---- */
+function renderProjectView(container){
+  const agg = S.monthAgg || { byProject:{} };
+  const groups = {};
+  S.activeProjects.forEach(p => {
+    const appKey = p.app || p.other_app || '— ไม่มี App —';
+    groups[appKey] = groups[appKey] || { label: appKey, projects: [], totalMD: 0 };
+    const md = agg.byProject[p.project_key] || 0;
+    groups[appKey].projects.push({ ...p, md });
+    groups[appKey].totalMD += md;
+  });
+  const appKeys = sortedApps(Object.keys(groups));
+
+  if (!appKeys.length) {
+    container.innerHTML = '<div class="empty-state">ไม่พบ Active Project</div>';
+    return;
+  }
+
+  let grandMD = 0, grandCount = 0;
+  const bodyRows = appKeys.map(appKey => {
+    const g = groups[appKey];
+    grandMD += g.totalMD; grandCount += g.projects.length;
+    const collapsed = !!S.dashCollapsed[appKey];
+    const projRows = collapsed ? '' : g.projects.slice()
+      .sort((a,b) => (a.project_name||'').localeCompare(b.project_name||''))
+      .map(p => `<tr class="dash-proj-row">
+        <td></td>
+        <td>${esc(p.project_name)}</td>
+        <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
+        <td class="right">${fmtMD(p.md)}</td>
+      </tr>`).join('');
+    return `<tr class="dash-app-row" onclick="window.toggleDashApp('${esc(appKey)}')">
+        <td class="center"><span class="toggle-ico">${collapsed?'▶':'▼'}</span></td>
+        <td>${esc(appKey)} <span class="muted">(${g.projects.length})</span></td>
+        <td></td>
+        <td class="right">${fmtMD(g.totalMD)}</td>
+      </tr>${projRows}`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="dash-table-wrap">
+      <table class="dash-table">
+        <thead><tr><th style="width:30px"></th><th>App / Project Name</th><th>UAT Lead</th><th class="right">MD (MTD)</th></tr></thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot class="dash-total"><tr><td colspan="3">รวมทั้งหมด (${grandCount} projects)</td><td class="right">${fmtMD(grandMD)}</td></tr></tfoot>
+      </table>
+    </div>`;
+}
+
+window.toggleDashApp = function(appKey){
+  S.dashCollapsed[appKey] = !S.dashCollapsed[appKey];
+  renderProjectView($('viewContainer'));
+};
+$('collapseAllBtn').addEventListener('click', () => {
+  Object.keys(collectAppKeys()).forEach(k => S.dashCollapsed[k] = true);
+  renderProjectView($('viewContainer'));
+});
+$('expandAllBtn').addEventListener('click', () => {
+  Object.keys(collectAppKeys()).forEach(k => S.dashCollapsed[k] = false);
+  renderProjectView($('viewContainer'));
+});
+function collectAppKeys(){
+  const m = {};
+  S.activeProjects.forEach(p => { m[p.app || p.other_app || '— ไม่มี App —'] = true; });
+  return m;
+}
+
+/* ---- By OS (pivot: OS x App) ---- */
+function renderOsView(container){
+  const agg = S.monthAgg || { byOsApp:{}, byOsTotal:{} };
+  const appSet = new Set();
+  Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
+  const apps = sortedApps([...appSet]);
+
+  const osRows = Object.values(S.resourceMap)
+    .filter(r => r.resource_type === 'outsource')
+    .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
+    .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
+
+  if (!apps.length) {
+    container.innerHTML = '<div class="empty-state">ไม่มี Booking ในเดือนนี้</div>';
+    return;
+  }
+
+  const headApps = apps.map(a => `<th>${esc(a)}</th>`).join('');
+  const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
+  let grandTotal = 0;
+
+  const bodyRows = osRows.map(r => {
+    const cells = apps.map(a => {
+      const v = (agg.byOsApp[r.resource_id] || {})[a] || 0;
+      colTotals[a] += v;
+      return `<td class="td-md-cell">${v ? fmtMD(v) : '<span class="muted">—</span>'}</td>`;
+    }).join('');
+    grandTotal += r.total;
+    return `<tr>
+      <td class="td-os-name">${esc(r.nickname || r.full_name_en)}</td>
+      <td class="td-os-role">${esc(roleLabelFor(r.role_code))}</td>
+      <td class="td-os-total">${fmtMD(r.total)}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  const totalRow = `<tr class="dash-total-row">
+    <td class="td-os-name">รวมทั้งหมด</td>
+    <td class="td-os-role"></td>
+    <td class="td-os-total">${fmtMD(grandTotal)}</td>
+    ${apps.map(a => `<td class="td-md-cell">${fmtMD(colTotals[a])}</td>`).join('')}
+  </tr>`;
+
+  container.innerHTML = `
+    <div class="dash-os-scroll">
+      <table class="dash-os-table">
+        <thead><tr>
+          <th class="th-os-name">OS</th><th class="th-os-role">Role</th><th class="th-os-total">Total</th>
+          ${headApps}
+        </tr></thead>
+        <tbody>${bodyRows || `<tr><td colspan="${3+apps.length}" class="empty-state">ไม่มีข้อมูล</td></tr>`}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+    </div>`;
+}
+function roleLabelFor(code){
+  return code==='SENIOR' ? '1.Senior Tester' : code==='TESTER' ? '2.Tester' : code==='JUNIOR' ? '3.Junior Tester' : (code||'');
+}
+
+/* ---- By Lead (matrix: Lead x App) ----
+   Source of truth: project_lead + pqa_lead (both main & additional leads), scoped
+   to the ACTIVE project set — NOT time/month-bound (it's a coverage matrix, not
+   an MD report), matching the simpler of the two allowed paths in the task spec. */
+function renderLeadView(container){
+  const projByKey = S.activeProjMap;
+  const leadCoverage = {}; // emp_id -> Set(app)
+  S.projectLeadRows.forEach(pl => {
+    const proj = projByKey[pl.project_key];
+    if (!proj) return;
+    const app = proj.app || proj.other_app || '— ไม่มี App —';
+    (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || new Set()).add(app);
+  });
+
+  const appSet = new Set();
+  Object.values(leadCoverage).forEach(s => s.forEach(a => appSet.add(a)));
+  const apps = sortedApps([...appSet]);
+
+  if (!apps.length) {
+    container.innerHTML = '<div class="empty-state">ไม่พบข้อมูล Lead / App สำหรับ Project ที่ Active</div>';
+    return;
+  }
+
+  const colCount = {}; apps.forEach(a => colCount[a] = 0);
+  let grandCells = 0;
+  const bodyRows = S.leadsAll.map(l => {
+    const cov = leadCoverage[l.emp_id] || new Set();
+    if (!cov.size) return ''; // lead with no active project — skip row (keeps matrix relevant)
+    const cells = apps.map(a => {
+      const has = cov.has(a);
+      if (has) { colCount[a]++; grandCells++; }
+      return `<td class="center">${has ? '1' : '<span class="muted">—</span>'}</td>`;
+    }).join('');
+    return `<tr><td>${esc(l.short_name)}</td><td class="right">${cov.size}</td>${cells}</tr>`;
+  }).filter(Boolean);
+
+  const totalRow = `<tr class="dash-total-row">
+    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${grandCells}</td>
+    ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
+  </tr>`;
+
+  container.innerHTML = `
+    <div class="dash-table-wrap">
+      <table class="dash-table">
+        <thead><tr><th>UAT Lead</th><th class="right">Total App</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
+        <tbody>${bodyRows.join('') || `<tr><td colspan="${2+apps.length}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+    </div>`;
+}
+
+/* ---- Signoff ---- */
+function renderSignoffView(container){
+  const { first, last } = monthFirstLast(S.dashY, S.dashM);
+  const rows = S.activeProjects
+    .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
+    .sort((a,b) => (a.signoff_date||'').localeCompare(b.signoff_date||''));
+
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state">ไม่มี Project ที่ Signoff ในเดือน ${MONTH_NAMES_TH[S.dashM-1]} ${S.dashY}</div>`;
+    return;
+  }
+
+  const bodyRows = rows.map(p => `<tr>
+      <td>${esc(p.project_name)}</td>
+      <td>${esc(p.app || p.other_app || '')}</td>
+      <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
+      <td>${dDisp(p.signoff_date)}</td>
+    </tr>`).join('');
+
+  container.innerHTML = `
+    <div class="dash-table-wrap">
+      <table class="dash-table">
+        <thead><tr><th>Project Name</th><th>App</th><th>UAT Lead</th><th>Signoff Date</th></tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+/* =====================================================================
+   OVERALL MODE
+   ===================================================================== */
+async function getOverallMinDate(){
+  const { data, error } = await supabase.from('project_phase')
+    .select('start_date')
+    .in('phase_code', ['TCPREP','UAT','SIT','REG'])
+    .not('start_date', 'is', null)
+    .order('start_date', { ascending: true })
+    .limit(1);
+  if (error || !data || !data.length) return d2s(new Date(new Date().getFullYear(), 0, 1)); // fallback: Jan 1 this year
+  return data[0].start_date;
+}
+
+async function loadOverall(force){
+  if (!force && S.overallCacheKey === 'loaded') { renderOverall(); return; }
+  try {
+    const minDate = await getOverallMinDate();
+    const today = d2s(new Date());
+    S.overallRange = { s: minDate, e: today };
+    const { data, error } = await supabase.from('v_booking_daily')
+      .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
+      .gte('work_date', minDate).lte('work_date', today);
+    if (error) throw error;
+    S.overallBookingDaily = data || [];
+    S.overallAgg = computeOverallAgg();
+    S.overallCacheKey = 'loaded';
+    renderOverall();
+  } catch (err) {
+    console.error(err);
+    toast('โหลดข้อมูล Overall ไม่สำเร็จ: ' + (err.message||String(err)), true);
+  }
+}
+
+/**
+ * Overall mode uses S.allProjMap (ALL projects, not just currently-active)
+ * so historical/completed projects still get a proper App label on the
+ * long-range trend charts — unlike monthly mode which intentionally
+ * restricts to the active-projects set per spec.
+ */
+function computeOverallAgg(){
+  const byAppPhase = {};
+  const phaseTotals = {};
+  S.overallBookingDaily.forEach(row => {
+    const proj = S.allProjMap[row.project_key];
+    const app = proj ? (proj.app || proj.other_app || '— ไม่มี App —') : '— ไม่ทราบ App —';
+    const md = Number(row.md_per_day) || 0;
+    byAppPhase[app] = byAppPhase[app] || {};
+    byAppPhase[app][row.phase_code] = (byAppPhase[app][row.phase_code] || 0) + md;
+    phaseTotals[row.phase_code] = (phaseTotals[row.phase_code] || 0) + md;
+  });
+  return { byAppPhase, phaseTotals };
+}
+
+function renderOverall(){
+  $('overallRangeWrap').classList.remove('hidden');
+  $('overallRangeBadge').textContent = S.overallRange.s
+    ? `ตั้งแต่ ${dDisp(S.overallRange.s)} – ${dDisp(S.overallRange.e)}`
+    : 'กำลังโหลด...';
+
+  const agg = S.overallAgg || { byAppPhase:{}, phaseTotals:{} };
+  const apps = sortedApps(Object.keys(agg.byAppPhase));
+
+  const barDatasets = PHASE_CODES.map(code => ({
+    label: phaseName(code),
+    backgroundColor: cssVar(phaseColorVar(code)),
+    data: apps.map(app => Math.round((agg.byAppPhase[app]?.[code] || 0) * 100) / 100),
+  }));
+  if (charts.overallBar) charts.overallBar.destroy();
+  charts.overallBar = new Chart($('overallBarChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: apps, datasets: barDatasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position:'bottom', labels:{ font:{ size:11 } } } },
+      scales: { x: { stacked:true, ticks:{ font:{ size:10 } } }, y: { stacked:true, beginAtZero:true } }
+    }
+  });
+
+  const phaseLabels = PHASE_CODES.filter(c => agg.phaseTotals[c]);
+  const phaseValues = phaseLabels.map(c => Math.round((agg.phaseTotals[c]||0)*100)/100);
+  const phaseColors = phaseLabels.map(c => cssVar(phaseColorVar(c)));
+  if (charts.overallDonut) charts.overallDonut.destroy();
+  charts.overallDonut = new Chart($('overallDonutChart').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: phaseLabels.map(phaseName), datasets: [{ data: phaseValues, backgroundColor: phaseColors }] },
+    options: { responsive:false, plugins: { legend: { display:false } }, cutout:'62%' }
+  });
+  const total = phaseValues.reduce((a,b)=>a+b, 0);
+  $('overallDonutLegend').innerHTML = phaseLabels.length ? phaseLabels.map((c,i) => `
+    <div class="donut-legend-row">
+      <span class="donut-legend-sw" style="background:${phaseColors[i]}"></span>
+      <span>${esc(phaseName(c))}</span>
+      <span class="donut-legend-val">${fmtMD(phaseValues[i])} MD${total?` (${Math.round(phaseValues[i]/total*100)}%)`:''}</span>
+    </div>`).join('') : '<div class="donut-legend-row muted">ไม่มีข้อมูล</div>';
+}
+
+/* =====================================================================
+   TOOLBAR WIRING
+   ===================================================================== */
+function wireToolbar(){
+  $('modeToggle').addEventListener('click', e => {
+    const btn = e.target.closest('.dash-mode-btn');
+    if (!btn) return;
+    switchDashMode(btn.dataset.mode);
+  });
+  $('viewTabs').addEventListener('click', e => {
+    const btn = e.target.closest('.view-tab');
+    if (!btn) return;
+    switchDashView(btn.dataset.view);
+  });
+  $('prevMonthBtn').addEventListener('click', () => changeMonth(-1));
+  $('nextMonthBtn').addEventListener('click', () => changeMonth(1));
+  $('todayBtn').addEventListener('click', () => {
+    const now = new Date();
+    S.dashY = now.getFullYear(); S.dashM = now.getMonth()+1;
+    loadMonthly(false);
+  });
+  $('refreshBtn').addEventListener('click', async () => {
+    S.monthCacheKey = ''; S.overallCacheKey = '';
+    await loadMasterData();
+    await loadMonthly(true);
+  });
+  $('refreshOverallBtn').addEventListener('click', async () => {
+    S.overallCacheKey = '';
+    await loadMasterData();
+    await loadOverall(true);
+  });
+}
+
+function switchDashMode(mode){
+  if (S.dashMode === mode) return;
+  S.dashMode = mode;
+  const monthly = mode === 'monthly';
+  $('monthlyToolbar').classList.toggle('hidden', !monthly);
+  $('overallToolbar').classList.toggle('hidden', monthly);
+  $('overallRangeWrap').classList.toggle('hidden', monthly);
+  $('overallChartsWrap').classList.toggle('hidden', monthly);
+  $('kpiGrid').classList.toggle('hidden', !monthly);
+  $('chartRow').classList.toggle('hidden', true); // recalculated by renderAll() below
+  $('viewContainer').classList.toggle('hidden', !monthly);
+  document.querySelectorAll('#modeToggle .dash-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
+
+  if (monthly) { renderAll(); }
+  else { loadOverall(false); }
+}
+
+function switchDashView(view){
+  if (S.dashView === view) return;
+  S.dashView = view;
+  document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
+  renderAll();
+}
+
+function changeMonth(delta){
+  let m = S.dashM + delta, y = S.dashY;
+  if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+  S.dashM = m; S.dashY = y;
+  loadMonthly(false);
+}
+</script>
+</body>
+</html>
