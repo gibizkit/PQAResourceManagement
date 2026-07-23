@@ -620,17 +620,18 @@ function setDefaultRangeIfEmpty() {
 async function loadAll() {
   $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
   try {
-    const [holidays, roleRows, phaseRows, staffRows, resRows, projRows, phRows] = await Promise.all([
+    const [holidays, roleRows, phaseRows, staffRows, resRows, projRows, phRows, skillRows] = await Promise.all([
       loadHolidays(),
       supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
       supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
       supabase.from('outsource_staff')
-        .select('eid,en_fullname,nickname,nickname_name,role_code,skills,end_date,is_active')
+        .select('eid,en_fullname,nickname,nickname_name,role_code,end_date,is_active')
         .eq('is_active', true),
       supabase.from('resource').select('resource_id,outsource_eid')
         .eq('resource_type', 'outsource').eq('is_active', true),
       supabase.from('v_project_wide').select('project_key,project_name,uat_lead').eq('is_active', true),
-      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date')
+      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date'),
+      supabase.from('outsource_skill').select('eid,skills')
     ]);
 
     S.holidays = holidays || {};
@@ -650,6 +651,9 @@ async function loadAll() {
     const eidToResId = {};
     (resRows.data || []).forEach(r => { eidToResId[r.outsource_eid] = r.resource_id; });
 
+    const skillByEid = {};
+    (skillRows.data || []).forEach(r => { skillByEid[r.eid] = r.skills || ''; });
+
     S.osStaff = (staffRows.data || [])
       .map(s => ({
         resourceId: eidToResId[s.eid],
@@ -658,7 +662,7 @@ async function loadAll() {
         nickname: s.nickname,
         nicknameName: s.nickname_name,
         roleCode: s.role_code,
-        skills: s.skills || '',
+        skills: skillByEid[s.eid] || '',
         endDate: s.end_date
       }))
       .filter(p => !!p.resourceId); // ต้องมีแถวใน resource ผูกอยู่ (สร้างจาก sync trigger)
@@ -1143,9 +1147,8 @@ window.lpSaveSkills = async function () {
   btn.disabled = true;
   btn.textContent = 'กำลังบันทึก...';
 
-  const { error } = await supabase.from('outsource_staff')
-    .update({ skills: val })
-    .eq('eid', p.eid);
+  const { error } = await supabase.from('outsource_skill')
+    .upsert({ eid: p.eid, skills: val }, { onConflict: 'eid' });
 
   if (error) {
     err.textContent = 'บันทึก Skills ไม่สำเร็จ: ' + error.message;
