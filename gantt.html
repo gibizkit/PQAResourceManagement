@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Gantt — PQA Resource Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* ---- page-local phase / summary colors (theme.css ไม่ได้ประกาศครบ) ---- */
+  :root {
+    --ph-support: #CBB8A0;
+    --ph-extra:   #A88C6B;
+    --ph-summary: #6E4A31;
+  }
+
+  /* ---- topbar nav ---- */
+  .topbar .nav { display:flex; gap:4px; margin-left:6px; }
+  .topbar .nav a {
+    font-size:13px; text-decoration:none; color:var(--dk-text2);
+    padding:6px 12px; border-radius:8px; font-weight:600;
+  }
+  .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
+
+  /* ---- filters ---- */
+  .filters {
+    display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;
+    background:var(--dk-surface); border:1px solid var(--dk-border);
+    border-radius:12px; padding:12px 14px; margin-bottom:14px;
+  }
+  .filters .fld { display:flex; flex-direction:column; gap:4px; }
+  .filters label { font-size:11px; color:var(--dk-text3); font-weight:600; }
+  .filters input[type=date] {
+    padding:7px 9px; border-radius:8px; border:1px solid var(--dk-border-s);
+    font-size:13px; background:#fff; color:var(--dk-text);
+  }
+
+  /* ---- checkbox multiselect ---- */
+  .ms { position:relative; }
+  .ms-btn {
+    min-width:180px; text-align:left; padding:7px 10px; border-radius:8px;
+    border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text);
+    font-size:13px; font-weight:600; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
+  }
+  .ms-panel {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:40;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:10px;
+    box-shadow:0 12px 30px rgba(34,28,21,.15); padding:6px; width:260px;
+    max-height:280px; overflow:auto;
+  }
+  .ms-panel.hidden { display:none; }
+  .ms-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:7px; font-size:13px; cursor:pointer; }
+  .ms-item:hover { background:var(--dk-hover); }
+  .ms-item input { margin:0; }
+  .ms-tools { display:flex; gap:6px; padding:4px 6px 8px; border-bottom:1px solid var(--dk-border); margin-bottom:4px; }
+  .ms-tools button { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
+
+  /* ---- gantt table ---- */
+  .gantt-scroll {
+    overflow:auto; max-height:calc(100vh - 250px);
+    border:1px solid var(--dk-border); border-radius:12px; background:#fff;
+  }
+  table.gantt { border-collapse:separate; border-spacing:0; font-size:12px; }
+  table.gantt th, table.gantt td {
+    border-right:1px solid var(--dk-border); border-bottom:1px solid var(--dk-border);
+    padding:0; box-sizing:border-box;
+  }
+  /* sticky columns */
+  .c0 { min-width:236px; width:236px; left:0; }
+  .c1 { min-width:150px; width:150px; left:236px; }
+  .c2 { min-width:64px;  width:64px;  left:386px; }
+  .sticky-col { position:sticky; background:#fff; z-index:5; }
+  thead .sticky-col { z-index:30; background:var(--dk-surface); }
+  thead th { position:sticky; top:0; z-index:20; background:var(--dk-surface);
+    color:var(--dk-text2); font-weight:600; padding:6px 8px; text-align:left; white-space:nowrap; }
+  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:4px 0; }
+  .th-month { text-align:center; font-weight:700; color:var(--dk-text); font-size:11.5px; }
+  .th-day.wknd, td.gcell.wknd { background:var(--cell-wknd-hol); color:rgba(255,255,255,.92); }
+  .th-day.today-col { outline:2px solid var(--today); outline-offset:-2px; color:var(--today); font-weight:800; }
+
+  td.gcell { min-width:28px; width:28px; height:26px; }
+  /* sticky col cell paddings */
+  td.c0, td.c1, td.c2 { padding:6px 8px; vertical-align:middle; }
+
+  /* project summary row */
+  tr.prow-sum td { border-top:2px solid var(--dk-accent-d); }
+  .p-name { font-weight:700; color:var(--dk-text); font-size:12.5px; line-height:1.25; }
+  .p-meta { font-size:10.5px; color:var(--dk-text3); margin-top:1px; }
+  .p-lead { font-size:10.5px; color:var(--dk-accent); font-weight:600; }
+  .toggle-btn { border:none; background:none; font-size:14px; cursor:pointer; color:var(--dk-text2); }
+  .today-mark { color:var(--dk-text); font-weight:700; }
+
+  .ph-label { font-size:11.5px; font-weight:600; color:var(--dk-text2); }
+  .bk { display:inline-block; margin-top:2px; font-size:11px; font-weight:700; color:var(--dk-text);
+    cursor:pointer; padding:1px 6px; border-radius:6px; background:var(--dk-surface); }
+  .bk:hover { background:var(--dk-hover); }
+  .bk.bad { color:#fff; background:var(--conflict); }
+
+  .diamond { display:inline-block; width:12px; height:12px; transform:rotate(45deg);
+    border:1px solid var(--dk-text); vertical-align:middle; }
+
+  .empty { padding:44px; text-align:center; color:var(--dk-text3); }
+
+  /* ---- booking popup ---- */
+  .modal.wide { width:920px; }
+  .bk-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px; }
+  .bk-table th, .bk-table td { padding:7px 9px; border-bottom:1px solid var(--dk-border); text-align:left; white-space:nowrap; }
+  .bk-table th { color:var(--dk-text3); font-weight:600; font-size:11.5px; }
+  .bk-table input, .bk-table select { padding:5px 7px; border-radius:6px; border:1px solid var(--dk-border-s); font-size:12.5px; }
+  .sub-head { font-weight:700; font-size:13px; margin:14px 0 6px; color:var(--dk-accent); }
+  .res-pick { max-height:180px; overflow:auto; border:1px solid var(--dk-border); border-radius:8px; padding:6px; }
+  .res-pick label { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; font-size:12.5px; cursor:pointer; }
+  .res-pick label:hover { background:var(--dk-hover); }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr 100px; gap:10px; margin-top:10px; align-items:end; }
+  .form-grid .fld { display:flex; flex-direction:column; gap:4px; }
+  .form-grid label { font-size:11px; color:var(--dk-text3); font-weight:600; }
+  .form-grid input, .form-grid select { padding:8px 9px; border-radius:8px; border:1px solid var(--dk-border-s); font-size:13px; }
+  .row-btns { display:flex; gap:6px; }
+  .tag { display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; margin-left:6px; }
+  .tag.edit { background:#fff4e0; color:#a15c12; }
+  .tag.new  { background:#e8f5e9; color:#2e7d32; }
+  .area.hidden { display:none; }
+  .bk-err { color:var(--danger); font-size:12.5px; min-height:16px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginPage">
+  <div class="login-card">
+    <h1>PQA Resource Mgmt</h1>
+    <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="you@infinitaskt.com">
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" type="password" required placeholder="••••••••">
+      <button id="loginBtn" class="btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <nav class="nav">
+      <a href="index.html">Projects</a>
+      <a href="gantt.html" class="active">Gantt</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+    <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <div class="main">
+    <div class="page-head">
+      <h2>Project Gantt</h2>
+      <span class="badge" id="projCount">0</span>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn accent" id="addBtn">+ เพิ่ม Project</button>
+      <button class="btn" id="refreshBtn">🔄 Refresh</button>
+      <button class="btn" id="collapseAllBtn">⊟ Collapse All</button>
+      <button class="btn" id="expandAllBtn">⊞ Expand All</button>
+    </div>
+
+    <div class="filters">
+      <div class="fld">
+        <label>Project</label>
+        <div class="ms" id="msProject"></div>
+      </div>
+      <div class="fld">
+        <label>UAT Lead</label>
+        <div class="ms" id="msLead"></div>
+      </div>
+      <div class="fld">
+        <label>Start Date</label>
+        <input type="date" id="fStart">
+      </div>
+      <div class="fld">
+        <label>End Date</label>
+        <input type="date" id="fEnd">
+      </div>
+      <button class="btn" id="applyBtn">แสดง</button>
+    </div>
+
+    <div class="gantt-scroll" id="ganttScroll">
+      <div class="empty" id="ganttEmpty">กำลังโหลด...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BOOKING POPUP ============ -->
+<div id="bkOverlay" class="overlay hidden">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3 id="bkTitle">Resource Booking</h3>
+      <button class="x" onclick="closeBookingPopup()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- list area -->
+      <div class="area" id="bkListArea">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="sub-head" style="margin:0">รายการ Booking</div>
+          <button class="btn accent sm" onclick="bkStartAdd()">➕ Book Outsource</button>
+        </div>
+        <table class="bk-table">
+          <thead><tr>
+            <th>Booking Start</th><th>Booking End</th><th>OS Name</th><th>MD</th><th style="text-align:center">Action</th>
+          </tr></thead>
+          <tbody id="bkRows"></tbody>
+        </table>
+      </div>
+
+      <!-- add / edit form area -->
+      <div class="area hidden" id="bkFormArea">
+        <div class="sub-head" id="bkFormTitle">➕ Book Outsource</div>
+        <div id="bkResPickWrap">
+          <label style="font-size:11px;color:var(--dk-text3);font-weight:600">เลือก Outsource (เลือกได้หลายคน)</label>
+          <div class="res-pick" id="bkResPick"></div>
+        </div>
+        <div id="bkEditName" class="hidden" style="font-size:13px;margin:6px 0">
+          <b>OS:</b> <span id="bkEditNameTxt"></span>
+        </div>
+        <div class="form-grid">
+          <div class="fld"><label>Start Date</label><input type="date" id="bkStart"></div>
+          <div class="fld"><label>End Date</label><input type="date" id="bkEnd"></div>
+          <div class="fld"><label>MD</label>
+            <select id="bkMd"><option value="1">1 (เต็มวัน)</option><option value="0.5">0.5 (ครึ่งวัน)</option></select>
+          </div>
+        </div>
+        <div class="bk-err" id="bkFormErr"></div>
+        <div class="row-btns" style="margin-top:6px">
+          <button class="btn sm" onclick="bkCheckConflict()">🔎 Check MD Conflict</button>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn sm" onclick="bkCancelForm()">ยกเลิก</button>
+          <button class="btn accent sm" id="bkSaveBtn" onclick="bkSaveForm()">บันทึก</button>
+        </div>
+      </div>
+
+      <!-- co-edit area -->
+      <div class="area hidden" id="bkCoArea">
+        <div class="sub-head">⚠️ Co-Edit — ปรับ Start/End/MD ให้ MD รวมไม่เกิน 1.0 ต่อวัน</div>
+        <table class="bk-table">
+          <thead><tr>
+            <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>MD</th>
+          </tr></thead>
+          <tbody id="bkCoRows"></tbody>
+        </table>
+        <div class="bk-err" id="bkCoErr"></div>
+        <div class="row-btns" style="margin-top:8px;justify-content:flex-end">
+          <button class="btn sm" onclick="bkCoCancel()">ยกเลิก</button>
+          <button class="btn accent sm" id="bkCoSaveBtn" onclick="bkCoSave()">💾 Save ทั้งหมด</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeBookingPopup()">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Signoff module (Phase 2.3) — self-registers window.openSignoffReview + injects its own modal.
+     Loaded before the inline module below so the real handler wins over the safety stub. -->
+<script type="module" src="./signoff.js"></script>
+
+<script type="module">
+import { supabase, $, toast, esc, dDisp, d2s, statusPill } from './common.js';
+
+/* ============ CONSTANTS ============ */
+const PHASE_META = {
+  SIT:     { name:'SIT',     color:'var(--ph-sit)',     order:10 },
+  TCPREP:  { name:'TC Prep', color:'var(--ph-tcprep)',  order:20 },
+  UAT:     { name:'UAT',     color:'var(--ph-uat)',     order:30 },
+  REG:     { name:'Reg',     color:'var(--ph-reg)',     order:40 },
+  SUPPORT: { name:'Support', color:'var(--ph-support)', order:50 },
+};
+function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
+function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
+function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
+
+/* ============ STATE ============ */
+const S = {
+  projects: [],            // [{project_key, project_name, app_code, other_app, status, signoff_date, deploy_date, signoff_url}]
+  phasesByProject: {},     // pk -> [{phase_code, phase_label, start_date, end_date, md, resource_count, sort_order}]
+  leadsByProject: {},      // pk -> [{emp_id, short_name, is_main}]
+  leads: [],               // pqa_lead list [{emp_id, short_name, incharge_role, manager_emp_id}]
+  bookings: [],            // ALL active bookings
+  resourceMap: {},         // resource_id -> {nickname, full_name_en, role_code, resource_type}
+  outsourceList: [],       // active outsource resources for picker
+  holidays: {},            // 'yyyy-MM-dd' -> desc
+  user: null,              // {pqa_emp_id, display_name, app_role}
+  collapsed: {},           // pk -> true (collapsed)
+  filter: { projects:new Set(), leads:new Set(), start:'', end:'' },
+  renderedPhases: [],      // flat list for popup click resolution
+};
+
+/* ============ DATE HELPERS ============ */
+function addDays(dateStr, n){ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+n); return d2s(d); }
+function eachDay(s, e){
+  const out=[]; let d=new Date(s+'T00:00:00'); const end=new Date(e+'T00:00:00');
+  while(d<=end){ out.push(d2s(d)); d.setDate(d.getDate()+1); }
+  return out;
+}
+function isWkndStr(ds){
+  const dow=new Date(ds+'T00:00:00').getDay();
+  return dow===0 || dow===6 || (ds in S.holidays);
+}
+const TODAY = d2s(new Date());
+
+/* ============ AUTH ============ */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn=$('loginBtn'); btn.disabled=true; btn.textContent='กำลังเข้าสู่ระบบ...'; $('loginErr').textContent='';
+  const { error } = await supabase.auth.signInWithPassword({ email:$('email').value.trim(), password:$('password').value });
+  btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
+  if(error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+});
+$('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
+supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
+(async () => { const { data } = await supabase.auth.getSession(); if(data.session) showApp(data.session); })();
+
+function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
+
+async function showApp(session){
+  $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+  let who=session.user.email, role='';
+  const { data:u } = await supabase.from('app_user')
+    .select('display_name,app_role,pqa_emp_id').eq('email', session.user.email).maybeSingle();
+  if(u){ who=u.display_name; role=u.app_role; S.user={ pqa_emp_id:u.pqa_emp_id, display_name:u.display_name, app_role:u.app_role }; }
+  else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
+  $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+
+  // default date range
+  S.filter.start = addDays(TODAY, -7);
+  S.filter.end   = addDays(TODAY, 45);
+  $('fStart').value = S.filter.start;
+  $('fEnd').value   = S.filter.end;
+
+  await loadAll();
+}
+
+/* ============ LOAD ============ */
+async function loadAll(){
+  $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try {
+    const [holidays, projRes, phaseRes, plRes, leadRes, bkRes, resRes] = await Promise.all([
+      loadHolidaysSafe(),
+      supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url').eq('is_active', true).order('project_key', { ascending:false }),
+      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
+      supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
+      supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
+      supabase.from('booking').select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true),
+      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
+    ]);
+
+    for (const r of [projRes, phaseRes, plRes, leadRes, bkRes, resRes]) {
+      if (r.error) throw r.error;
+    }
+
+    S.holidays = holidays;
+    S.projects = projRes.data || [];
+    S.bookings = bkRes.data || [];
+    S.leads    = leadRes.data || [];
+
+    // resource map + outsource picker list
+    S.resourceMap = {};
+    S.outsourceList = [];
+    (resRes.data || []).forEach(r => {
+      S.resourceMap[r.resource_id] = r;
+      if (r.is_active && r.resource_type === 'outsource') S.outsourceList.push(r);
+    });
+    S.outsourceList.sort((a,b) =>
+      (roleRank(a.role_code)-roleRank(b.role_code)) ||
+      String(a.nickname||a.full_name_en).localeCompare(String(b.nickname||b.full_name_en)));
+
+    // phases grouped
+    S.phasesByProject = {};
+    (phaseRes.data || []).forEach(ph => {
+      (S.phasesByProject[ph.project_key] ||= []).push(ph);
+    });
+    Object.values(S.phasesByProject).forEach(arr => arr.sort((a,b) =>
+      ((a.sort_order ?? phaseOrder(a.phase_code)) - (b.sort_order ?? phaseOrder(b.phase_code))) ||
+      String(a.phase_label||'').localeCompare(String(b.phase_label||''))));
+
+    // leads grouped (join pqa_lead)
+    const leadByEmp = {}; S.leads.forEach(l => leadByEmp[l.emp_id]=l);
+    S.leadsByProject = {};
+    (plRes.data || []).forEach(pl => {
+      const l = leadByEmp[pl.pqa_emp_id];
+      (S.leadsByProject[pl.project_key] ||= []).push({
+        emp_id: pl.pqa_emp_id,
+        short_name: l ? l.short_name : pl.pqa_emp_id,
+        is_main: pl.is_main
+      });
+    });
+
+    // collapse all by default
+    S.projects.forEach(p => { if (!(p.project_key in S.collapsed)) S.collapsed[p.project_key]=true; });
+
+    buildFilters();
+    applyDefaultLeadFilter();
+    renderGantt();
+  } catch (err) {
+    console.error(err);
+    $('ganttScroll').innerHTML = `<div class="empty" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(err.message||String(err))}</div>`;
+  }
+}
+
+async function loadHolidaysSafe(){
+  const { data, error } = await supabase.from('holiday').select('holiday_date,description');
+  if (error){ console.warn('holiday', error); return {}; }
+  const map={}; (data||[]).forEach(h => map[h.holiday_date] = h.description || 'Holiday');
+  return map;
+}
+
+function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='JUNIOR'?3 : 4; }
+
+/* ============ DEFAULT LEAD FILTER ============ */
+function applyDefaultLeadFilter(){
+  S.filter.leads = new Set();
+  const me = S.user && S.user.pqa_emp_id;
+  if (!me) return;                                    // no match → no filter
+  const meLead = S.leads.find(l => l.emp_id === me);
+  if (!meLead) return;                                // not a lead → no filter
+  const role = (meLead.incharge_role || '').trim().toLowerCase();
+  if (role === 'overall') return;                     // overall → no filter (see all)
+  if (role === 'manager') {
+    S.filter.leads.add(me);
+    S.leads.forEach(l => { if (l.manager_emp_id === me) S.filter.leads.add(l.emp_id); });
+  } else {
+    S.filter.leads.add(me);                            // self only
+  }
+  syncMultiSelect('msLead', S.filter.leads);
+}
+
+/* ============ MULTISELECT ============ */
+function makeMultiSelect(hostId, items, selectedSet, labelAll){
+  const host = $(hostId);
+  host.innerHTML = `
+    <button class="ms-btn" type="button">${labelAll} <span class="ms-count">▾</span></button>
+    <div class="ms-panel hidden">
+      <div class="ms-tools">
+        <button type="button" data-act="all">เลือกทั้งหมด</button>
+        <button type="button" data-act="none">ล้าง</button>
+      </div>
+      <div class="ms-list"></div>
+    </div>`;
+  const btn = host.querySelector('.ms-btn');
+  const panel = host.querySelector('.ms-panel');
+  const list = host.querySelector('.ms-list');
+  list.innerHTML = items.map(it =>
+    `<label class="ms-item"><input type="checkbox" value="${esc(it.value)}"${selectedSet.has(it.value)?' checked':''}><span>${esc(it.label)}</span></label>`).join('');
+
+  btn.onclick = (e) => { e.stopPropagation(); panel.classList.toggle('hidden'); };
+  panel.onclick = (e) => { e.stopPropagation(); };
+  list.onchange = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input:checked').forEach(cb => selectedSet.add(cb.value));
+    updateMsLabel(host, items, selectedSet, labelAll);
+    renderGantt();
+  };
+  host.querySelector('[data-act=all]').onclick = () => {
+    items.forEach(it => selectedSet.add(it.value));
+    list.querySelectorAll('input').forEach(cb => cb.checked=true);
+    updateMsLabel(host, items, selectedSet, labelAll); renderGantt();
+  };
+  host.querySelector('[data-act=none]').onclick = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input').forEach(cb => cb.checked=false);
+    updateMsLabel(host, items, selectedSet, labelAll); renderGantt();
+  };
+  updateMsLabel(host, items, selectedSet, labelAll);
+}
+function updateMsLabel(host, items, selectedSet, labelAll){
+  const btn = host.querySelector('.ms-btn');
+  const n = selectedSet.size;
+  btn.innerHTML = (n===0 ? labelAll : `${labelAll} (${n})`) + ' <span class="ms-count">▾</span>';
+}
+function syncMultiSelect(hostId, selectedSet){
+  const host = $(hostId);
+  host.querySelectorAll('.ms-list input').forEach(cb => cb.checked = selectedSet.has(cb.value));
+  const btn = host.querySelector('.ms-btn');
+  const labelAll = hostId==='msLead' ? 'ทุก Lead' : 'ทุก Project';
+  btn.innerHTML = (selectedSet.size===0 ? labelAll : `${labelAll} (${selectedSet.size})`) + ' <span class="ms-count">▾</span>';
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.ms-panel').forEach(p => p.classList.add('hidden'));
+});
+
+function buildFilters(){
+  makeMultiSelect('msProject',
+    S.projects.map(p => ({ value:p.project_key, label:p.project_name })),
+    S.filter.projects, 'ทุก Project');
+  makeMultiSelect('msLead',
+    S.leads.slice().sort((a,b)=>String(a.short_name).localeCompare(String(b.short_name)))
+      .map(l => ({ value:l.emp_id, label:l.short_name })),
+    S.filter.leads, 'ทุก Lead');
+}
+
+/* ============ FILTER PROJECTS ============ */
+function filteredProjects(){
+  return S.projects.filter(p => {
+    if (S.filter.projects.size && !S.filter.projects.has(p.project_key)) return false;
+    if (S.filter.leads.size) {
+      const ids = (S.leadsByProject[p.project_key]||[]).map(l => l.emp_id);
+      if (!ids.some(id => S.filter.leads.has(id))) return false;
+    }
+    return true;
+  });
+}
+
+/* ============ RENDER GANTT ============ */
+function renderGantt(){
+  const days = eachDay(S.filter.start, S.filter.end);
+  const visible = filteredProjects();
+  $('projCount').textContent = visible.length;
+
+  if (!days.length){ $('ganttScroll').innerHTML = '<div class="empty">ช่วงวันที่ไม่ถูกต้อง</div>'; return; }
+  if (!visible.length){ $('ganttScroll').innerHTML = '<div class="empty">ไม่พบข้อมูล</div>'; return; }
+
+  // month groups
+  const months=[]; days.forEach(ds => {
+    const ym = ds.slice(0,7);
+    const last = months[months.length-1];
+    if (last && last.ym===ym) last.count++;
+    else months.push({ ym, count:1 });
+  });
+  const monthLabel = ym => {
+    const [y,m]=ym.split('-'); const names=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    return `${names[+m]} ${y}`;
+  };
+
+  let head = '<thead><tr>' +
+    '<th class="sticky-col c0" rowspan="2">Project</th>' +
+    '<th class="sticky-col c1" rowspan="2">Phase / Booked</th>' +
+    '<th class="sticky-col c2" rowspan="2" style="text-align:center">Action</th>' +
+    months.map(mo => `<th class="th-month" colspan="${mo.count}">${monthLabel(mo.ym)}</th>`).join('') +
+    '</tr><tr>' +
+    days.map(ds => {
+      const cls = 'th-day' + (isWkndStr(ds)?' wknd':'') + (ds===TODAY?' today-col':'');
+      return `<th class="${cls}">${ds.slice(8)}</th>`;
+    }).join('') +
+    '</tr></thead>';
+
+  S.renderedPhases = [];
+  let body = '<tbody>';
+  visible.forEach(p => {
+    body += summaryRow(p, days);
+    if (!S.collapsed[p.project_key]) {
+      (S.phasesByProject[p.project_key]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
+      if (p.signoff_date || p.deploy_date) body += milestoneRow(p, days);
+    }
+  });
+  body += '</tbody>';
+
+  $('ganttScroll').innerHTML = `<table class="gantt">${head}${body}</table>`;
+}
+
+function summaryRow(p, days){
+  const pk = p.project_key;
+  const collapsed = S.collapsed[pk];
+  // envelope (exclude SIT)
+  let mn=null, mx=null;
+  (S.phasesByProject[pk]||[]).forEach(ph => {
+    if (ph.phase_code === 'SIT') return;
+    if (ph.start_date && (!mn || ph.start_date < mn)) mn = ph.start_date;
+    if (ph.end_date   && (!mx || ph.end_date   > mx)) mx = ph.end_date;
+  });
+  const lead = (S.leadsByProject[pk]||[]).find(l => l.is_main) || (S.leadsByProject[pk]||[])[0];
+  const app = p.app_code || p.other_app || '';
+
+  const cells = days.map(ds => {
+    let cls='gcell', style='';
+    if (isWkndStr(ds)) cls+=' wknd';
+    else if (mn && mx && ds>=mn && ds<=mx) style=`background:var(--ph-summary)`;
+    return `<td class="${cls}"${style?` style="${style}"`:''}></td>`;
+  }).join('');
+
+  return `<tr class="prow-sum">
+    <td class="sticky-col c0">
+      <div class="p-name">${esc(p.project_name)}</div>
+      <div class="p-meta">${esc(pk)}${app?' · '+esc(app):''}</div>
+      <div class="p-lead">${lead?esc(lead.short_name):'<span class="p-meta">— ไม่มี Lead —</span>'}</div>
+    </td>
+    <td class="sticky-col c1">${statusPill(p.status)}</td>
+    <td class="sticky-col c2" style="text-align:center">
+      <button class="toggle-btn" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>
+    </td>
+    ${cells}
+  </tr>`;
+}
+
+function phaseRow(p, ph, days){
+  const pk = p.project_key;
+  // booked distinct resource count (all dates, by phase_code)
+  const resSet = new Set();
+  S.bookings.forEach(b => { if (b.project_key===pk && b.phase_code===ph.phase_code) resSet.add(b.resource_id); });
+  const bkCnt = resSet.size;
+  const req = ph.resource_count == null ? null : Number(ph.resource_count);
+  const reqDisp = req == null ? '–' : fmtNum(req);
+  const bad = req != null && bkCnt !== req;
+
+  const idx = S.renderedPhases.length;
+  S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseName(ph.phase_code), start:ph.start_date, end:ph.end_date });
+
+  const color = phaseColor(ph.phase_code);
+  const cells = days.map(ds => {
+    let cls='gcell', style='';
+    if (isWkndStr(ds)) cls+=' wknd';
+    else if (ph.start_date && ph.end_date && ds>=ph.start_date && ds<=ph.end_date) style=`background:${color}`;
+    return `<td class="${cls}"${style?` style="${style}"`:''}></td>`;
+  }).join('');
+
+  const lbl = phaseName(ph.phase_code) + (ph.phase_label ? ' • '+esc(ph.phase_label) : '');
+  return `<tr>
+    <td class="sticky-col c0"></td>
+    <td class="sticky-col c1">
+      <div class="ph-label">${lbl}</div>
+      <span class="bk${bad?' bad':''}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
+    </td>
+    <td class="sticky-col c2"></td>
+    ${cells}
+  </tr>`;
+}
+
+function milestoneRow(p, days){
+  const cells = days.map(ds => {
+    let cls='gcell', inner='';
+    if (isWkndStr(ds)) cls+=' wknd';
+    if (ds===p.signoff_date) inner = `<span class="diamond" style="background:var(--ph-signoff)" title="Signoff ${dDisp(ds)}"></span>`;
+    else if (ds===p.deploy_date) inner = `<span class="diamond" style="background:var(--ph-deploy)" title="Deploy ${dDisp(ds)}"></span>`;
+    return `<td class="${cls}" style="text-align:center">${inner}</td>`;
+  }).join('');
+  // ส่งเฉพาะ project_key แล้ว lookup ชื่อจาก state ตอนคลิก — กันอักขระพิเศษ
+  // ในชื่อโปรเจกต์พัง HTML attribute (เดิมใช้ JSON.stringify ใส่ " กลาง onclick)
+  const so = p.signoff_date
+    ? `<button class="btn sm" style="padding:2px 7px" onclick="window.srOpenFromKey('${esc(p.project_key)}')">🔎</button>`
+    : '';
+  return `<tr>
+    <td class="sticky-col c0"></td>
+    <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
+    <td class="sticky-col c2" style="text-align:center">${so}</td>
+    ${cells}
+  </tr>`;
+}
+
+function fmtNum(n){ return Number.isInteger(n) ? String(n) : String(n); }
+
+/* ============ TOOLBAR ============ */
+window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderGantt(); };
+$('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
+$('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
+$('refreshBtn').onclick     = loadAll;
+$('addBtn').onclick         = () => { window.location.href = 'index.html'; };
+$('applyBtn').onclick = () => {
+  const s=$('fStart').value, e=$('fEnd').value;
+  if (s) S.filter.start=s; if (e) S.filter.end=e;
+  renderGantt();
+};
+
+/* ============ SIGNOFF STUB (guarded — signoff.js may override) ============ */
+if (!window.openSignoffReview) {
+  window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
+}
+// เรียกจากปุ่ม 🔎 — ส่งแค่ key แล้วดึงชื่อ/วันที่จาก state (กันอักขระพิเศษใน onclick)
+window.srOpenFromKey = function(pk){
+  const p = S.projects.find(x => x.project_key === pk);
+  if (!p) return;
+  window.openSignoffReview(pk, p.project_name, p.signoff_date || '');
+};
+
+/* ============ BOOKING POPUP ============ */
+let popCtx = null;   // { pk, phaseCode, phaseLabel, phaseName, phStart, phEnd }
+let formMode = null; // 'add' | 'edit'
+let editBookingId = null;
+
+window.openBookingPopup = function(idx){
+  const r = S.renderedPhases[idx];
+  if (!r) return;
+  const ph = (S.phasesByProject[r.pk]||[]).find(x => x.phase_code===r.phaseCode && (x.phase_label||'')===r.phaseLabel) || {};
+  popCtx = {
+    pk:r.pk, phaseCode:r.phaseCode, phaseLabel:r.phaseLabel, phaseName:r.phaseName,
+    phStart: ph.start_date || S.filter.start, phEnd: ph.end_date || S.filter.end
+  };
+  const proj = S.projects.find(p => p.project_key===r.pk);
+  const nm = proj ? proj.project_name : r.pk;
+  $('bkTitle').textContent = `📋 Resource Booking Phase : ${nm} · ${r.phaseName} : ${dDisp(popCtx.phStart)} - ${dDisp(popCtx.phEnd)}`;
+  showArea('list');
+  renderBkRows();
+  $('bkOverlay').classList.remove('hidden');
+};
+window.closeBookingPopup = function(){ $('bkOverlay').classList.add('hidden'); popCtx=null; };
+
+function showArea(which){
+  $('bkListArea').classList.toggle('hidden', which!=='list');
+  $('bkFormArea').classList.toggle('hidden', which!=='form');
+  $('bkCoArea').classList.toggle('hidden', which!=='co');
+}
+
+function bookingsOfPhase(){
+  return S.bookings
+    .filter(b => b.project_key===popCtx.pk && b.phase_code===popCtx.phaseCode)
+    .sort((a,b) => (a.start_date<b.start_date?-1:a.start_date>b.start_date?1:0) || resName(a.resource_id).localeCompare(resName(b.resource_id)));
+}
+function resName(rid){ const r=S.resourceMap[rid]; return r ? (r.nickname||r.full_name_en||rid) : rid; }
+
+function renderBkRows(){
+  const rows = bookingsOfPhase();
+  $('bkRows').innerHTML = rows.length ? rows.map(b => `<tr>
+    <td>${dDisp(b.start_date)}</td>
+    <td>${dDisp(b.end_date)}</td>
+    <td>${esc(resName(b.resource_id))}</td>
+    <td>${fmtNum(Number(b.md))}</td>
+    <td style="text-align:center">
+      <button class="btn sm" onclick="bkEdit('${esc(b.booking_id)}')">✏️</button>
+      <button class="btn sm danger" onclick="bkDelete('${esc(b.booking_id)}')">🗑️</button>
+    </td>
+  </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--dk-text3);padding:16px">ยังไม่มี Booking</td></tr>';
+}
+
+/* ---- add ---- */
+window.bkStartAdd = function(){
+  formMode='add'; editBookingId=null;
+  $('bkFormTitle').textContent='➕ Book Outsource';
+  $('bkResPickWrap').classList.remove('hidden');
+  $('bkEditName').classList.add('hidden');
+  $('bkResPick').innerHTML = S.outsourceList.map(r =>
+    `<label><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(r.nickname||r.full_name_en)} <span style="color:var(--dk-text3);font-size:11px">${esc(r.full_name_en)}</span></span></label>`).join('')
+    || '<div style="color:var(--dk-text3);padding:8px">ไม่มี Outsource ที่ active</div>';
+  $('bkStart').value = popCtx.phStart;
+  $('bkEnd').value   = popCtx.phEnd;
+  $('bkMd').value    = '1';
+  $('bkFormErr').textContent='';
+  showArea('form');
+};
+
+/* ---- edit ---- */
+window.bkEdit = function(bid){
+  const b = S.bookings.find(x => x.booking_id===bid);
+  if (!b) return;
+  formMode='edit'; editBookingId=bid;
+  $('bkFormTitle').textContent='✏️ แก้ไข Booking';
+  $('bkResPickWrap').classList.add('hidden');
+  $('bkEditName').classList.remove('hidden');
+  $('bkEditNameTxt').textContent = resName(b.resource_id);
+  $('bkStart').value = b.start_date;
+  $('bkEnd').value   = b.end_date;
+  $('bkMd').value    = String(Number(b.md));
+  $('bkFormErr').textContent='';
+  showArea('form');
+};
+
+window.bkCancelForm = function(){ showArea('list'); };
+
+function readForm(){
+  const start=$('bkStart').value, end=$('bkEnd').value, md=Number($('bkMd').value);
+  let resIds=[];
+  if (formMode==='add') resIds=[...$('bkResPick').querySelectorAll('input:checked')].map(c=>c.value);
+  else { const b=S.bookings.find(x=>x.booking_id===editBookingId); if(b) resIds=[b.resource_id]; }
+  return { start, end, md, resIds };
+}
+
+window.bkCheckConflict = async function(){
+  const f=readForm(); const err=$('bkFormErr'); err.textContent='';
+  if (!f.resIds.length){ err.textContent='กรุณาเลือก Outsource'; return; }
+  if (!f.start || !f.end){ err.textContent='กรุณาระบุ Start/End'; return; }
+  const excl = formMode==='edit' && editBookingId ? [editBookingId] : [];
+  const { data, error } = await supabase.rpc('fn_validate_md', {
+    p_resource_ids:f.resIds, p_start:f.start, p_end:f.end, p_md:f.md, p_exclude_booking_ids:excl });
+  if (error){ err.textContent='ตรวจสอบไม่สำเร็จ: '+error.message; return; }
+  if (data && data.ok){ err.style.color='var(--today)'; err.textContent='✓ MD ไม่ชน สามารถบันทึกได้'; setTimeout(()=>{err.style.color='';},2500); }
+  else {
+    err.style.color='';
+    const dates=(data && data.dates||[]).map(dDisp).join(', ');
+    err.textContent=`⚠️ วันที่ ${dates} MD เกิน 1.0 — กด บันทึก เพื่อเปิด Co-Edit`;
+  }
+};
+
+window.bkSaveForm = async function(){
+  const f=readForm(); const err=$('bkFormErr'); err.textContent=''; err.style.color='';
+  if (!f.resIds.length){ err.textContent='กรุณาเลือก Outsource'; return; }
+  if (!f.start || !f.end){ err.textContent='กรุณาระบุ Start/End'; return; }
+  if (f.start > f.end){ err.textContent='End ต้องไม่ก่อน Start'; return; }
+  const btn=$('bkSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
+
+  try {
+    if (formMode==='edit'){
+      const { error } = await supabase.rpc('fn_save_booking', {
+        p_booking_id:editBookingId, p_project_key:popCtx.pk, p_resource_id:f.resIds[0],
+        p_phase_code:popCtx.phaseCode, p_start:f.start, p_end:f.end, p_md:f.md });
+      if (error) throw error;
+    } else {
+      // multi create via batch
+      const items = f.resIds.map(rid => ({
+        project_key:popCtx.pk, resource_id:rid, phase_code:popCtx.phaseCode,
+        start_date:f.start, end_date:f.end, md:f.md }));
+      const { error } = await supabase.rpc('fn_save_bookings_batch', { p_items:items });
+      if (error) throw error;
+    }
+    await afterBookingSave('บันทึก Booking แล้ว ✓');
+  } catch (e) {
+    if (isPermErr(e)) { err.textContent='ไม่มีสิทธิ์แก้ไขข้อมูล'; }
+    else if (isMdErr(e)) { openCoEdit(f); }
+    else { err.textContent='บันทึกไม่สำเร็จ: '+(e.message||String(e)); }
+  } finally {
+    btn.disabled=false; btn.textContent='บันทึก';
+  }
+};
+
+window.bkDelete = async function(bid){
+  if (!confirm('ยืนยันลบ Booking นี้?')) return;
+  const { error } = await supabase.from('booking').update({ is_active:false }).eq('booking_id', bid);
+  if (error){ toast('ลบไม่สำเร็จ: '+error.message, true); return; }
+  await afterBookingSave('ลบ Booking แล้ว ✓');
+};
+
+function isMdErr(e){ return e && /เกิน MD|MD เกิน/.test(e.message||''); }
+function isPermErr(e){ return e && /ไม่มีสิทธิ์/.test(e.message||''); }
+
+async function afterBookingSave(msg){
+  // reload all active bookings (rev 15 — counts independent of date filter)
+  const { data, error } = await supabase.from('booking')
+    .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true);
+  if (!error) S.bookings = data || [];
+  toast(msg);
+  showArea('list');
+  renderBkRows();
+  renderGantt();
+}
+
+/* ---- co-edit ---- */
+let coRows = [];   // [{booking_id?, resource_id, project_key, phase_code, start, end, md, tag}]
+function openCoEdit(f){
+  // rows being saved
+  const saving = (formMode==='edit')
+    ? [{ booking_id:editBookingId, resource_id:f.resIds[0], project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'edit' }]
+    : f.resIds.map(rid => ({ booking_id:null, resource_id:rid, project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'new' }));
+
+  const savingBids = new Set(saving.filter(r=>r.booking_id).map(r=>r.booking_id));
+  const resIds = new Set(saving.map(r=>r.resource_id));
+
+  // other overlapping active bookings of the same resources
+  const others = S.bookings.filter(b =>
+    resIds.has(b.resource_id) &&
+    !savingBids.has(b.booking_id) &&
+    b.start_date <= f.end && b.end_date >= f.start
+  ).map(b => ({ booking_id:b.booking_id, resource_id:b.resource_id, project_key:b.project_key,
+    phase_code:b.phase_code, start:b.start_date, end:b.end_date, md:Number(b.md), tag:'' }));
+
+  coRows = [...saving, ...others];
+  renderCoRows();
+  $('bkCoErr').textContent='';
+  showArea('co');
+}
+function renderCoRows(){
+  $('bkCoRows').innerHTML = coRows.map((r,i) => {
+    const proj = S.projects.find(p=>p.project_key===r.project_key);
+    const tag = r.tag==='edit' ? '<span class="tag edit">กำลังแก้</span>' : r.tag==='new' ? '<span class="tag new">กำลังเพิ่มใหม่</span>' : '';
+    return `<tr>
+      <td>${esc(resName(r.resource_id))}${tag}</td>
+      <td>${esc(proj?proj.project_name:r.project_key)}</td>
+      <td>${esc(phaseName(r.phase_code))}</td>
+      <td><input type="date" value="${r.start}" onchange="coEdit(${i},'start',this.value)"></td>
+      <td><input type="date" value="${r.end}" onchange="coEdit(${i},'end',this.value)"></td>
+      <td><select onchange="coEdit(${i},'md',this.value)">
+        <option value="1"${r.md===1?' selected':''}>1</option>
+        <option value="0.5"${r.md===0.5?' selected':''}>0.5</option>
+      </select></td>
+    </tr>`;
+  }).join('');
+}
+window.coEdit = function(i, field, val){ coRows[i][field] = field==='md'?Number(val):val; };
+window.bkCoCancel = function(){ showArea('form'); };
+window.bkCoSave = async function(){
+  const err=$('bkCoErr'); err.textContent='';
+  const btn=$('bkCoSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
+  const items = coRows.map(r => {
+    const it = { project_key:r.project_key, resource_id:r.resource_id, phase_code:r.phase_code,
+      start_date:r.start, end_date:r.end, md:r.md };
+    if (r.booking_id) it.booking_id = r.booking_id;
+    return it;
+  });
+  try {
+    const { error } = await supabase.rpc('fn_save_bookings_batch', { p_items:items });
+    if (error) throw error;
+    await afterBookingSave('บันทึกทั้งหมดแล้ว ✓');
+  } catch (e) {
+    if (isPermErr(e)) err.textContent='ไม่มีสิทธิ์แก้ไขข้อมูล';
+    else {
+      const m=(e.message||'').match(/:\s*(.+)$/);
+      const ds=(m?m[1]:'').split(',').map(s=>{ const t=s.trim(); return /^\d{4}-\d{2}-\d{2}$/.test(t)?dDisp(t):t; }).join(', ');
+      err.textContent=`วันที่ ${ds} มีการ Booking เกิน MD ให้ปรับปรุง Start Date, End Date`;
+    }
+  } finally {
+    btn.disabled=false; btn.textContent='💾 Save ทั้งหมด';
+  }
+};
+</script>
+</body>
+</html>

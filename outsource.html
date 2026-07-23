@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outsource Management — PQA Resource Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* ============ PAGE-LOCAL VARS (ยังไม่มีใน theme.css — เสนอย้ายเข้า common ทีหลัง) ============ */
+  :root {
+    --os-skill: #d6b878;   /* golden yellow — Skills column text, ตาม Color Reference */
+  }
+
+  /* ============ TOPBAR NAV ============ */
+  .topbar .page-nav {
+    display: flex;
+    gap: 4px;
+  }
+  .topbar .page-nav a {
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--dk-text2);
+  }
+  .topbar .page-nav a:hover {
+    background: var(--dk-hover);
+    color: var(--dk-text);
+  }
+  .topbar .page-nav a.active {
+    background: rgba(183, 91, 54, 0.13);
+    color: var(--dk-accent);
+  }
+
+  /* ============ TOOLBAR / FILTERS ============ */
+  .toolbar2 {
+    margin-top: -6px;
+  }
+  .toolbar .date-input {
+    width: 118px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--dk-border-s);
+    font-size: 13px;
+  }
+  .toolbar .to-label {
+    color: var(--dk-text3);
+    font-size: 12.5px;
+  }
+  .chk {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--dk-text2);
+    cursor: pointer;
+    user-select: none;
+  }
+  .chk input {
+    width: auto;
+    margin: 0;
+  }
+
+  /* ============ OS GRID ============ */
+  .os-scroll-wrap {
+    background: #fff;
+    border: 1px solid var(--dk-border);
+    border-radius: 12px;
+    overflow: auto;
+    max-height: calc(100vh - 260px);
+  }
+
+  table.os-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .os-table th, .os-table td {
+    border-bottom: 1px solid var(--dk-border);
+    border-right: 1px solid var(--dk-border);
+    padding: 4px 6px;
+    height: 24px;
+    box-sizing: border-box;
+  }
+
+  .os-table thead th {
+    background: var(--dk-surface);
+    color: var(--dk-text2);
+    font-weight: 700;
+    text-align: center;
+    position: sticky;
+    z-index: 15;
+  }
+
+  .os-table thead tr:nth-child(1) th.th-month { top: 0; }
+  .os-table thead tr:nth-child(2) th.th-day   { top: 24px; }
+  .os-table thead tr:nth-child(3) th.th-count { top: 48px; color: var(--btn-blue); }
+
+  .os-table thead th.corner {
+    top: 0;
+    z-index: 25;
+    text-align: left;
+  }
+
+  .col-name   { left: 0px;   width: 160px; min-width: 160px; }
+  .col-skills { left: 160px; width: 190px; min-width: 190px; }
+  .col-action { left: 350px; width: 46px;  min-width: 46px; text-align: center; }
+
+  .os-table td.sticky-l0, .os-table td.sticky-l1, .os-table td.sticky-l2,
+  .os-table th.col-name, .os-table th.col-skills, .os-table th.col-action {
+    position: sticky;
+    background: #fff;
+  }
+  .os-table th.col-name, .os-table th.col-skills, .os-table th.col-action {
+    background: var(--dk-surface);
+  }
+  .os-table td.sticky-l0 { left: 0px;   z-index: 6; }
+  .os-table td.sticky-l1 { left: 160px; z-index: 6; }
+  .os-table td.sticky-l2 { left: 350px; z-index: 6; }
+
+  .os-name {
+    font-weight: 600;
+    color: var(--dk-text);
+  }
+  .os-name.conflict {
+    color: var(--conflict);
+    cursor: help;
+  }
+  .role-badge {
+    font-size: 10.5px;
+    color: var(--dk-text3);
+    margin-top: 1px;
+  }
+  .col-skills {
+    color: var(--os-skill);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .th-day.wknd, .th-count.wknd, .td-day.wknd {
+    background: var(--cell-wknd-hol) !important;
+    color: #fff !important;
+  }
+  .th-day.today-col {
+    outline: 2px solid var(--today);
+    color: var(--today);
+    font-weight: 800;
+  }
+
+  .td-day {
+    text-align: center;
+    cursor: pointer;
+    color: var(--dk-text);
+  }
+  .td-day.full  { background: var(--cell-book-full); color: #fff; }
+  .td-day.half  { background: var(--cell-book-half); color: #fff; font-size: 10px; }
+  .td-day.leave { background: var(--cell-leave); color: #fff; font-weight: 700; font-size: 10px; }
+
+  tr.grp-sep td {
+    background: var(--dk-hover);
+    color: var(--dk-text2);
+    font-weight: 700;
+    text-align: left;
+    padding: 6px 10px;
+    position: static;
+  }
+
+  /* ============ MODALS (Manage Booking / Leave Plan) ============ */
+  .modal.wide { width: 880px; }
+
+  table.mini-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .mini-table th {
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--dk-surface);
+    color: var(--dk-text2);
+    font-weight: 600;
+    font-size: 12px;
+    border-bottom: 1px solid var(--dk-border);
+  }
+  .mini-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--dk-border);
+  }
+
+  .md-summary {
+    font-size: 13px;
+    color: var(--dk-text2);
+    background: var(--dk-surface);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .md-summary.full {
+    color: var(--danger);
+    background: rgba(192, 57, 43, 0.08);
+  }
+
+  .add-row {
+    background: var(--dk-surface);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .mb-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1.4fr 1fr 1fr 0.8fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .lp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .add-row .field label {
+    display: block;
+    font-size: 11px;
+    color: var(--dk-text3);
+    margin-bottom: 4px;
+  }
+  .add-row .field input, .add-row .field select {
+    width: 100%;
+    padding: 7px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--dk-border-s);
+    font-size: 12.5px;
+    background: #fff;
+  }
+  .add-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginPage">
+  <div class="login-card">
+    <h1>PQA Resource Mgmt</h1>
+    <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="you@infinitaskt.com">
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" type="password" required placeholder="••••••••">
+      <button id="loginBtn" class="btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <nav class="page-nav">
+      <a href="index.html">Projects</a>
+      <a href="gantt.html">Gantt</a>
+      <a href="outsource.html" class="active">Outsource</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+    <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <div class="main">
+    <div class="page-head">
+      <h2>Outsource Management</h2>
+      <span class="badge" id="osCount">0</span>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn" id="refreshBtn">🔄 Refresh</button>
+      <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
+      <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
+      <input class="date-input" id="fStart" placeholder="dd/mm/yyyy" maxlength="10">
+      <span class="to-label">ถึง</span>
+      <input class="date-input" id="fEnd" placeholder="dd/mm/yyyy" maxlength="10">
+    </div>
+    <div class="toolbar toolbar2">
+      <label class="chk"><input type="checkbox" id="chkGroupBy" checked> Group by Booked &amp; Vacant Resource</label>
+      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ แสดงเฉพาะ Booking Conflict</label>
+    </div>
+
+    <div class="os-scroll-wrap" id="osScrollWrap">
+      <table class="os-table" id="osTable">
+        <thead id="osThead"></thead>
+        <tbody id="osTbody"><tr><td class="loading">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MANAGE BOOKING MODAL ============ -->
+<div id="mbOverlay" class="overlay hidden">
+  <div class="modal wide">
+    <div class="modal-head">
+      <h3 id="mbTitle">Manage Booking</h3>
+      <button class="x" onclick="closeMB()">×</button>
+    </div>
+    <div class="modal-body">
+      <table class="mini-table">
+        <thead>
+          <tr>
+            <th>Project</th><th>Phase</th><th>PQA Lead</th>
+            <th>Start</th><th>End</th><th>MD</th><th class="center">Action</th>
+          </tr>
+        </thead>
+        <tbody id="mbRows"><tr><td colspan="7" class="loading">กำลังโหลด...</td></tr></tbody>
+      </table>
+
+      <div id="mbMdSummary" class="md-summary"></div>
+
+      <div id="mbAddRow" class="add-row hidden">
+        <div class="mb-grid">
+          <div class="field">
+            <label>Project</label>
+            <select id="mbProject"></select>
+          </div>
+          <div class="field">
+            <label>Phase</label>
+            <select id="mbPhase"></select>
+          </div>
+          <div class="field">
+            <label>Start Date</label>
+            <input id="mbStart" placeholder="dd/mm/yyyy" maxlength="10">
+          </div>
+          <div class="field">
+            <label>End Date</label>
+            <input id="mbEnd" placeholder="dd/mm/yyyy" maxlength="10">
+          </div>
+          <div class="field">
+            <label>MD</label>
+            <select id="mbMd">
+              <option value="1">1 (เต็มวัน)</option>
+              <option value="0.5">0.5 (ครึ่งวัน)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-err" id="mbAddError"></div>
+        <div class="add-row-actions">
+          <button class="btn" onclick="mbCancelAdd()">ยกเลิก</button>
+          <button class="btn accent" id="mbSaveBtn" onclick="mbSaveAdd()">บันทึก</button>
+        </div>
+      </div>
+
+      <button class="btn accent sm" id="mbAddBtn" onclick="mbStartAdd()">➕ Add Booking</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeMB()">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LEAVE PLAN MODAL ============ -->
+<div id="lpOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="lpTitle">Leave Plan</h3>
+      <button class="x" onclick="closeLP()">×</button>
+    </div>
+    <div class="modal-body">
+      <table class="mini-table">
+        <thead>
+          <tr><th>Leave Type</th><th>Start Date</th><th>End Date</th><th class="center">Action</th></tr>
+        </thead>
+        <tbody id="lpRows"><tr><td colspan="4" class="loading">กำลังโหลด...</td></tr></tbody>
+      </table>
+
+      <div id="lpAddRow" class="add-row hidden">
+        <div class="lp-grid">
+          <div class="field">
+            <label>Leave Type</label>
+            <select id="lpType">
+              <option value="FullDay">FullDay</option>
+              <option value="Morning">Morning</option>
+              <option value="Afternoon">Afternoon</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start Date</label>
+            <input id="lpStart" placeholder="dd/mm/yyyy" maxlength="10">
+          </div>
+          <div class="field">
+            <label>End Date</label>
+            <input id="lpEnd" placeholder="dd/mm/yyyy" maxlength="10">
+          </div>
+        </div>
+        <div class="form-err" id="lpAddError"></div>
+        <div class="add-row-actions">
+          <button class="btn" onclick="lpCancelAdd()">ยกเลิก</button>
+          <button class="btn accent" id="lpSaveBtn" onclick="lpSaveAdd()">บันทึก</button>
+        </div>
+      </div>
+
+      <button class="btn accent sm" id="lpAddBtn" onclick="lpStartAdd()">➕ Add Leave</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeLP()">ปิด</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import {
+  supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
+  leaveMD, LEAVE_ABBR, isWknd, loadHolidays
+} from './common.js';
+
+/* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
+const DEFAULT_ROLE_MAP = {
+  SENIOR: { name: '1.Senior Tester', rank: 1 },
+  TESTER: { name: '2.Tester',        rank: 2 },
+  JUNIOR: { name: '3.Junior Tester', rank: 3 }
+};
+const DEFAULT_PHASE_MAP = {
+  SIT:     { name: 'SIT',      sort: 10 },
+  TCPREP:  { name: 'TC Prep',  sort: 20 },
+  UAT:     { name: 'UAT',      sort: 30 },
+  REG:     { name: 'Reg',      sort: 40 },
+  SUPPORT: { name: 'Support',  sort: 50 }
+};
+
+/* ============ STATE ============ */
+const S = {
+  holidays: {},
+  roleMap: {},
+  phaseMap: {},
+  osStaff: [],          // [{resourceId, eid, fullName, nickname, nicknameName, roleCode, skills, endDate}]
+  osByResourceId: {},
+  projMap: {},           // project_key -> {name, uatLead}
+  projectsActive: [],    // [{project_key, project_name}]
+  phasesByProject: {},   // project_key -> [{phase_code, phase_label, start_date, end_date}]
+  bookings: [],
+  leaves: [],
+  bookingsByResource: {},
+  leavesByResource: {},
+  range: { s: null, e: null }
+};
+
+// Manage Booking modal globals
+let MB_NAME = null;   // resourceId
+let MB_DATE = null;   // 'yyyy-MM-dd'
+let MB_EDIT_ID = null; // booking_id ที่กำลังแก้ (null = add mode)
+
+// Leave Plan modal globals
+let LP_RESOURCE_ID = null;
+let LP_RECORDS = [];
+let LP_EDIT_ID = null;
+
+/* ============ HELPERS ============ */
+function fmtMD(v) {
+  if (v == null || v === '') return '0';
+  const n = Number(v);
+  if (isNaN(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function addDaysToDate(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function addDaysStr(ds, n) {
+  return d2s(addDaysToDate(new Date(ds + 'T00:00:00'), n));
+}
+
+function monthLabel(ds) {
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const [y, m] = ds.split('-');
+  return `${names[Number(m) - 1]} ${y}`;
+}
+
+function roleLabel(roleCode) {
+  return (S.roleMap[roleCode] || {}).name || roleCode || '';
+}
+
+function getDayRange() {
+  const days = [];
+  let d = new Date(S.range.s + 'T00:00:00');
+  const end = new Date(S.range.e + 'T00:00:00');
+  while (d <= end) {
+    days.push(d2s(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * แปลง error จาก RPC/RLS ให้เป็นข้อความไทยที่เข้าใจง่าย
+ * - can_write() ปฏิเสธ / RLS policy violation → toast "ไม่มีสิทธิ์แก้ไขข้อมูล"
+ * - fn_save_booking / fn_save_bookings_batch คืนวันที่ MD เกิน (yyyy-mm-dd ในข้อความ) → error ใต้ฟอร์ม
+ * - อื่นๆ → error ใต้ฟอร์ม (หรือ toast ถ้าไม่มี errEl)
+ */
+function handleWriteError(error, errEl) {
+  const msg = (error && error.message) || String(error || '');
+  if (
+    (error && error.code === '42501') ||
+    /row-level security/i.test(msg) ||
+    /สิทธิ์/i.test(msg)
+  ) {
+    toast('ไม่มีสิทธิ์แก้ไขข้อมูล', true);
+    return;
+  }
+  const dates = msg.match(/\d{4}-\d{2}-\d{2}/g);
+  if (dates && dates.length) {
+    const disp = [...new Set(dates)].map(dDispShort).join(', ');
+    const text = `วันที่ ${disp} มีการ Booking เกิน MD ให้ปรับปรุง Start Date, End Date`;
+    if (errEl) errEl.textContent = text; else toast(text, true);
+    return;
+  }
+  const text = 'บันทึกไม่สำเร็จ: ' + msg;
+  if (errEl) errEl.textContent = text; else toast(text, true);
+}
+
+/* ============ AUTH ============ */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังเข้าสู่ระบบ...';
+  $('loginErr').textContent = '';
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: $('email').value.trim(),
+    password: $('password').value
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'เข้าสู่ระบบ';
+
+  if (error) {
+    $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+  }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+});
+
+supabase.auth.onAuthStateChange((_evt, session) => {
+  if (session) showApp(session);
+  else showLogin();
+});
+
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) showApp(data.session);
+})();
+
+function showLogin() {
+  $('app').classList.add('hidden');
+  $('loginPage').classList.remove('hidden');
+}
+
+async function showApp(session) {
+  $('loginPage').classList.add('hidden');
+  $('app').classList.remove('hidden');
+
+  let who = session.user.email;
+  let role = '';
+  const { data: u } = await supabase.from('app_user').select('display_name,app_role')
+    .eq('email', session.user.email).maybeSingle();
+  if (u) {
+    who = u.display_name;
+    role = u.app_role;
+  }
+  $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
+
+  await loadAll();
+}
+
+/* ============ LOAD MASTER + RANGE DATA ============ */
+function setDefaultRangeIfEmpty() {
+  if (S.range.s && S.range.e) return;
+  const today = new Date();
+  S.range = {
+    s: d2s(addDaysToDate(today, -10)),
+    e: d2s(addDaysToDate(today, 30))
+  };
+  $('fStart').value = dDisp(S.range.s);
+  $('fEnd').value = dDisp(S.range.e);
+}
+
+async function loadAll() {
+  $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
+  try {
+    const [holidays, roleRows, phaseRows, staffRows, resRows, projRows, phRows] = await Promise.all([
+      loadHolidays(),
+      supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
+      supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
+      supabase.from('outsource_staff')
+        .select('eid,en_fullname,nickname,nickname_name,role_code,skills,end_date,is_active')
+        .eq('is_active', true),
+      supabase.from('resource').select('resource_id,outsource_eid')
+        .eq('resource_type', 'outsource').eq('is_active', true),
+      supabase.from('v_project_wide').select('project_key,project_name,uat_lead').eq('is_active', true),
+      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date')
+    ]);
+
+    S.holidays = holidays || {};
+
+    S.roleMap = {};
+    (roleRows.data || []).forEach((r, i) => {
+      S.roleMap[r.role_code] = { name: r.role_name, rank: r.sort_order ?? i };
+    });
+    if (!Object.keys(S.roleMap).length) S.roleMap = DEFAULT_ROLE_MAP;
+
+    S.phaseMap = {};
+    (phaseRows.data || []).forEach((p, i) => {
+      S.phaseMap[p.phase_code] = { name: p.phase_name, sort: p.sort_order ?? i };
+    });
+    if (!Object.keys(S.phaseMap).length) S.phaseMap = DEFAULT_PHASE_MAP;
+
+    const eidToResId = {};
+    (resRows.data || []).forEach(r => { eidToResId[r.outsource_eid] = r.resource_id; });
+
+    S.osStaff = (staffRows.data || [])
+      .map(s => ({
+        resourceId: eidToResId[s.eid],
+        eid: s.eid,
+        fullName: s.en_fullname,
+        nickname: s.nickname,
+        nicknameName: s.nickname_name,
+        roleCode: s.role_code,
+        skills: s.skills || '',
+        endDate: s.end_date
+      }))
+      .filter(p => !!p.resourceId); // ต้องมีแถวใน resource ผูกอยู่ (สร้างจาก sync trigger)
+
+    S.osByResourceId = {};
+    S.osStaff.forEach(p => { S.osByResourceId[p.resourceId] = p; });
+
+    S.projMap = {};
+    (projRows.data || []).forEach(p => {
+      S.projMap[p.project_key] = { name: p.project_name, uatLead: p.uat_lead };
+    });
+    S.projectsActive = (projRows.data || [])
+      .map(p => ({ project_key: p.project_key, project_name: p.project_name }))
+      .sort((a, b) => (a.project_name || '').localeCompare(b.project_name || ''));
+
+    S.phasesByProject = {};
+    (phRows.data || []).forEach(ph => {
+      if (!S.projMap[ph.project_key]) return; // เฉพาะ project ที่ active
+      (S.phasesByProject[ph.project_key] = S.phasesByProject[ph.project_key] || []).push(ph);
+    });
+
+    setDefaultRangeIfEmpty();
+    await reloadRangeData();
+    renderGrid();
+  } catch (e) {
+    $('osTbody').innerHTML =
+      `<tr><td class="loading" style="color:var(--danger)">โหลดข้อมูลไม่สำเร็จ: ${esc(e.message || String(e))}</td></tr>`;
+  }
+}
+
+async function reloadRangeData() {
+  const s = S.range.s, e = S.range.e;
+  const [bkRes, lvRes] = await Promise.all([
+    supabase.from('booking')
+      .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md,is_active')
+      .eq('is_active', true).lte('start_date', e).gte('end_date', s),
+    supabase.from('leave_plan')
+      .select('leave_id,resource_id,start_date,end_date,leave_slot,md,is_active,is_deleted,source_system')
+      .eq('is_active', true).eq('is_deleted', false).lte('start_date', e).gte('end_date', s)
+  ]);
+  if (bkRes.error) { toast('โหลด Booking ไม่สำเร็จ: ' + bkRes.error.message, true); }
+  if (lvRes.error) { toast('โหลด Leave ไม่สำเร็จ: ' + lvRes.error.message, true); }
+  S.bookings = bkRes.data || [];
+  S.leaves = lvRes.data || [];
+  reindexBookings();
+}
+
+function reindexBookings() {
+  S.bookingsByResource = {};
+  S.bookings.forEach(b => {
+    (S.bookingsByResource[b.resource_id] = S.bookingsByResource[b.resource_id] || []).push(b);
+  });
+  S.leavesByResource = {};
+  S.leaves.forEach(l => {
+    (S.leavesByResource[l.resource_id] = S.leavesByResource[l.resource_id] || []).push(l);
+  });
+}
+
+/* ============ GRID RENDER ============ */
+function renderGrid() {
+  if (!S.range.s || !S.range.e) return;
+  const days = getDayRange();
+  renderThead(days);
+  renderTbody(days);
+}
+
+function renderThead(days) {
+  const todayStr = d2s(new Date());
+
+  const groups = [];
+  days.forEach(ds => {
+    const ym = ds.slice(0, 7);
+    const last = groups[groups.length - 1];
+    if (last && last.ym === ym) last.count++;
+    else groups.push({ ym, count: 1, label: monthLabel(ds) });
+  });
+
+  const row1 = `<tr>
+    <th class="corner col-name" rowspan="3">Name</th>
+    <th class="corner col-skills" rowspan="3">Skills</th>
+    <th class="corner col-action" rowspan="3">☂️</th>
+    ${groups.map(g => `<th class="th-month" colspan="${g.count}">${esc(g.label)}</th>`).join('')}
+  </tr>`;
+
+  const row2 = `<tr>
+    ${days.map(ds => {
+      const d = new Date(ds + 'T00:00:00');
+      const wknd = isWknd(d, S.holidays);
+      const today = ds === todayStr;
+      return `<th class="th-day${wknd ? ' wknd' : ''}${today ? ' today-col' : ''}" title="${dDisp(ds)}">${String(d.getDate()).padStart(2, '0')}</th>`;
+    }).join('')}
+  </tr>`;
+
+  const row3 = `<tr>
+    ${days.map(ds => {
+      const wknd = isWknd(new Date(ds + 'T00:00:00'), S.holidays);
+      const total = S.bookings
+        .filter(b => ds >= b.start_date && ds <= b.end_date)
+        .reduce((sum, b) => sum + Number(b.md), 0);
+      return `<th class="th-count${wknd ? ' wknd' : ''}">${total ? fmtMD(total) : ''}</th>`;
+    }).join('')}
+  </tr>`;
+
+  $('osThead').innerHTML = row1 + row2 + row3;
+}
+
+function matchesFilters(p) {
+  const nameQ = $('fName').value.trim().toLowerCase();
+  const skillQ = $('fSkills').value.trim().toLowerCase();
+  if (nameQ) {
+    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''}`.toLowerCase();
+    if (!hay.includes(nameQ)) return false;
+  }
+  if (skillQ) {
+    if (!(p.skills || '').toLowerCase().includes(skillQ)) return false;
+  }
+  return true;
+}
+
+function computeConflictMap(days) {
+  const map = {};
+  S.osStaff.forEach(p => {
+    const bk = S.bookingsByResource[p.resourceId] || [];
+    const lv = S.leavesByResource[p.resourceId] || [];
+    if (!bk.length && !lv.length) return;
+    const bad = [];
+    days.forEach(ds => {
+      const bkMD = bk.filter(b => ds >= b.start_date && ds <= b.end_date)
+        .reduce((s, b) => s + Number(b.md), 0);
+      const lvRow = lv.find(l => ds >= l.start_date && ds <= l.end_date);
+      const lvMD = lvRow ? Number(lvRow.md) : 0;
+      if (bkMD + lvMD > 1.0) bad.push(ds);
+    });
+    if (bad.length) map[p.resourceId] = bad;
+  });
+  return map;
+}
+
+function buildDayCell(p, ds) {
+  const d = new Date(ds + 'T00:00:00');
+  const wknd = isWknd(d, S.holidays);
+  const bk = (S.bookingsByResource[p.resourceId] || []).filter(b => ds >= b.start_date && ds <= b.end_date);
+  const bkMD = bk.reduce((s, b) => s + Number(b.md), 0);
+  const leave = (S.leavesByResource[p.resourceId] || []).find(l => ds >= l.start_date && ds <= l.end_date);
+  const lvMD = leave ? Number(leave.md) : 0;
+
+  let cls = 'td-day';
+  let content = '';
+  let clickable = true;
+
+  if (wknd) {
+    cls += ' wknd';
+    clickable = false;
+  } else if (leave) {
+    cls += ' leave';
+    content = LEAVE_ABBR[leave.leave_slot] || '';
+  } else if (bkMD >= 1) {
+    cls += ' full';
+  } else if (bkMD === 0.5) {
+    cls += ' half';
+    content = '0.5';
+  }
+
+  const titleLines = [];
+  bk.forEach(b => {
+    const proj = S.projMap[b.project_key] || {};
+    const ph = S.phaseMap[b.phase_code] || {};
+    titleLines.push(`${proj.name || b.project_key} | ${ph.name || b.phase_code} [MD:${fmtMD(b.md)}]`);
+  });
+  if (leave) titleLines.push(`Leave: ${leave.leave_slot}`);
+  const titleAttr = titleLines.length ? ` title="${esc(titleLines.join('\n'))}"` : '';
+  const onclick = clickable ? ` onclick="openManageBooking('${p.resourceId}','${ds}')"` : '';
+
+  return `<td class="${cls}"${titleAttr}${onclick}>${content}</td>`;
+}
+
+function buildRow(p, days, conflictMap) {
+  const conflictDates = conflictMap[p.resourceId] || [];
+  const isConflict = conflictDates.length > 0;
+  const roleName = roleLabel(p.roleCode);
+  const nameTitle = isConflict
+    ? ` title="มีวันที่ Book เกิน MD: ${esc(conflictDates.map(dDispShort).join(', '))}"`
+    : '';
+  const nameCls = isConflict ? 'os-name conflict' : 'os-name';
+  const dayCells = days.map(ds => buildDayCell(p, ds)).join('');
+
+  return `<tr>
+    <td class="col-name sticky-l0">
+      <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(p.nicknameName || p.fullName)}</div>
+      <div class="role-badge">${esc(roleName)}</div>
+    </td>
+    <td class="col-skills sticky-l1" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
+    <td class="col-action sticky-l2 center">
+      <button class="btn sm" onclick="openLeavePlan('${p.resourceId}')">☂️</button>
+    </td>
+    ${dayCells}
+  </tr>`;
+}
+
+function renderTbody(days) {
+  const conflictMap = computeConflictMap(days);
+  let list = S.osStaff.filter(matchesFilters);
+
+  const chkConflict = $('chkConflict').checked;
+  if (chkConflict) list = list.filter(p => (conflictMap[p.resourceId] || []).length > 0);
+
+  const withMeta = list.map(p => ({
+    p,
+    rank: (S.roleMap[p.roleCode] || {}).rank ?? 99,
+    booked: !!(S.bookingsByResource[p.resourceId] && S.bookingsByResource[p.resourceId].length)
+  }));
+
+  const sortFn = (a, b) => (a.rank - b.rank) || (a.p.nicknameName || '').localeCompare(b.p.nicknameName || '');
+  const groupBy = $('chkGroupBy').checked;
+  const colspan = 3 + days.length;
+  let html = '';
+
+  if (groupBy) {
+    const bookedList = withMeta.filter(x => x.booked).sort(sortFn);
+    const vacantList = withMeta.filter(x => !x.booked).sort(sortFn);
+    if (bookedList.length) {
+      html += `<tr class="grp-sep"><td colspan="${colspan}">📌 Booked (${bookedList.length} คน)</td></tr>`;
+      html += bookedList.map(x => buildRow(x.p, days, conflictMap)).join('');
+    }
+    if (vacantList.length) {
+      html += `<tr class="grp-sep"><td colspan="${colspan}">⭕ Vacant (${vacantList.length} คน)</td></tr>`;
+      html += vacantList.map(x => buildRow(x.p, days, conflictMap)).join('');
+    }
+  } else {
+    html = withMeta.sort(sortFn).map(x => buildRow(x.p, days, conflictMap)).join('');
+  }
+
+  if (!html) {
+    html = chkConflict
+      ? `<tr><td colspan="${colspan}" class="loading">ไม่พบ Booking Conflict</td></tr>`
+      : `<tr><td colspan="${colspan}" class="loading">ไม่พบข้อมูล</td></tr>`;
+  }
+
+  $('osTbody').innerHTML = html;
+  $('osCount').textContent = list.length;
+}
+
+/* ============ TOOLBAR EVENTS ============ */
+$('refreshBtn').addEventListener('click', loadAll);
+$('fName').addEventListener('input', renderGrid);
+$('fSkills').addEventListener('input', renderGrid);
+$('chkGroupBy').addEventListener('change', renderGrid);
+$('chkConflict').addEventListener('change', renderGrid);
+
+async function onRangeChange() {
+  const s = parseInputDate($('fStart').value);
+  const e = parseInputDate($('fEnd').value);
+  if (!s || !e) { toast('รูปแบบวันที่ไม่ถูกต้อง กรุณากรอก dd/mm/yyyy', true); return; }
+  if (s > e) { toast('Start Date ต้องไม่เกิน End Date', true); return; }
+  S.range = { s, e };
+  $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
+  await reloadRangeData();
+  renderGrid();
+}
+$('fStart').addEventListener('change', onRangeChange);
+$('fEnd').addEventListener('change', onRangeChange);
+
+/* ============ MANAGE BOOKING MODAL ============ */
+window.openManageBooking = function (resourceId, ds) {
+  const p = S.osByResourceId[resourceId];
+  if (!p) return;
+  MB_NAME = resourceId;
+  MB_DATE = ds;
+  $('mbTitle').textContent = `Manage Booking | ${p.nickname || p.fullName} | ${dDisp(ds)}`;
+  mbCancelAdd();
+  mbRenderTable();
+  mbRefreshSummary();
+  $('mbOverlay').classList.remove('hidden');
+};
+
+window.closeMB = function () {
+  $('mbOverlay').classList.add('hidden');
+};
+
+function mbBookingsToday() {
+  return (S.bookingsByResource[MB_NAME] || []).filter(b => MB_DATE >= b.start_date && MB_DATE <= b.end_date);
+}
+
+function mbRenderTable() {
+  const rows = mbBookingsToday().sort((a, b) =>
+    a.start_date.localeCompare(b.start_date) ||
+    ((S.projMap[a.project_key] || {}).name || '').localeCompare((S.projMap[b.project_key] || {}).name || '')
+  );
+  if (!rows.length) {
+    $('mbRows').innerHTML = '<tr><td colspan="7" class="loading">ไม่มี Booking ในวันนี้</td></tr>';
+    return;
+  }
+  $('mbRows').innerHTML = rows.map(b => {
+    const proj = S.projMap[b.project_key] || {};
+    const ph = S.phaseMap[b.phase_code] || {};
+    return `<tr>
+      <td>${esc(proj.name || b.project_key)}</td>
+      <td>${esc(ph.name || b.phase_code)}</td>
+      <td>${proj.uatLead ? esc(proj.uatLead) : '<span class="muted">—</span>'}</td>
+      <td>${dDisp(b.start_date)}</td>
+      <td>${dDisp(b.end_date)}</td>
+      <td>${fmtMD(b.md)}</td>
+      <td class="center">
+        <button class="btn sm" onclick="mbEditInline('${b.booking_id}')">✏️</button>
+        <button class="btn sm danger" onclick="mbDeleteBooking('${b.booking_id}')">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function mbRefreshSummary() {
+  const bkMD = mbBookingsToday().reduce((s, b) => s + Number(b.md), 0);
+  const lv = (S.leavesByResource[MB_NAME] || []).find(l => MB_DATE >= l.start_date && MB_DATE <= l.end_date);
+  const lvMD = lv ? Number(lv.md) : 0;
+  const total = bkMD + lvMD;
+  $('mbMdSummary').innerHTML = `MD รวมวันนี้: <b>${fmtMD(total)}</b> (Booking: ${fmtMD(bkMD)} + Leave: ${fmtMD(lvMD)})`;
+  $('mbMdSummary').className = 'md-summary' + (total >= 1 ? ' full' : '');
+  const addBtn = $('mbAddBtn');
+  addBtn.disabled = total >= 1;
+  addBtn.title = total >= 1 ? 'MD เต็มแล้วสำหรับวันนี้' : '';
+}
+
+function activeProjectsCoveringDate(ds) {
+  return S.projectsActive.filter(p =>
+    (S.phasesByProject[p.project_key] || []).some(ph =>
+      ph.start_date && ph.end_date && ds >= ph.start_date && ds <= ph.end_date
+    )
+  );
+}
+
+function phaseOptionsHtml(phases) {
+  return phases.map(ph => {
+    const name = (S.phaseMap[ph.phase_code] || {}).name || ph.phase_code;
+    const label = ph.phase_label ? ` - ${esc(ph.phase_label)}` : '';
+    return `<option value="${esc(ph.phase_code)}">${esc(name)}${label}</option>`;
+  }).join('');
+}
+
+window.mbUpdatePhases = function () {
+  const pk = $('mbProject').value;
+  const phases = (S.phasesByProject[pk] || []).filter(ph =>
+    ph.start_date && ph.end_date && MB_DATE >= ph.start_date && MB_DATE <= ph.end_date
+  );
+  $('mbPhase').innerHTML = phases.length
+    ? phaseOptionsHtml(phases)
+    : '<option value="">— ไม่มีเฟสที่ครอบคลุมวันนี้ —</option>';
+  mbFillDates();
+};
+
+window.mbFillDates = function () {
+  const pk = $('mbProject').value;
+  const phCode = $('mbPhase').value;
+  const ph = (S.phasesByProject[pk] || []).find(x => x.phase_code === phCode);
+  if (ph) {
+    $('mbStart').value = dDisp(ph.start_date);
+    $('mbEnd').value = dDisp(ph.end_date);
+  }
+};
+
+$('mbProject').addEventListener('change', window.mbUpdatePhases);
+$('mbPhase').addEventListener('change', window.mbFillDates);
+
+window.mbStartAdd = function () {
+  MB_EDIT_ID = null;
+  $('mbAddError').textContent = '';
+  $('mbProject').disabled = false;
+  const projs = activeProjectsCoveringDate(MB_DATE);
+  $('mbProject').innerHTML = projs.length
+    ? projs.map(p => `<option value="${esc(p.project_key)}">${esc(p.project_name)}</option>`).join('')
+    : '<option value="">— ไม่มี Project ที่ครอบคลุมวันนี้ —</option>';
+  window.mbUpdatePhases();
+  $('mbMd').value = '1';
+  $('mbAddRow').classList.remove('hidden');
+  $('mbAddBtn').classList.add('hidden');
+};
+
+window.mbEditInline = function (bookingId) {
+  const b = (S.bookingsByResource[MB_NAME] || []).find(x => x.booking_id === bookingId);
+  if (!b) return;
+  MB_EDIT_ID = bookingId;
+  $('mbAddError').textContent = '';
+  const proj = S.projMap[b.project_key] || {};
+  $('mbProject').innerHTML = `<option value="${esc(b.project_key)}">${esc(proj.name || b.project_key)}</option>`;
+  $('mbProject').value = b.project_key;
+  $('mbProject').disabled = true;
+  const phases = S.phasesByProject[b.project_key] || [];
+  $('mbPhase').innerHTML = phaseOptionsHtml(phases);
+  $('mbPhase').value = b.phase_code;
+  $('mbStart').value = dDisp(b.start_date);
+  $('mbEnd').value = dDisp(b.end_date);
+  $('mbMd').value = String(b.md);
+  $('mbAddRow').classList.remove('hidden');
+  $('mbAddBtn').classList.add('hidden');
+};
+
+window.mbCancelAdd = function () {
+  MB_EDIT_ID = null;
+  $('mbAddRow').classList.add('hidden');
+  $('mbAddBtn').classList.remove('hidden');
+  $('mbAddError').textContent = '';
+  $('mbProject').disabled = false;
+};
+
+window.mbSaveAdd = async function () {
+  const err = $('mbAddError');
+  err.textContent = '';
+  const pk = $('mbProject').value;
+  const ph = $('mbPhase').value;
+  const s = parseInputDate($('mbStart').value);
+  const e = parseInputDate($('mbEnd').value);
+  const md = Number($('mbMd').value);
+
+  if (!pk || !ph) { err.textContent = 'กรุณาเลือก Project และ Phase'; return; }
+  if (!s || !e) { err.textContent = 'กรุณากรอกวันที่ในรูปแบบ dd/mm/yyyy'; return; }
+  if (s > e) { err.textContent = 'Start Date ต้องไม่เกิน End Date'; return; }
+
+  const btn = $('mbSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
+
+  const { error } = await supabase.rpc('fn_save_booking', {
+    p_booking_id: MB_EDIT_ID,
+    p_project_key: pk,
+    p_resource_id: MB_NAME,
+    p_phase_code: ph,
+    p_start: s,
+    p_end: e,
+    p_md: md
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'บันทึก';
+
+  if (error) { handleWriteError(error, err); return; }
+
+  toast(MB_EDIT_ID ? 'อัปเดต Booking แล้ว ✓' : 'เพิ่ม Booking แล้ว ✓');
+  window.mbCancelAdd();
+  await reloadRangeData();
+  mbRenderTable();
+  mbRefreshSummary();
+  renderGrid();
+};
+
+window.mbDeleteBooking = async function (bookingId) {
+  if (!confirm('ยืนยันลบ Booking นี้?')) return;
+  const { error } = await supabase.from('booking').update({ is_active: false }).eq('booking_id', bookingId);
+  if (error) { handleWriteError(error, null); return; }
+  toast('ลบ Booking แล้ว ✓');
+  await reloadRangeData();
+  mbRenderTable();
+  mbRefreshSummary();
+  renderGrid();
+};
+
+/* ============ LEAVE PLAN MODAL ============ */
+window.openLeavePlan = async function (resourceId) {
+  const p = S.osByResourceId[resourceId];
+  if (!p) return;
+  LP_RESOURCE_ID = resourceId;
+  $('lpTitle').textContent = `Leave Plan | ${p.nickname ? p.nickname + ' : ' : ''}${p.fullName} | ${roleLabel(p.roleCode)}`;
+  window.lpCancelAdd();
+  $('lpRows').innerHTML = '<tr><td colspan="4" class="loading">กำลังโหลด...</td></tr>';
+  $('lpOverlay').classList.remove('hidden');
+  await lpLoad();
+};
+
+window.closeLP = function () {
+  $('lpOverlay').classList.add('hidden');
+};
+
+async function lpLoad() {
+  const { data, error } = await supabase.from('leave_plan')
+    .select('leave_id,resource_id,start_date,end_date,leave_slot,md,is_active,is_deleted,source_system')
+    .eq('resource_id', LP_RESOURCE_ID)
+    .eq('is_active', true)
+    .eq('is_deleted', false)
+    .order('start_date', { ascending: false });
+  if (error) {
+    toast('โหลด Leave Plan ไม่สำเร็จ: ' + error.message, true);
+    LP_RECORDS = [];
+  } else {
+    LP_RECORDS = data || [];
+  }
+  lpRenderTable();
+}
+
+function lpRenderTable() {
+  if (!LP_RECORDS.length) {
+    $('lpRows').innerHTML = '<tr><td colspan="4" class="loading">ไม่มีข้อมูลการลา</td></tr>';
+    return;
+  }
+  $('lpRows').innerHTML = LP_RECORDS.map(r => {
+    const readOnly = r.source_system === 'sharepoint';
+    const actions = readOnly
+      ? `<span class="muted" title="ข้อมูลจาก SharePoint แก้ที่ต้นทาง">🔒</span>`
+      : `<button class="btn sm" onclick="lpEditInline(${r.leave_id})">✏️</button>
+         <button class="btn sm danger" onclick="lpDeleteRow(${r.leave_id})">🗑️</button>`;
+    return `<tr>
+      <td>${esc(r.leave_slot)}</td>
+      <td>${dDisp(r.start_date)}</td>
+      <td>${dDisp(r.end_date)}</td>
+      <td class="center">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+function lpOverlapDates(start, end, excludeId) {
+  const bad = [];
+  LP_RECORDS.forEach(r => {
+    if (excludeId && r.leave_id === excludeId) return;
+    if (start <= r.end_date && end >= r.start_date) {
+      const os = start > r.start_date ? start : r.start_date;
+      const oe = end < r.end_date ? end : r.end_date;
+      let d = os;
+      while (d <= oe) {
+        bad.push(d);
+        d = addDaysStr(d, 1);
+      }
+    }
+  });
+  return bad;
+}
+
+window.lpStartAdd = function () {
+  LP_EDIT_ID = null;
+  $('lpAddError').textContent = '';
+  $('lpType').value = 'FullDay';
+  $('lpStart').value = '';
+  $('lpEnd').value = '';
+  $('lpAddRow').classList.remove('hidden');
+  $('lpAddBtn').classList.add('hidden');
+};
+
+window.lpEditInline = function (leaveId) {
+  const r = LP_RECORDS.find(x => x.leave_id === leaveId);
+  if (!r) return;
+  LP_EDIT_ID = leaveId;
+  $('lpAddError').textContent = '';
+  $('lpType').value = r.leave_slot;
+  $('lpStart').value = dDisp(r.start_date);
+  $('lpEnd').value = dDisp(r.end_date);
+  $('lpAddRow').classList.remove('hidden');
+  $('lpAddBtn').classList.add('hidden');
+};
+
+window.lpCancelAdd = function () {
+  LP_EDIT_ID = null;
+  $('lpAddRow').classList.add('hidden');
+  $('lpAddBtn').classList.remove('hidden');
+  $('lpAddError').textContent = '';
+};
+
+window.lpSaveAdd = async function () {
+  const err = $('lpAddError');
+  err.textContent = '';
+  const type = $('lpType').value;
+  const s = parseInputDate($('lpStart').value);
+  const e = parseInputDate($('lpEnd').value);
+
+  if (!s || !e) { err.textContent = 'กรุณากรอกวันที่ในรูปแบบ dd/mm/yyyy'; return; }
+  if (s > e) { err.textContent = 'Start Date ต้องไม่เกิน End Date'; return; }
+
+  const bad = lpOverlapDates(s, e, LP_EDIT_ID);
+  if (bad.length) {
+    err.textContent = `วันที่ ${[...new Set(bad)].map(dDispShort).join(', ')} มีการลาซ้อนกันอยู่แล้ว`;
+    return;
+  }
+
+  const btn = $('lpSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
+
+  const md = leaveMD(type);
+  let res;
+  if (LP_EDIT_ID) {
+    res = await supabase.from('leave_plan')
+      .update({ start_date: s, end_date: e, leave_slot: type, md })
+      .eq('leave_id', LP_EDIT_ID);
+  } else {
+    res = await supabase.from('leave_plan').insert({
+      leave_id: Date.now(),
+      resource_id: LP_RESOURCE_ID,
+      start_date: s,
+      end_date: e,
+      leave_slot: type,
+      md,
+      is_active: true,
+      is_deleted: false,
+      source_system: 'app'
+    });
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'บันทึก';
+
+  if (res.error) { handleWriteError(res.error, err); return; }
+
+  toast(LP_EDIT_ID ? 'อัปเดต Leave แล้ว ✓' : 'เพิ่ม Leave แล้ว ✓');
+  window.lpCancelAdd();
+  await lpLoad();
+  await reloadRangeData();
+  renderGrid();
+};
+
+window.lpDeleteRow = async function (leaveId) {
+  if (!confirm('ยืนยันลบ Leave นี้?')) return;
+  const { error } = await supabase.from('leave_plan').update({ is_active: false }).eq('leave_id', leaveId);
+  if (error) { handleWriteError(error, null); return; }
+  toast('ลบ Leave แล้ว ✓');
+  await lpLoad();
+  await reloadRangeData();
+  renderGrid();
+};
+</script>
+</body>
+</html>
