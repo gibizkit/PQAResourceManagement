@@ -378,6 +378,15 @@
       <button class="x" onclick="closeLP()">×</button>
     </div>
     <div class="modal-body">
+      <div class="field">
+        <label>Skills</label>
+        <textarea id="lpSkills" rows="3" placeholder="ทักษะ..."></textarea>
+      </div>
+      <button class="btn accent sm" id="lpSkillsSaveBtn" onclick="lpSaveSkills()">💾 Save Skills</button>
+      <div class="form-err" id="lpSkillsError"></div>
+
+      <div class="section-title">วันลา (Leave Plan)</div>
+
       <table class="mini-table">
         <thead>
           <tr><th>Leave Type</th><th>Start Date</th><th>End Date</th><th class="center">Action</th></tr>
@@ -730,7 +739,7 @@ function renderThead(days) {
   const row1 = `<tr>
     <th class="corner col-name" rowspan="3">Name</th>
     <th class="corner col-skills" rowspan="3">Skills</th>
-    <th class="corner col-action" rowspan="3">☂️</th>
+    <th class="corner col-action" rowspan="3">✏️</th>
     ${groups.map(g => `<th class="th-month" colspan="${g.count}">${esc(g.label)}</th>`).join('')}
   </tr>`;
 
@@ -843,7 +852,7 @@ function buildRow(p, days, conflictMap) {
     </td>
     <td class="col-skills sticky-l1" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
     <td class="col-action sticky-l2 center">
-      <button class="btn sm" onclick="openLeavePlan('${p.resourceId}')">☂️</button>
+      <button class="btn sm" onclick="openLeavePlan('${p.resourceId}')">✏️</button>
     </td>
     ${dayCells}
   </tr>`;
@@ -1109,7 +1118,9 @@ window.openLeavePlan = async function (resourceId) {
   const p = S.osByResourceId[resourceId];
   if (!p) return;
   LP_RESOURCE_ID = resourceId;
-  $('lpTitle').textContent = `Leave Plan | ${p.nickname ? p.nickname + ' : ' : ''}${p.fullName} | ${roleLabel(p.roleCode)}`;
+  $('lpTitle').textContent = `Edit | ${p.nickname ? p.nickname + ' : ' : ''}${p.fullName} | ${roleLabel(p.roleCode)}`;
+  $('lpSkills').value = p.skills || '';
+  $('lpSkillsError').textContent = '';
   window.lpCancelAdd();
   $('lpRows').innerHTML = '<tr><td colspan="4" class="loading">กำลังโหลด...</td></tr>';
   $('lpOverlay').classList.remove('hidden');
@@ -1118,6 +1129,38 @@ window.openLeavePlan = async function (resourceId) {
 
 window.closeLP = function () {
   $('lpOverlay').classList.add('hidden');
+};
+
+window.lpSaveSkills = async function () {
+  const p = S.osByResourceId[LP_RESOURCE_ID];
+  if (!p) return;
+  const err = $('lpSkillsError');
+  err.textContent = '';
+  const skills = $('lpSkills').value;
+  const val = skills.trim() || null;
+
+  const btn = $('lpSkillsSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
+
+  const { error } = await supabase.from('outsource_staff')
+    .update({ skills: val })
+    .eq('eid', p.eid);
+
+  if (error) {
+    err.textContent = 'บันทึก Skills ไม่สำเร็จ: ' + error.message;
+    btn.disabled = false;
+    btn.textContent = '💾 Save Skills';
+    return;
+  }
+
+  p.skills = val || '';
+  const staffRow = S.osStaff.find(x => x.eid === p.eid);
+  if (staffRow) staffRow.skills = val || '';
+  renderGrid();
+  toast('บันทึก Skills แล้ว');
+  btn.disabled = false;
+  btn.textContent = '💾 Save Skills';
 };
 
 async function lpLoad() {
