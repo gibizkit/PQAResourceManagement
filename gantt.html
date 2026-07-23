@@ -61,40 +61,61 @@
   .gantt-scroll {
     overflow:auto; max-height:calc(100vh - 250px);
     border:1px solid var(--dk-border); border-radius:12px; background:#fff;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;                 /* Firefox */
+    scrollbar-color: #c8b4a8 transparent;  /* Firefox */
   }
-  table.gantt { border-collapse:separate; border-spacing:0; font-size:12px; }
+  .gantt-scroll::-webkit-scrollbar { height:12px; width:12px; }
+  .gantt-scroll::-webkit-scrollbar-track { background:transparent; }
+  .gantt-scroll::-webkit-scrollbar-thumb { background:#c8b4a8; border-radius:8px; border:3px solid #fff; }
+  .gantt-scroll::-webkit-scrollbar-thumb:hover { background:#b89985; }
+
+  /* table-layout:fixed + a generated <colgroup> (see buildColgroup() in the module script)
+     is what pins column widths — this is what stops the frozen columns from shrinking
+     while scrolling horizontally. The pixel widths below MUST stay in sync with the
+     COL_W constant used to build the colgroup. */
+  table.gantt { border-collapse:separate; border-spacing:0; font-size:12px; table-layout:fixed; }
   table.gantt th, table.gantt td {
     border-right:1px solid var(--dk-border); border-bottom:1px solid var(--dk-border);
     padding:0; box-sizing:border-box;
   }
-  /* sticky columns */
-  .c0 { min-width:236px; width:236px; left:0; }
-  .c1 { min-width:150px; width:150px; left:236px; }
-  .c2 { min-width:64px;  width:64px;  left:386px; }
-  .sticky-col { position:sticky; background:#fff; z-index:5; }
-  thead .sticky-col { z-index:30; background:var(--dk-surface); }
-  thead th { position:sticky; top:0; z-index:20; background:var(--dk-surface);
-    color:var(--dk-text2); font-weight:600; padding:6px 8px; text-align:left; white-space:nowrap; }
-  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:4px 0; }
+  /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
+  .c0 { min-width:200px; width:200px; left:0; }
+  .c1 { min-width:130px; width:130px; left:200px; }
+  .c2 { min-width:48px;  width:48px;  left:330px; }
+  /* clear boundary between the frozen block and the scrolling day columns */
+  .c2 { box-shadow: 2px 0 4px rgba(34,28,21,.08); }
+
+  /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
+  .sticky-col { position:sticky; background:#fff; z-index:6; }                 /* tbody frozen */
+  thead .sticky-col { z-index:25; background:var(--dk-surface); }              /* thead frozen  */
+  thead th { position:sticky; top:0; z-index:15; background:var(--dk-surface); /* thead days    */
+    color:var(--dk-text2); font-weight:600; padding:4px 8px; text-align:left; white-space:nowrap; }
+  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:3px 0; }
   .th-month { text-align:center; font-weight:700; color:var(--dk-text); font-size:11.5px; }
   .th-day.wknd, td.gcell.wknd { background:var(--cell-wknd-hol); color:rgba(255,255,255,.92); }
   .th-day.today-col { outline:2px solid var(--today); outline-offset:-2px; color:var(--today); font-weight:800; }
 
-  td.gcell { min-width:28px; width:28px; height:26px; }
-  /* sticky col cell paddings */
-  td.c0, td.c1, td.c2 { padding:6px 8px; vertical-align:middle; }
+  td.gcell { min-width:28px; width:28px; height:22px; }
+  /* sticky col cell paddings — tightened so phase rows stay compact */
+  td.c0, td.c1, td.c2 { padding:4px 8px; vertical-align:middle; }
 
   /* project summary row */
   tr.prow-sum td { border-top:2px solid var(--dk-accent-d); }
-  .p-name { font-weight:700; color:var(--dk-text); font-size:12.5px; line-height:1.25; }
-  .p-meta { font-size:10.5px; color:var(--dk-text3); margin-top:1px; }
-  .p-lead { font-size:10.5px; color:var(--dk-accent); font-weight:600; }
-  .toggle-btn { border:none; background:none; font-size:14px; cursor:pointer; color:var(--dk-text2); }
+  .p-name { font-weight:700; color:var(--dk-text); font-size:12.5px; line-height:1.25;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .p-meta { font-size:10.5px; color:var(--dk-text3); margin-top:1px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .p-lead-inline { color:var(--dk-accent); font-weight:600; }
+  .toggle-btn { border:none; background:none; font-size:14px; cursor:pointer; color:var(--dk-text2); padding:0; }
   .today-mark { color:var(--dk-text); font-weight:700; }
 
-  .ph-label { font-size:11.5px; font-weight:600; color:var(--dk-text2); }
-  .bk { display:inline-block; margin-top:2px; font-size:11px; font-weight:700; color:var(--dk-text);
-    cursor:pointer; padding:1px 6px; border-radius:6px; background:var(--dk-surface); }
+  /* phase row: label + booked badge on one line */
+  .ph-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .ph-label { font-size:10.5px; font-weight:600; color:var(--dk-text2);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bk { display:inline-flex; align-items:center; flex:0 0 auto; font-size:10.5px; font-weight:700; color:var(--dk-text);
+    cursor:pointer; padding:1px 6px; border-radius:6px; background:var(--dk-surface); white-space:nowrap; }
   .bk:hover { background:var(--dk-hover); }
   .bk.bad { color:#fff; background:var(--conflict); }
 
@@ -289,6 +310,20 @@ const PHASE_META = {
 function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
 function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
 function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
+
+/* Pixel widths for the 3 frozen columns + each day column.
+   MUST stay in sync with .c0/.c1/.c2/.th-day/td.gcell widths in the <style> block —
+   these drive the generated <colgroup> that keeps the frozen columns from shrinking
+   while the table is scrolled horizontally (see buildColgroup()). */
+const COL_W = { c0:200, c1:130, c2:48, day:28 };
+function buildColgroup(dayCount){
+  return '<colgroup>' +
+    `<col style="width:${COL_W.c0}px">` +
+    `<col style="width:${COL_W.c1}px">` +
+    `<col style="width:${COL_W.c2}px">` +
+    new Array(dayCount).fill(`<col style="width:${COL_W.day}px">`).join('') +
+    '</colgroup>';
+}
 
 /* ============ STATE ============ */
 const S = {
@@ -565,7 +600,8 @@ function renderGantt(){
   });
   body += '</tbody>';
 
-  $('ganttScroll').innerHTML = `<table class="gantt">${head}${body}</table>`;
+  const colgroup = buildColgroup(days.length);
+  $('ganttScroll').innerHTML = `<table class="gantt">${colgroup}${head}${body}</table>`;
 }
 
 function summaryRow(p, days){
@@ -588,11 +624,11 @@ function summaryRow(p, days){
     return `<td class="${cls}"${style?` style="${style}"`:''}></td>`;
   }).join('');
 
+  const leadTxt = lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —';
   return `<tr class="prow-sum">
-    <td class="sticky-col c0">
+    <td class="sticky-col c0" title="${esc(p.project_name)}">
       <div class="p-name">${esc(p.project_name)}</div>
-      <div class="p-meta">${esc(pk)}${app?' · '+esc(app):''}</div>
-      <div class="p-lead">${lead?esc(lead.short_name):'<span class="p-meta">— ไม่มี Lead —</span>'}</div>
+      <div class="p-meta">${esc(pk)}${app?' · '+esc(app):''} · ${leadTxt}</div>
     </td>
     <td class="sticky-col c1">${statusPill(p.status)}</td>
     <td class="sticky-col c2" style="text-align:center">
@@ -627,8 +663,10 @@ function phaseRow(p, ph, days){
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col c1">
-      <div class="ph-label">${lbl}</div>
-      <span class="bk${bad?' bad':''}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
+      <div class="ph-row">
+        <span class="ph-label" title="${lbl}">${lbl}</span>
+        <span class="bk${bad?' bad':''}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
+      </div>
     </td>
     <td class="sticky-col c2"></td>
     ${cells}

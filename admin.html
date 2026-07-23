@@ -394,7 +394,9 @@ async function loadData(table) {
   rows.innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
 
   try {
-    const { data, error } = await supabase.from(table).select('*').order('holiday_date' in (await supabase.from(table).select('*').limit(1)) ? 'holiday_date' : 'sort_order', { ascending: true });
+    // holiday ไม่มีคอลัมน์ sort_order — เรียงตามวันที่แทน ตารางอื่นเรียง sort_order
+    const orderCol = table === 'holiday' ? 'holiday_date' : 'sort_order';
+    const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending: true });
 
     if (error) throw error;
 
