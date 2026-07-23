@@ -8,121 +8,143 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="theme.css">
 <style>
-  /* ---- page-local phase / summary colors (theme.css ไม่ได้ประกาศครบ) ---- */
+  /* ============ page-local palette — softer, harmonious phase colors ============ */
   :root {
-    --ph-support: #CBB8A0;
-    --ph-extra:   #A88C6B;
-    --ph-summary: #6E4A31;
-  }
+    --ph-sit:     #6183a6;   /* slate blue  */
+    --ph-tcprep:  #cba25e;   /* warm gold   */
+    --ph-uat:     #74996a;   /* sage green  */
+    --ph-reg:     #9d84bd;   /* muted violet*/
+    --ph-support: #cdb590;   /* sand        */
+    --ph-extra:   #b79a78;
+    --ph-summary: #c07f56;   /* soft terracotta — project span */
 
-  /* ---- topbar nav ---- */
-  .topbar .nav { display:flex; gap:4px; margin-left:6px; }
-  .topbar .nav a {
-    font-size:13px; text-decoration:none; color:var(--dk-text2);
-    padding:6px 12px; border-radius:8px; font-weight:600;
+    --cell-wknd-soft: #f5eee2;   /* light warm weekend tint (was dark) */
+    --grid-line: rgba(34,28,21,.06);
   }
-  .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
-  .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
 
   /* ---- filters ---- */
   .filters {
-    display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;
-    background:var(--dk-surface); border:1px solid var(--dk-border);
-    border-radius:12px; padding:12px 14px; margin-bottom:14px;
+    display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;
+    background:var(--dk-card); border:1px solid var(--dk-border);
+    border-radius:14px; padding:14px 16px; margin-bottom:16px;
+    box-shadow:0 1px 2px rgba(34,28,21,.04);
   }
-  .filters .fld { display:flex; flex-direction:column; gap:4px; }
-  .filters label { font-size:11px; color:var(--dk-text3); font-weight:600; }
+  .filters .fld { display:flex; flex-direction:column; gap:5px; }
+  .filters label { font-size:11px; color:var(--dk-text3); font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
   .filters input[type=date] {
-    padding:7px 9px; border-radius:8px; border:1px solid var(--dk-border-s);
+    padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
     font-size:13px; background:#fff; color:var(--dk-text);
   }
+  .filters input[type=date]:focus { outline:none; border-color:var(--dk-accent); }
 
   /* ---- checkbox multiselect ---- */
   .ms { position:relative; }
   .ms-btn {
-    min-width:180px; text-align:left; padding:7px 10px; border-radius:8px;
+    min-width:180px; text-align:left; padding:8px 11px; border-radius:9px;
     border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text);
     font-size:13px; font-weight:600; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
   }
+  .ms-btn:hover { border-color:var(--dk-accent); }
   .ms-panel {
     position:absolute; top:calc(100% + 4px); left:0; z-index:40;
-    background:#fff; border:1px solid var(--dk-border-s); border-radius:10px;
-    box-shadow:0 12px 30px rgba(34,28,21,.15); padding:6px; width:260px;
-    max-height:280px; overflow:auto;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:12px;
+    box-shadow:0 16px 40px rgba(34,28,21,.16); padding:6px; width:270px;
+    max-height:290px; overflow:auto;
   }
   .ms-panel.hidden { display:none; }
-  .ms-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:7px; font-size:13px; cursor:pointer; }
+  .ms-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:8px; font-size:13px; cursor:pointer; }
   .ms-item:hover { background:var(--dk-hover); }
-  .ms-item input { margin:0; }
+  .ms-item input { margin:0; accent-color:var(--dk-accent); }
   .ms-tools { display:flex; gap:6px; padding:4px 6px 8px; border-bottom:1px solid var(--dk-border); margin-bottom:4px; }
-  .ms-tools button { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
+  .ms-tools button { font-size:11px; padding:4px 9px; border-radius:7px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
+  .ms-tools button:hover { background:var(--dk-hover); }
 
-  /* ---- gantt table ---- */
+  /* ============ gantt table ============ */
   .gantt-scroll {
-    overflow:auto; max-height:calc(100vh - 250px);
-    border:1px solid var(--dk-border); border-radius:12px; background:#fff;
+    overflow:auto; max-height:calc(100vh - 258px);
+    border:1px solid var(--dk-border); border-radius:14px; background:#fff;
+    box-shadow:0 1px 3px rgba(34,28,21,.05);
     scrollbar-gutter: stable;
-    scrollbar-width: thin;                 /* Firefox */
-    scrollbar-color: #c8b4a8 transparent;  /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #d8c6b8 transparent;
   }
   .gantt-scroll::-webkit-scrollbar { height:12px; width:12px; }
   .gantt-scroll::-webkit-scrollbar-track { background:transparent; }
-  .gantt-scroll::-webkit-scrollbar-thumb { background:#c8b4a8; border-radius:8px; border:3px solid #fff; }
-  .gantt-scroll::-webkit-scrollbar-thumb:hover { background:#b89985; }
+  .gantt-scroll::-webkit-scrollbar-thumb { background:#d8c6b8; border-radius:8px; border:3px solid #fff; }
+  .gantt-scroll::-webkit-scrollbar-thumb:hover { background:#c4a892; }
 
-  /* table-layout:fixed + a generated <colgroup> (see buildColgroup() in the module script)
-     is what pins column widths — this is what stops the frozen columns from shrinking
-     while scrolling horizontally. The pixel widths below MUST stay in sync with the
-     COL_W constant used to build the colgroup. */
   table.gantt { border-collapse:separate; border-spacing:0; font-size:12px; table-layout:fixed; }
   table.gantt th, table.gantt td {
-    border-right:1px solid var(--dk-border); border-bottom:1px solid var(--dk-border);
+    border-right:1px solid var(--grid-line); border-bottom:1px solid var(--grid-line);
     padding:0; box-sizing:border-box;
   }
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
-  .c0 { min-width:200px; width:200px; left:0; }
-  .c1 { min-width:130px; width:130px; left:200px; }
-  .c2 { min-width:48px;  width:48px;  left:330px; }
-  /* clear boundary between the frozen block and the scrolling day columns */
-  .c2 { box-shadow: 2px 0 4px rgba(34,28,21,.08); }
+  .c0 { min-width:230px; width:230px; left:0; }
+  .c1 { min-width:130px; width:130px; left:230px; }
+  .c2 { min-width:104px; width:104px; left:360px; }
+  .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
 
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
-  .sticky-col { position:sticky; background:#fff; z-index:6; }                 /* tbody frozen */
-  thead .sticky-col { z-index:25; background:var(--dk-surface); }              /* thead frozen  */
-  thead th { position:sticky; top:0; z-index:15; background:var(--dk-surface); /* thead days    */
-    color:var(--dk-text2); font-weight:600; padding:4px 8px; text-align:left; white-space:nowrap; }
-  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:3px 0; }
-  .th-month { text-align:center; font-weight:700; color:var(--dk-text); font-size:11.5px; }
-  .th-day.wknd, td.gcell.wknd { background:var(--cell-wknd-hol); color:rgba(255,255,255,.92); }
-  .th-day.today-col { outline:2px solid var(--today); outline-offset:-2px; color:var(--today); font-weight:800; }
+  .sticky-col { position:sticky; background:#fff; z-index:6; }
+  thead .sticky-col { z-index:25; background:var(--dk-surface); }
+  thead th { position:sticky; top:0; z-index:15; background:var(--dk-surface);
+    color:var(--dk-text2); font-weight:700; padding:6px 10px; text-align:left; white-space:nowrap; }
+  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:5px 0; color:var(--dk-text2); font-weight:600; }
+  .th-month { text-align:center; font-weight:700; color:var(--dk-text); font-size:12px; letter-spacing:.01em; }
+  .th-day.wknd { background:#efe5d6; color:var(--dk-text3); }
+  .th-day.today-col { background:var(--today); color:#fff; font-weight:800; border-radius:6px; }
 
-  td.gcell { min-width:28px; width:28px; height:22px; }
-  /* sticky col cell paddings — tightened so phase rows stay compact */
-  td.c0, td.c1, td.c2 { padding:4px 8px; vertical-align:middle; }
+  td.gcell { min-width:28px; width:28px; height:26px; position:relative; }
+  td.gcell.wknd { background:var(--cell-wknd-soft); }
+  td.gcell.today { background:rgba(46,125,50,.07); }
+  td.c0, td.c1, td.c2 { padding:6px 10px; vertical-align:middle; }
+
+  /* floating rounded bar inside a day cell */
+  .bar { display:block; width:100%; box-shadow:0 1px 2px rgba(34,28,21,.14); }
 
   /* project summary row */
-  tr.prow-sum td { border-top:2px solid var(--dk-accent-d); }
-  .p-name { font-weight:700; color:var(--dk-text); font-size:12.5px; line-height:1.25;
+  tr.prow-sum td { border-top:2px solid var(--dk-accent-d); background:#fffdfb; }
+  tr.prow-sum:hover td.sticky-col { background:var(--dk-surface); }
+  .p-name { font-weight:700; color:var(--dk-text); font-size:13px; line-height:1.25;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .p-meta { font-size:10.5px; color:var(--dk-text3); margin-top:1px;
+  .p-meta { font-size:11px; color:var(--dk-text3); margin-top:2px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .p-lead-inline { color:var(--dk-accent); font-weight:600; }
-  .toggle-btn { border:none; background:none; font-size:14px; cursor:pointer; color:var(--dk-text2); padding:0; }
-  .today-mark { color:var(--dk-text); font-weight:700; }
+  .p-lead-inline { color:var(--dk-accent); font-weight:700; }
+
+  /* action icon buttons in the frozen Action column */
+  .act { display:flex; align-items:center; gap:3px; }
+  .ico { border:1px solid transparent; background:none; font-size:13px; cursor:pointer;
+    width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;
+    color:var(--dk-text2); line-height:1; padding:0; }
+  .ico:hover { background:var(--dk-hover); border-color:var(--dk-border); }
+  .ico.toggle { font-size:11px; color:var(--dk-text2); }
+
+  /* current-phase chip (collapsed rows) */
+  .cur-chip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700;
+    padding:3px 9px 3px 8px; border-radius:20px; background:var(--dk-surface); color:var(--dk-text);
+    white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .cur-chip .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .cur-chip.done { background:#e8f2e6; color:#2e7d32; }
+  .cur-chip.upcoming { color:var(--dk-text2); }
 
   /* phase row: label + booked badge on one line */
   .ph-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-  .ph-label { font-size:10.5px; font-weight:600; color:var(--dk-text2);
+  .ph-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--dk-text2);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .bk { display:inline-flex; align-items:center; flex:0 0 auto; font-size:10.5px; font-weight:700; color:var(--dk-text);
-    cursor:pointer; padding:1px 6px; border-radius:6px; background:var(--dk-surface); white-space:nowrap; }
+  .ph-swatch { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+  .bk { display:inline-flex; align-items:center; gap:3px; flex:0 0 auto; font-size:11px; font-weight:700; color:var(--dk-text);
+    cursor:pointer; padding:2px 8px; border-radius:20px; background:var(--dk-surface); white-space:nowrap; }
   .bk:hover { background:var(--dk-hover); }
   .bk.bad { color:#fff; background:var(--conflict); }
+  .bk.ok  { color:#2e7d32; background:#e8f2e6; }
 
-  .diamond { display:inline-block; width:12px; height:12px; transform:rotate(45deg);
-    border:1px solid var(--dk-text); vertical-align:middle; }
+  .diamond { display:inline-block; width:11px; height:11px; transform:rotate(45deg);
+    border:1px solid rgba(34,28,21,.35); vertical-align:middle; }
 
-  .empty { padding:44px; text-align:center; color:var(--dk-text3); }
+  .empty { padding:48px; text-align:center; color:var(--dk-text3); }
+
+  /* ---- signoff / project modals reuse theme.css .modal/.field/.grid2 ---- */
+  #projOverlay .modal { width:660px; }
 
   /* ---- booking popup ---- */
   .modal.wide { width:920px; }
@@ -220,6 +242,79 @@
   </div>
 </div>
 
+<!-- ============ PROJECT EDIT MODAL ============ -->
+<div id="projOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="projModalTitle">แก้ไข Project</h3>
+      <button class="x" onclick="closeProjModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field">
+          <label>Project Key</label>
+          <input id="fKey" placeholder="P2026070001">
+          <span class="hint">รูปแบบ P/U + ปีเดือน + running 4 หลัก</span>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="fStatus">
+            <option value="">—</option>
+            <option>Need Attention</option>
+            <option>Ready to Start</option>
+            <option>In Progress</option>
+            <option>Completed</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Project Name *</label>
+        <input id="fName" placeholder="ชื่อโปรเจกต์">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>App</label>
+          <select id="fApp"><option value="">— เลือก App —</option></select>
+        </div>
+        <div class="field">
+          <label>Other App (ถ้าไม่มีใน list)</label>
+          <input id="fOtherApp" placeholder="ชื่อ App ที่ยังไม่มีใน master">
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Signoff Date</label>
+          <input id="fSignoff" type="date">
+        </div>
+        <div class="field">
+          <label>Deploy Date</label>
+          <input id="fDeploy" type="date">
+        </div>
+      </div>
+      <div class="field">
+        <label>Signoff URL (ลิงก์เอกสาร Signoff)</label>
+        <input id="fSignoffUrl" placeholder="https://...">
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <textarea id="fNote" rows="2"></textarea>
+      </div>
+
+      <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
+      <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
+        <div>Phase</div><div>Start</div><div>End</div><div>MD</div><div>Resource</div>
+      </div>
+      <div id="phaseRows"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="form-err" id="projFormErr"></div>
+      <button class="btn danger" id="projDeleteBtn" onclick="deleteProj()">🗑️ ปิดใช้งาน</button>
+      <button class="btn" onclick="closeProjModal()">ยกเลิก</button>
+      <button class="btn accent" id="projSaveBtn" onclick="saveProj()">บันทึก</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ BOOKING POPUP ============ -->
 <div id="bkOverlay" class="overlay hidden">
   <div class="modal wide">
@@ -294,8 +389,7 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Signoff module (Phase 2.3) — self-registers window.openSignoffReview + injects its own modal.
-     Loaded before the inline module below so the real handler wins over the safety stub. -->
+<!-- Signoff review module (Phase 2.3) -->
 <script type="module" src="./signoff.js"></script>
 
 <script type="module">
@@ -313,11 +407,12 @@ function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
 function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
 function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
 
-/* Pixel widths for the 3 frozen columns + each day column.
-   MUST stay in sync with .c0/.c1/.c2/.th-day/td.gcell widths in the <style> block —
-   these drive the generated <colgroup> that keeps the frozen columns from shrinking
-   while the table is scrolled horizontally (see buildColgroup()). */
-const COL_W = { c0:200, c1:130, c2:48, day:28 };
+const PHASES = [
+  { code:'SIT', name:'SIT' }, { code:'TCPREP', name:'TC Prep' },
+  { code:'UAT', name:'UAT' }, { code:'REG', name:'Reg' }, { code:'SUPPORT', name:'Support' },
+];
+
+const COL_W = { c0:230, c1:130, c2:104, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
@@ -329,18 +424,19 @@ function buildColgroup(dayCount){
 
 /* ============ STATE ============ */
 const S = {
-  projects: [],            // [{project_key, project_name, app_code, other_app, status, signoff_date, deploy_date, signoff_url}]
-  phasesByProject: {},     // pk -> [{phase_code, phase_label, start_date, end_date, md, resource_count, sort_order}]
-  leadsByProject: {},      // pk -> [{emp_id, short_name, is_main}]
-  leads: [],               // pqa_lead list [{emp_id, short_name, incharge_role, manager_emp_id}]
-  bookings: [],            // ALL active bookings
-  resourceMap: {},         // resource_id -> {nickname, full_name_en, role_code, resource_type}
-  outsourceList: [],       // active outsource resources for picker
-  holidays: {},            // 'yyyy-MM-dd' -> desc
-  user: null,              // {pqa_emp_id, display_name, app_role}
-  collapsed: {},           // pk -> true (collapsed)
+  projects: [],
+  phasesByProject: {},
+  leadsByProject: {},
+  leads: [],
+  bookings: [],
+  resourceMap: {},
+  outsourceList: [],
+  apps: [],
+  holidays: {},
+  user: null,
+  collapsed: {},
   filter: { projects:new Set(), leads:new Set(), start:'', end:'' },
-  renderedPhases: [],      // flat list for popup click resolution
+  renderedPhases: [],
 };
 
 /* ============ DATE HELPERS ============ */
@@ -379,7 +475,6 @@ async function showApp(session){
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
 
-  // default date range
   S.filter.start = addDays(TODAY, -7);
   S.filter.end   = addDays(TODAY, 45);
   $('fStart').value = S.filter.start;
@@ -392,14 +487,15 @@ async function showApp(session){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, projRes, phaseRes, plRes, leadRes, bkRes, resRes] = await Promise.all([
+    const [holidays, projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes] = await Promise.all([
       loadHolidaysSafe(),
-      supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url').eq('is_active', true).order('project_key', { ascending:false }),
+      supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
       supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
       supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
       supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
       supabase.from('booking').select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true),
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
+      supabase.from('app').select('app_code,app_name').eq('is_active', true).order('sort_order', { nullsFirst:false }),
     ]);
 
     for (const r of [projRes, phaseRes, plRes, leadRes, bkRes, resRes]) {
@@ -410,8 +506,8 @@ async function loadAll(){
     S.projects = projRes.data || [];
     S.bookings = bkRes.data || [];
     S.leads    = leadRes.data || [];
+    S.apps     = appRes.error ? [] : (appRes.data || []);
 
-    // resource map + outsource picker list
     S.resourceMap = {};
     S.outsourceList = [];
     (resRes.data || []).forEach(r => {
@@ -422,28 +518,21 @@ async function loadAll(){
       (roleRank(a.role_code)-roleRank(b.role_code)) ||
       String(a.nickname||a.full_name_en).localeCompare(String(b.nickname||b.full_name_en)));
 
-    // phases grouped
     S.phasesByProject = {};
-    (phaseRes.data || []).forEach(ph => {
-      (S.phasesByProject[ph.project_key] ||= []).push(ph);
-    });
+    (phaseRes.data || []).forEach(ph => { (S.phasesByProject[ph.project_key] ||= []).push(ph); });
     Object.values(S.phasesByProject).forEach(arr => arr.sort((a,b) =>
       ((a.sort_order ?? phaseOrder(a.phase_code)) - (b.sort_order ?? phaseOrder(b.phase_code))) ||
       String(a.phase_label||'').localeCompare(String(b.phase_label||''))));
 
-    // leads grouped (join pqa_lead)
     const leadByEmp = {}; S.leads.forEach(l => leadByEmp[l.emp_id]=l);
     S.leadsByProject = {};
     (plRes.data || []).forEach(pl => {
       const l = leadByEmp[pl.pqa_emp_id];
       (S.leadsByProject[pl.project_key] ||= []).push({
-        emp_id: pl.pqa_emp_id,
-        short_name: l ? l.short_name : pl.pqa_emp_id,
-        is_main: pl.is_main
+        emp_id: pl.pqa_emp_id, short_name: l ? l.short_name : pl.pqa_emp_id, is_main: pl.is_main
       });
     });
 
-    // collapse all by default
     S.projects.forEach(p => { if (!(p.project_key in S.collapsed)) S.collapsed[p.project_key]=true; });
 
     buildFilters();
@@ -468,16 +557,16 @@ function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='
 function applyDefaultLeadFilter(){
   S.filter.leads = new Set();
   const me = S.user && S.user.pqa_emp_id;
-  if (!me) return;                                    // no match → no filter
+  if (!me) return;
   const meLead = S.leads.find(l => l.emp_id === me);
-  if (!meLead) return;                                // not a lead → no filter
+  if (!meLead) return;
   const role = (meLead.incharge_role || '').trim().toLowerCase();
-  if (role === 'overall') return;                     // overall → no filter (see all)
+  if (role === 'overall') return;
   if (role === 'manager') {
     S.filter.leads.add(me);
     S.leads.forEach(l => { if (l.manager_emp_id === me) S.filter.leads.add(l.emp_id); });
   } else {
-    S.filter.leads.add(me);                            // self only
+    S.filter.leads.add(me);
   }
   syncMultiSelect('msLead', S.filter.leads);
 }
@@ -558,6 +647,42 @@ function filteredProjects(){
   });
 }
 
+/* ============ CURRENT PHASE (for collapsed rows) ============ */
+function currentPhaseInfo(pk){
+  const phs = (S.phasesByProject[pk]||[]).filter(ph => ph.start_date && ph.end_date);
+  if (!phs.length) return null;
+  const cur = phs.find(ph => TODAY >= ph.start_date && TODAY <= ph.end_date);
+  if (cur) return { code:cur.phase_code, label:phaseName(cur.phase_code), state:'active' };
+  const future = phs.filter(ph => ph.start_date > TODAY).sort((a,b) => a.start_date < b.start_date ? -1 : 1);
+  if (future.length) return { code:future[0].phase_code, label:phaseName(future[0].phase_code), state:'upcoming' };
+  return { code:null, label:'เสร็จสิ้น', state:'done' };
+}
+function phaseChipHtml(info){
+  if (!info) return '<span class="muted" style="font-size:11px">— ยังไม่มีเฟส —</span>';
+  if (info.state==='done') return '<span class="cur-chip done">✓ เสร็จสิ้น</span>';
+  const c = phaseColor(info.code);
+  const pre = info.state==='upcoming' ? 'จะเริ่ม · ' : '';
+  const cls = 'cur-chip' + (info.state==='upcoming' ? ' upcoming' : '');
+  return `<span class="${cls}" title="Phase ปัจจุบัน"><span class="dot" style="background:${c}"></span>${pre}${esc(info.label)}</span>`;
+}
+
+/* ============ CELL / BAR RENDERING ============ */
+// continuous rounded bar across the whole range (incl. weekends, dimmed); soft weekend bg tint.
+function runCells(days, start, end, color, opt){
+  const h = (opt && opt.summary) ? 12 : 15;
+  return days.map(ds => {
+    const wknd = isWkndStr(ds), today = ds===TODAY;
+    let cls = 'gcell' + (wknd?' wknd':'') + (today?' today':'');
+    let inner = '';
+    if (start && end && ds>=start && ds<=end){
+      const roundL = ds===start, roundR = ds===end;
+      const r = roundL&&roundR ? '7px' : roundL ? '7px 0 0 7px' : roundR ? '0 7px 7px 0' : '0';
+      inner = `<span class="bar" style="background:${color};height:${h}px;border-radius:${r};${wknd?'opacity:.45;':''}"></span>`;
+    }
+    return `<td class="${cls}">${inner}</td>`;
+  }).join('');
+}
+
 /* ============ RENDER GANTT ============ */
 function renderGantt(){
   const days = eachDay(S.filter.start, S.filter.end);
@@ -567,7 +692,6 @@ function renderGantt(){
   if (!days.length){ $('ganttScroll').innerHTML = '<div class="empty">ช่วงวันที่ไม่ถูกต้อง</div>'; return; }
   if (!visible.length){ $('ganttScroll').innerHTML = '<div class="empty">ไม่พบข้อมูล</div>'; return; }
 
-  // month groups
   const months=[]; days.forEach(ds => {
     const ym = ds.slice(0,7);
     const last = months[months.length-1];
@@ -609,7 +733,6 @@ function renderGantt(){
 function summaryRow(p, days){
   const pk = p.project_key;
   const collapsed = S.collapsed[pk];
-  // envelope (exclude SIT)
   let mn=null, mx=null;
   (S.phasesByProject[pk]||[]).forEach(ph => {
     if (ph.phase_code === 'SIT') return;
@@ -619,22 +742,33 @@ function summaryRow(p, days){
   const lead = (S.leadsByProject[pk]||[]).find(l => l.is_main) || (S.leadsByProject[pk]||[])[0];
   const app = p.app_code || p.other_app || '';
 
-  const cells = days.map(ds => {
-    let cls='gcell', style='';
-    if (isWkndStr(ds)) cls+=' wknd';
-    else if (mn && mx && ds>=mn && ds<=mx) style=`background:var(--ph-summary)`;
-    return `<td class="${cls}"${style?` style="${style}"`:''}></td>`;
-  }).join('');
+  const cells = runCells(days, mn, mx, 'var(--ph-summary)', { summary:true });
 
-  const leadTxt = lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —';
+  // req 4: no project_key in meta — only app · lead
+  const metaParts = [];
+  if (app) metaParts.push(esc(app));
+  metaParts.push(lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —');
+  const meta = metaParts.join(' · ');
+
+  // req 2: collapsed shows current phase; expanded shows status pill
+  const c1inner = collapsed ? phaseChipHtml(currentPhaseInfo(pk)) : statusPill(p.status);
+
+  // req 5: view signoff document button when there's a link
+  const docBtn = p.signoff_url
+    ? `<button class="ico" title="เปิดเอกสาร Signoff" onclick="openSignoffDoc('${esc(pk)}')">📄</button>` : '';
+
   return `<tr class="prow-sum">
     <td class="sticky-col c0" title="${esc(p.project_name)}">
       <div class="p-name">${esc(p.project_name)}</div>
-      <div class="p-meta">${esc(pk)}${app?' · '+esc(app):''} · ${leadTxt}</div>
+      <div class="p-meta">${meta}</div>
     </td>
-    <td class="sticky-col c1">${statusPill(p.status)}</td>
-    <td class="sticky-col c2" style="text-align:center">
-      <button class="toggle-btn" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>
+    <td class="sticky-col c1">${c1inner}</td>
+    <td class="sticky-col c2">
+      <div class="act">
+        <button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>
+        <button class="ico" onclick="openProjEdit('${esc(pk)}')" title="แก้ไข Project detail">✏️</button>
+        ${docBtn}
+      </div>
     </td>
     ${cells}
   </tr>`;
@@ -642,32 +776,28 @@ function summaryRow(p, days){
 
 function phaseRow(p, ph, days){
   const pk = p.project_key;
-  // booked distinct resource count (all dates, by phase_code)
   const resSet = new Set();
   S.bookings.forEach(b => { if (b.project_key===pk && b.phase_code===ph.phase_code) resSet.add(b.resource_id); });
   const bkCnt = resSet.size;
   const req = ph.resource_count == null ? null : Number(ph.resource_count);
   const reqDisp = req == null ? '–' : fmtNum(req);
   const bad = req != null && bkCnt !== req;
+  const ok  = req != null && bkCnt === req && req > 0;
 
   const idx = S.renderedPhases.length;
   S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseName(ph.phase_code), start:ph.start_date, end:ph.end_date });
 
   const color = phaseColor(ph.phase_code);
-  const cells = days.map(ds => {
-    let cls='gcell', style='';
-    if (isWkndStr(ds)) cls+=' wknd';
-    else if (ph.start_date && ph.end_date && ds>=ph.start_date && ds<=ph.end_date) style=`background:${color}`;
-    return `<td class="${cls}"${style?` style="${style}"`:''}></td>`;
-  }).join('');
+  const cells = runCells(days, ph.start_date, ph.end_date, color, null);
 
   const lbl = phaseName(ph.phase_code) + (ph.phase_label ? ' • '+esc(ph.phase_label) : '');
+  const bkCls = 'bk' + (bad?' bad':ok?' ok':'');
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col c1">
       <div class="ph-row">
-        <span class="ph-label" title="${lbl}">${lbl}</span>
-        <span class="bk${bad?' bad':''}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
+        <span class="ph-label" title="${lbl}"><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
+        <span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
       </div>
     </td>
     <td class="sticky-col c2"></td>
@@ -677,21 +807,18 @@ function phaseRow(p, ph, days){
 
 function milestoneRow(p, days){
   const cells = days.map(ds => {
-    let cls='gcell', inner='';
-    if (isWkndStr(ds)) cls+=' wknd';
+    let cls='gcell'+(isWkndStr(ds)?' wknd':'')+(ds===TODAY?' today':''), inner='';
     if (ds===p.signoff_date) inner = `<span class="diamond" style="background:var(--ph-signoff)" title="Signoff ${dDisp(ds)}"></span>`;
     else if (ds===p.deploy_date) inner = `<span class="diamond" style="background:var(--ph-deploy)" title="Deploy ${dDisp(ds)}"></span>`;
     return `<td class="${cls}" style="text-align:center">${inner}</td>`;
   }).join('');
-  // ส่งเฉพาะ project_key แล้ว lookup ชื่อจาก state ตอนคลิก — กันอักขระพิเศษ
-  // ในชื่อโปรเจกต์พัง HTML attribute (เดิมใช้ JSON.stringify ใส่ " กลาง onclick)
   const so = p.signoff_date
-    ? `<button class="btn sm" style="padding:2px 7px" onclick="window.srOpenFromKey('${esc(p.project_key)}')">🔎</button>`
+    ? `<button class="ico" title="Review Signoff" onclick="window.srOpenFromKey('${esc(p.project_key)}')">🔎</button>`
     : '';
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
-    <td class="sticky-col c2" style="text-align:center">${so}</td>
+    <td class="sticky-col c2"><div class="act">${so}</div></td>
     ${cells}
   </tr>`;
 }
@@ -703,18 +830,170 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 $('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 $('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('refreshBtn').onclick     = loadAll;
-$('addBtn').onclick         = () => { window.location.href = "pqaResourceManagement.html"; };
+$('addBtn').onclick         = () => openProjAdd();
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
   renderGantt();
 };
 
-/* ============ SIGNOFF STUB (guarded — signoff.js may override) ============ */
+/* ============ PROJECT EDIT MODAL (req 1) ============ */
+let editingKey = null;
+let existingPhases = {};
+
+function fillAppOptions(selected){
+  $('fApp').innerHTML = '<option value="">— เลือก App —</option>' +
+    S.apps.map(a => `<option value="${esc(a.app_code)}"${a.app_code===selected?' selected':''}>${esc(a.app_code)}</option>`).join('');
+}
+function buildPhaseRows(data){
+  $('phaseRows').innerHTML = PHASES.map(ph => {
+    const d = (data && data[ph.code]) || {};
+    return `<div class="phase-row" data-phase="${ph.code}">
+      <div class="ph-name">${ph.name}</div>
+      <input type="date" class="ph-start" value="${d.start_date || ''}">
+      <input type="date" class="ph-end" value="${d.end_date || ''}">
+      <input type="number" step="0.5" min="0" class="ph-md" placeholder="MD" value="${d.md ?? ''}">
+      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${d.resource_count ?? ''}">
+    </div>`;
+  }).join('');
+}
+function suggestKey(){
+  const now = new Date();
+  const ym = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0');
+  const prefix = 'P'+ym;
+  let max=0;
+  S.projects.forEach(p => {
+    if (p.project_key && p.project_key.startsWith(prefix)){
+      const n = parseInt(p.project_key.slice(prefix.length), 10);
+      if (!isNaN(n) && n>max) max=n;
+    }
+  });
+  return prefix + String(max+1).padStart(4,'0');
+}
+
+window.openProjAdd = function(){
+  editingKey = null; existingPhases = {};
+  $('projModalTitle').textContent = 'เพิ่ม Project';
+  $('projDeleteBtn').style.display = 'none';
+  fillAppOptions('');
+  $('fKey').value = suggestKey(); $('fKey').disabled = false;
+  $('fName').value=''; $('fOtherApp').value=''; $('fStatus').value='';
+  $('fSignoff').value=''; $('fDeploy').value=''; $('fSignoffUrl').value=''; $('fNote').value='';
+  buildPhaseRows(null);
+  $('projFormErr').textContent='';
+  $('projOverlay').classList.remove('hidden');
+};
+
+window.openProjEdit = async function(key){
+  editingKey = key; existingPhases = {};
+  const p = S.projects.find(x => x.project_key === key) || {};
+  $('projModalTitle').textContent = 'แก้ไข Project — ' + esc(p.project_name || key);
+  $('projDeleteBtn').style.display = '';
+  fillAppOptions(p.app_code || '');
+  $('fKey').value = key; $('fKey').disabled = true;
+  $('fName').value = p.project_name || '';
+  $('fOtherApp').value = p.other_app || '';
+  $('fStatus').value = p.status || '';
+  $('fSignoff').value = p.signoff_date || '';
+  $('fDeploy').value = p.deploy_date || '';
+  $('fSignoffUrl').value = p.signoff_url || '';
+  $('fNote').value = p.project_note || '';
+  $('projFormErr').textContent='';
+  buildPhaseRows(null);
+  $('projOverlay').classList.remove('hidden');
+
+  const { data: phs } = await supabase.from('project_phase')
+    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
+    .eq('project_key', key);
+  const map = {};
+  (phs || []).forEach(ph => { map[ph.phase_code]=ph; existingPhases[ph.phase_code]=ph.project_phase_id; });
+  buildPhaseRows(map);
+};
+
+window.closeProjModal = function(){ $('projOverlay').classList.add('hidden'); };
+
+function readPhaseInputs(){
+  return [...document.querySelectorAll('#phaseRows .phase-row')].map(r => ({
+    phase_code: r.dataset.phase,
+    start_date: r.querySelector('.ph-start').value || null,
+    end_date:   r.querySelector('.ph-end').value || null,
+    md:         r.querySelector('.ph-md').value === '' ? null : Number(r.querySelector('.ph-md').value),
+    resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+  }));
+}
+
+window.saveProj = async function(){
+  const err = $('projFormErr'); err.textContent='';
+  const key = $('fKey').value.trim();
+  const name = $('fName').value.trim();
+  const app = $('fApp').value || null;
+  const otherApp = $('fOtherApp').value.trim() || null;
+
+  if (!/^[PU][0-9]{10}$/.test(key)){ err.textContent='Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก'; return; }
+  if (!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
+  if (!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
+
+  const btn=$('projSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
+
+  const payload = {
+    project_key:key, project_name:name, app_code:app, other_app:otherApp,
+    status:$('fStatus').value || null,
+    signoff_date:$('fSignoff').value || null,
+    deploy_date:$('fDeploy').value || null,
+    signoff_url:$('fSignoffUrl').value.trim() || null,
+    project_note:$('fNote').value.trim() || null,
+  };
+
+  let res = editingKey
+    ? await supabase.from('project').update(payload).eq('project_key', editingKey)
+    : await supabase.from('project').insert(payload);
+
+  if (res.error){
+    btn.disabled=false; btn.textContent='บันทึก';
+    err.textContent = 'บันทึก Project ไม่สำเร็จ: ' + res.error.message; return;
+  }
+
+  const phases = readPhaseInputs();
+  for (const ph of phases){
+    const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null;
+    const existingId = existingPhases[ph.phase_code];
+    if (hasData){
+      const phPayload = { project_key:key, phase_code:ph.phase_code, start_date:ph.start_date,
+        end_date:ph.end_date, md:ph.md, resource_count:ph.resource_count };
+      if (existingId) await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);
+      else await supabase.from('project_phase').insert(phPayload);
+    } else if (existingId){
+      await supabase.from('project_phase').delete().eq('project_phase_id', existingId);
+    }
+  }
+
+  btn.disabled=false; btn.textContent='บันทึก';
+  window.closeProjModal();
+  toast(editingKey ? 'อัปเดตแล้ว ✓' : 'เพิ่ม Project แล้ว ✓');
+  await loadAll();
+};
+
+window.deleteProj = async function(){
+  if (!editingKey) return;
+  if (!confirm(`ยืนยันปิดใช้งาน (soft delete) โปรเจกต์ ${editingKey}?\nBooking ทั้งหมดของโปรเจกต์นี้จะยังอยู่ในฐานข้อมูล`)) return;
+  const { error } = await supabase.from('project').update({ is_active:false }).eq('project_key', editingKey);
+  if (error){ toast('ลบไม่สำเร็จ: '+error.message, true); return; }
+  window.closeProjModal();
+  toast('ปิดใช้งานแล้ว ✓');
+  await loadAll();
+};
+
+/* ============ SIGNOFF DOCUMENT (req 5) ============ */
+window.openSignoffDoc = function(pk){
+  const p = S.projects.find(x => x.project_key === pk);
+  if (!p || !p.signoff_url){ toast('ไม่มีลิงก์เอกสาร Signoff', true); return; }
+  window.open(p.signoff_url, '_blank', 'noopener');
+};
+
+/* ============ SIGNOFF REVIEW STUB (signoff.js may override) ============ */
 if (!window.openSignoffReview) {
   window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
 }
-// เรียกจากปุ่ม 🔎 — ส่งแค่ key แล้วดึงชื่อ/วันที่จาก state (กันอักขระพิเศษใน onclick)
 window.srOpenFromKey = function(pk){
   const p = S.projects.find(x => x.project_key === pk);
   if (!p) return;
@@ -722,8 +1001,8 @@ window.srOpenFromKey = function(pk){
 };
 
 /* ============ BOOKING POPUP ============ */
-let popCtx = null;   // { pk, phaseCode, phaseLabel, phaseName, phStart, phEnd }
-let formMode = null; // 'add' | 'edit'
+let popCtx = null;
+let formMode = null;
 let editBookingId = null;
 
 window.openBookingPopup = function(idx){
@@ -770,7 +1049,6 @@ function renderBkRows(){
   </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--dk-text3);padding:16px">ยังไม่มี Booking</td></tr>';
 }
 
-/* ---- add ---- */
 window.bkStartAdd = function(){
   formMode='add'; editBookingId=null;
   $('bkFormTitle').textContent='➕ Book Outsource';
@@ -786,7 +1064,6 @@ window.bkStartAdd = function(){
   showArea('form');
 };
 
-/* ---- edit ---- */
 window.bkEdit = function(bid){
   const b = S.bookings.find(x => x.booking_id===bid);
   if (!b) return;
@@ -842,7 +1119,6 @@ window.bkSaveForm = async function(){
         p_phase_code:popCtx.phaseCode, p_start:f.start, p_end:f.end, p_md:f.md });
       if (error) throw error;
     } else {
-      // multi create via batch
       const items = f.resIds.map(rid => ({
         project_key:popCtx.pk, resource_id:rid, phase_code:popCtx.phaseCode,
         start_date:f.start, end_date:f.end, md:f.md }));
@@ -870,7 +1146,6 @@ function isMdErr(e){ return e && /เกิน MD|MD เกิน/.test(e.messag
 function isPermErr(e){ return e && /ไม่มีสิทธิ์/.test(e.message||''); }
 
 async function afterBookingSave(msg){
-  // reload all active bookings (rev 15 — counts independent of date filter)
   const { data, error } = await supabase.from('booking')
     .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true);
   if (!error) S.bookings = data || [];
@@ -880,10 +1155,8 @@ async function afterBookingSave(msg){
   renderGantt();
 }
 
-/* ---- co-edit ---- */
-let coRows = [];   // [{booking_id?, resource_id, project_key, phase_code, start, end, md, tag}]
+let coRows = [];
 function openCoEdit(f){
-  // rows being saved
   const saving = (formMode==='edit')
     ? [{ booking_id:editBookingId, resource_id:f.resIds[0], project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'edit' }]
     : f.resIds.map(rid => ({ booking_id:null, resource_id:rid, project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'new' }));
@@ -891,10 +1164,8 @@ function openCoEdit(f){
   const savingBids = new Set(saving.filter(r=>r.booking_id).map(r=>r.booking_id));
   const resIds = new Set(saving.map(r=>r.resource_id));
 
-  // other overlapping active bookings of the same resources
   const others = S.bookings.filter(b =>
-    resIds.has(b.resource_id) &&
-    !savingBids.has(b.booking_id) &&
+    resIds.has(b.resource_id) && !savingBids.has(b.booking_id) &&
     b.start_date <= f.end && b.end_date >= f.start
   ).map(b => ({ booking_id:b.booking_id, resource_id:b.resource_id, project_key:b.project_key,
     phase_code:b.phase_code, start:b.start_date, end:b.end_date, md:Number(b.md), tag:'' }));
