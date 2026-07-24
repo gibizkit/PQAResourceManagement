@@ -825,6 +825,11 @@ window.deleteRecord = async function(table, pk) {
   }
 };
 
+/* ============ ESC closes the modal (req 2) ============ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('formOverlay').classList.contains('hidden')) window.closeModal();
+});
+
 </script>
 </body>
 </html>

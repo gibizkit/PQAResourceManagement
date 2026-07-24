@@ -315,7 +315,11 @@
       <span class="badge" id="osCount">0</span>
     </div>
 
-    <div class="filters">
+    <div class="toolbar">
+      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
+    </div>
+
+    <div class="filters hidden" id="filterPanel">
       <div class="fld">
         <label>ชื่อ Outsource</label>
         <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
@@ -948,16 +952,29 @@ $('chkConflict').addEventListener('change', renderGrid);
 async function onRangeChange() {
   const s = parseInputDate($('fStart').value);
   const e = parseInputDate($('fEnd').value);
-  if (!s || !e) { toast('รูปแบบวันที่ไม่ถูกต้อง กรุณากรอก dd/mm/yyyy', true); return; }
-  if (s > e) { toast('Start Date ต้องไม่เกิน End Date', true); return; }
+  if (!s || !e) { toast('รูปแบบวันที่ไม่ถูกต้อง กรุณากรอก dd/mm/yyyy', true); return false; }
+  if (s > e) { toast('Start Date ต้องไม่เกิน End Date', true); return false; }
   S.range = { s, e };
   $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
   await reloadRangeData();
   renderGrid();
+  return true;
 }
 $('fStart').addEventListener('change', onRangeChange);
 $('fEnd').addEventListener('change', onRangeChange);
-$('applyBtn').addEventListener('click', onRangeChange);
+// req 6: filter panel toggle (default หุบ) + auto-collapse after กด แสดง
+$('toggleFilterBtn').addEventListener('click', () => $('filterPanel').classList.toggle('hidden'));
+$('applyBtn').addEventListener('click', async () => {
+  const ok = await onRangeChange();
+  if (ok) $('filterPanel').classList.add('hidden');
+});
+
+/* ============ ESC closes any open modal (req 2) ============ */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('lpOverlay').classList.contains('hidden')) window.closeLP();
+  else if (!$('mbOverlay').classList.contains('hidden')) window.closeMB();
+});
 
 /* ============ MANAGE BOOKING MODAL ============ */
 window.openManageBooking = function (resourceId, ds) {
@@ -1020,8 +1037,10 @@ function mbRefreshSummary() {
 }
 
 function activeProjectsCoveringDate(ds) {
+  // req 3: SIT ไม่ต้อง Book Manday — ไม่นับเฟส SIT ในการหา project ที่ Book ได้
   return S.projectsActive.filter(p =>
     (S.phasesByProject[p.project_key] || []).some(ph =>
+      ph.phase_code !== 'SIT' &&
       ph.start_date && ph.end_date && ds >= ph.start_date && ds <= ph.end_date
     )
   );
@@ -1037,7 +1056,9 @@ function phaseOptionsHtml(phases) {
 
 window.mbUpdatePhases = function () {
   const pk = $('mbProject').value;
+  // req 3: SIT ไม่ต้อง Book Manday — ไม่ให้เลือกเฟส SIT ตอน Book
   const phases = (S.phasesByProject[pk] || []).filter(ph =>
+    ph.phase_code !== 'SIT' &&
     ph.start_date && ph.end_date && MB_DATE >= ph.start_date && MB_DATE <= ph.end_date
   );
   $('mbPhase').innerHTML = phases.length

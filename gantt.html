@@ -132,7 +132,7 @@
     width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;
     color:var(--dk-text2); line-height:1; padding:0; }
   .ico:hover { background:var(--dk-hover); border-color:var(--dk-border); }
-  .ico.toggle { font-size:11px; color:var(--dk-text2); }
+  .ico.toggle { font-size:11px; color:var(--dk-text2); width:18px; }
 
   /* current-phase chip (collapsed rows) */
   .cur-chip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700;
@@ -227,9 +227,10 @@
       <button class="btn accent" id="addBtn">+ เพิ่ม Project</button>
       <button class="btn" id="collapseAllBtn">⊟ Collapse All</button>
       <button class="btn" id="expandAllBtn">⊞ Expand All</button>
+      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
     </div>
 
-    <div class="filters">
+    <div class="filters hidden" id="filterPanel">
       <div class="fld">
         <label>Project</label>
         <div class="ms" id="msProject"></div>
@@ -260,8 +261,8 @@
         <input type="date" id="fEnd">
       </div>
       <div class="fld">
-        <label>Current</label>
-        <label class="chk"><input type="checkbox" id="fCurrent"> เฉพาะเฟสปัจจุบัน</label>
+        <label>Phase</label>
+        <div class="ms" id="msPhase"></div>
       </div>
       <button class="btn" id="applyBtn">แสดง</button>
     </div>
@@ -466,7 +467,7 @@ const S = {
   user: null,
   collapsed: {},
   appOrder: {},
-  filter: { projects:new Set(), leads:new Set(), apps:new Set(), start:'', end:'', order:'', current:false },
+  filter: { projects:new Set(), leads:new Set(), apps:new Set(), phases:new Set(), start:'', end:'', order:'' },
   renderedPhases: [],
 };
 
@@ -685,6 +686,9 @@ function buildFilters(){
   makeMultiSelect('msApp',
     S.apps.map(a => ({ value:a.app_code, label:a.app_name || a.app_code })),
     S.filter.apps, 'ทุก App');
+  makeMultiSelect('msPhase',
+    PHASES.map(ph => ({ value:ph.code, label:ph.name })),
+    S.filter.phases, 'ทุก Phase');
 }
 
 /* ============ FILTER PROJECTS ============ */
@@ -714,6 +718,13 @@ function filteredProjects(){
     if (S.filter.leads.size) {
       const ids = (S.leadsByProject[p.project_key]||[]).map(l => l.emp_id);
       if (!ids.some(id => S.filter.leads.has(id))) return false;
+    }
+    // Phase filter: keep projects where TODAY falls within a selected phase's date range
+    if (S.filter.phases.size) {
+      const inPhase = (S.phasesByProject[p.project_key]||[]).some(ph =>
+        S.filter.phases.has(ph.phase_code) && ph.start_date && ph.end_date &&
+        TODAY >= ph.start_date && TODAY <= ph.end_date);
+      if (!inPhase) return false;
     }
     // req 13: only projects whose span overlaps the Start–End window
     const { mn, mx } = projSpan(p.project_key, false);
@@ -822,14 +833,7 @@ function renderGantt(){
   visible.forEach(p => {
     const pk = p.project_key;
     body += summaryRow(p, days);
-    if (S.filter.current) {
-      // req 9: show only the current phase (the one within the Start–End window)
-      const info = currentPhaseInfo(pk);
-      if (info && info.code) {
-        const ph = (S.phasesByProject[pk]||[]).find(x => x.phase_code === info.code);
-        if (ph) body += phaseRow(p, ph, days);
-      }
-    } else if (!S.collapsed[pk]) {
+    if (!S.collapsed[pk]) {
       (S.phasesByProject[pk]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
       if (p.signoff_date || p.deploy_date) body += milestoneRow(p, days);
     }
@@ -859,7 +863,7 @@ function summaryRow(p, days){
   // req 12 + 14: collapse/expand toggle lives in the Phase/Booked column, next to the
   // current-phase chip — shown BOTH when collapsed and when expanded.
   const toggleBtn = `<button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>`;
-  const c1inner = `<div class="ph-row" style="justify-content:flex-start">${toggleBtn}${phaseChipHtml(currentPhaseInfo(pk))}</div>`;
+  const c1inner = `<div class="ph-row" style="justify-content:flex-start;gap:2px">${toggleBtn}${phaseChipHtml(currentPhaseInfo(pk))}</div>`;
 
   // req 15: Action column = pencil (edit) + signoff icon + doc icon
   const editBtn = `<button class="ico" onclick="openProjEdit('${esc(pk)}')" title="แก้ไข Project detail">✏️</button>`;
@@ -897,12 +901,15 @@ function phaseRow(p, ph, days){
 
   const lbl = phaseName(ph.phase_code) + (ph.phase_label ? ' • '+esc(ph.phase_label) : '');
   const bkCls = 'bk' + (bad?' bad':ok?' ok':'');
+  // req 3: SIT ไม่ต้อง Book Manday — ไม่โชว์ป้ายจำนวนคน/ปุ่ม booking ที่แถว SIT
+  const bookBadge = ph.phase_code === 'SIT' ? '' :
+    `<span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>`;
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col c1">
       <div class="ph-row">
         <span class="ph-label" title="${lbl}"><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
-        <span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>
+        ${bookBadge}
       </div>
     </td>
     <td class="sticky-col c2"></td>
@@ -935,13 +942,14 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 $('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 $('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
+$('toggleFilterBtn').onclick = () => $('filterPanel').classList.toggle('hidden');
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
   renderGantt();
+  $('filterPanel').classList.add('hidden');   // req 6: auto-collapse after search
 };
 $('fOrder').onchange   = () => { S.filter.order = $('fOrder').value; renderGantt(); };
-$('fCurrent').onchange = () => { S.filter.current = $('fCurrent').checked; renderGantt(); };
 
 /* ============ PROJECT EDIT MODAL (req 1) ============ */
 let editingKey = null;
@@ -1298,6 +1306,13 @@ function renderCoRows(){
     </tr>`;
   }).join('');
 }
+/* ============ ESC closes any open modal (req 2) ============ */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('bkOverlay').classList.contains('hidden')) window.closeBookingPopup();
+  else if (!$('projOverlay').classList.contains('hidden')) window.closeProjModal();
+});
+
 window.coEdit = function(i, field, val){ coRows[i][field] = field==='md'?Number(val):val; };
 window.bkCoCancel = function(){ showArea('form'); };
 window.bkCoSave = async function(){

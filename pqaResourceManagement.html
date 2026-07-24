@@ -160,6 +160,10 @@
         <label>Note</label>
         <textarea id="fNote" rows="2"></textarea>
       </div>
+      <div class="field checkbox" id="activeField" style="display:none;align-items:center;gap:8px">
+        <input type="checkbox" id="fActive" style="width:auto;margin:0">
+        <label for="fActive" style="margin:0">Active (เปิดใช้งานโปรเจกต์)</label>
+      </div>
 
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
@@ -359,6 +363,7 @@ window.openAdd = function() {
   $('fDeploy').value = '';
   $('fSignoffUrl').value = '';
   $('fNote').value = '';
+  $('activeField').style.display = 'none';   // add mode: โปรเจกต์ใหม่ active อยู่แล้ว
   buildPhaseRows(null);
   $('formErr').textContent = '';
   $('projOverlay').classList.remove('hidden');
@@ -381,6 +386,8 @@ window.openEdit = async function(key) {
   $('fDeploy').value = p.deploy_date || '';
   $('fSignoffUrl').value = p.signoff_url || '';
   $('fNote').value = p.project_note || '';
+  $('activeField').style.display = 'flex';   // req 7: แก้ is_active ได้ตอน edit
+  $('fActive').checked = p.is_active !== false;
   $('formErr').textContent = '';
   $('projOverlay').classList.remove('hidden');
 
@@ -446,6 +453,7 @@ window.saveProject = async function() {
     signoff_url: $('fSignoffUrl').value.trim() || null,
     project_note: $('fNote').value.trim() || null,
   };
+  if (editingKey) payload.is_active = $('fActive').checked;   // req 7
 
   let res;
   if (editingKey) {
@@ -503,6 +511,11 @@ window.deleteProject = async function(key) {
   toast('ปิดใช้งานแล้ว ✓');
   await loadProjects();
 };
+
+/* ============ ESC closes the modal (req 2) ============ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('projOverlay').classList.contains('hidden')) window.closeModal();
+});
 </script>
 </body>
 </html>
