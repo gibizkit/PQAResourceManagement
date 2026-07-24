@@ -515,9 +515,9 @@ function selectRoom(pk){
 async function loadRoom(pk){
   $('convPane').innerHTML = '<div class="sr-empty">กำลังโหลด...</div>';
   try {
-    // 1) root ("pinned card") comment, if it already exists
+    // 1) root ("signoff review" opener) comment, if it already exists
     const { data: rootRow, error: rootErr } = await supabase.from('signoff_comment')
-      .select('id,author_email,created_at')
+      .select('id,author_email,created_at,body,edited_at')
       .eq('project_key', pk).eq('is_root', true).maybeSingle();
     if (rootErr) throw rootErr;
     const rootId = rootRow ? rootRow.id : null;
@@ -555,7 +555,7 @@ async function loadRoom(pk){
       });
     }
 
-    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, topLevel, byParent, counts, mineSet };
+    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet };
     renderRoomFull(pk);
     ensureRealtimeSub(pk);
   } catch (err) {
@@ -606,31 +606,23 @@ function buildRoomHeaderHTML(proj){
     </div>`;
 }
 
+/* การ์ดข้อมูล signoff (เฉพาะข้อเท็จจริง: App / UAT Lead / Date / Scope)
+   ตัว "โพสต์ signoff review" (root) ย้ายไปเป็นคอมเมนต์แรกในเธรดแล้ว */
 function buildCardHTML(proj){
   let appDisp = appNameOf(proj);
   if (proj.other_app) appDisp += ` / ${proj.other_app}`;
   const leadName = proj.uat_lead || '—';
-  const authorEmail = S.room.rootAuthorEmail;
-  const authorDisplay = authorEmail ? displayNameFor(authorEmail) : leadName;
-  const initials = initialsFor(authorDisplay);
-  const avClr = hashClr(authorDisplay);
-  const postedTime = S.room.rootCreatedAt ? commentTimeFull(S.room.rootCreatedAt) : '';
   const noteRaw = proj.project_note || '';
   const chips = [...new Set(noteRaw.match(JIRA_RE) || [])];
   const signoffDisp = proj.signoff_date ? dDisp(proj.signoff_date) : '—';
   const goLiveDisp = proj.deploy_date ? dDisp(proj.deploy_date) : '—';
-  const replyCount = S.room.topLevel.length;
 
   return `
     <div class="sr-card-wrap">
       <div class="sr-card">
         <div class="sr-card-head">
-          <span class="sr-avatar ${avClr}">${esc(initials)}</span>
           <div class="sr-card-headinfo">
             <div class="sr-card-headrow">
-              <span class="sr-author">${esc(authorDisplay)}</span>
-              <span class="sr-role-tag">UAT Lead</span>
-              ${postedTime ? `<span class="sr-time">${esc(postedTime)}</span>` : ''}
               <span class="sr-pin-tag">📌 SIGNOFF REVIEW</span>
             </div>
             <div class="sr-card-title">${esc(proj.project_name||'')}</div>
@@ -648,10 +640,46 @@ function buildCardHTML(proj){
           <div class="sr-card-scope">${noteRaw ? esc(noteRaw) : '<span class="muted">— ไม่มีรายละเอียด —</span>'}</div>
           ${chips.length ? `<div class="sr-chips"><span class="sr-chip-label">อ้างอิง:</span>${chips.map(c=>`<span class="sr-chip">${esc(c)}</span>`).join('')}</div>` : ''}
         </div>
-        <div class="sr-reactions">
-          ${buildReactionsBlock(S.room.rootId, 'card')}
-          <span class="sr-reply-count">💬 ${replyCount} ความคิดเห็น</span>
+      </div>
+    </div>`;
+}
+
+/* คอมเมนต์แรกของเธรด = โพสต์ root (Signoff Review) ที่ UAT Lead เปิดห้อง
+   แสดง author + เนื้อหา review + reactions + ปุ่มตอบกลับ + reply ที่ผูกกับ root */
+function buildRootCommentHTML(proj){
+  const rootId = S.room.rootId;
+  const authorEmail = S.room.rootAuthorEmail;
+  const authorDisplay = authorEmail ? displayNameFor(authorEmail) : (proj.uat_lead || '—');
+  const postedTime = S.room.rootCreatedAt ? commentTimeFull(S.room.rootCreatedAt) : '';
+  const edited = S.room.rootEditedAt ? ' (แก้ไขแล้ว)' : '';
+  const bodyRaw = (S.room.rootBody || '').trim();
+  const isPlaceholder = bodyRaw === '' || bodyRaw === '(signoff card)';
+  const bodyHtml = isPlaceholder
+    ? '<span class="muted">— ยังไม่มีเนื้อหา Signoff Review (เพิ่มได้จากหน้า Project Gantt) —</span>'
+    : esc(bodyRaw);
+  const replies = S.room.byParent[rootId] || [];
+  const replyOpen = S.replyOpenKey === rootId;
+  return `
+    <div class="sr-comment sr-comment-root">
+      <span class="sr-avatar sm ${hashClr(authorDisplay)}">${esc(initialsFor(authorDisplay))}</span>
+      <div class="sr-comment-body">
+        <div class="sr-comment-top">
+          <span class="sr-comment-author">${esc(authorDisplay)}</span>
+          <span class="sr-role-tag">UAT Lead</span>
+          <span class="sr-pin-tag">📌 SIGNOFF REVIEW</span>
+          ${postedTime ? `<span class="sr-time">${esc(postedTime)}${edited}</span>` : ''}
         </div>
+        <div class="sr-comment-text">${bodyHtml}</div>
+        <div class="sr-comment-actions">
+          ${buildReactionsBlock(rootId, String(rootId))}
+          <button class="sr-reply-btn" data-cid="${rootId}">↩ ตอบกลับ</button>
+        </div>
+        ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
+        ${replyOpen ? `
+          <div class="sr-reply-form">
+            <input class="sr-reply-input" data-cid="${rootId}" placeholder="ตอบกลับ Signoff Review นี้...">
+            <button class="sr-send-sm sr-send-reply" data-cid="${rootId}">ส่ง</button>
+          </div>` : ''}
       </div>
     </div>`;
 }
@@ -698,14 +726,18 @@ function buildCommentHTML(c){
       </div>
     </div>`;
 }
-function buildThreadHTML(){
+function buildThreadHTML(proj){
   const top = S.room.topLevel;
-  const body = top.length
-    ? top.map(buildCommentHTML).join('')
+  const hasRoot = S.room.rootId != null;
+  const total = top.length + (hasRoot ? 1 : 0);   // root = คอมเมนต์ #1
+  const rootHtml = hasRoot ? buildRootCommentHTML(proj) : '';
+  const restHtml = top.map(buildCommentHTML).join('');
+  const body = (rootHtml || restHtml)
+    ? rootHtml + restHtml
     : '<div class="sr-thread-empty">ยังไม่มีความคิดเห็น เริ่มพูดคุยได้เลย</div>';
   return `
     <div class="sr-thread">
-      <div class="sr-thread-divider"><span class="line"></span><span class="txt">${top.length} ความคิดเห็นในเธรด</span><span class="line"></span></div>
+      <div class="sr-thread-divider"><span class="line"></span><span class="txt">${total} ความคิดเห็นในเธรด</span><span class="line"></span></div>
       ${body}
     </div>`;
 }
@@ -728,7 +760,7 @@ function renderRoomFull(pk){
     ${buildRoomHeaderHTML(proj)}
     <div class="sr-scroll">
       ${buildCardHTML(proj)}
-      ${buildThreadHTML()}
+      ${buildThreadHTML(proj)}
     </div>
     ${buildComposerHTML(proj)}`;
 }
