@@ -247,6 +247,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html" class="active">Dashboard</a>
+      <a href="signoff-review.html">Signoff Room</a>
       <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -355,7 +356,7 @@ import {
 
 /* SIGNOFF REVIEW STUB (signoff.js may override — same defensive pattern as gantt.html) */
 if (!window.openSignoffReview) {
-  window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
+  window.openSignoffReview = function(pk){ location.href = 'signoff-review.html?project=' + encodeURIComponent(pk || ''); };
 }
 
 /* =====================================================================

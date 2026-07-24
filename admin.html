@@ -133,6 +133,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
+      <a href="signoff-review.html">Signoff Room</a>
       <a href="admin.html" class="active">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -317,7 +318,8 @@ window.STATE = {
   apps: [],
   phases: [],
   testerRoles: [],
-  appUsers: []
+  appUsers: [],
+  pqaLeads: []
 };
 
 /* ============ AUTH ============ */
@@ -395,6 +397,18 @@ async function showApp(session) {
 
   // Load initial data
   await loadData('holiday');
+  await loadPqaLeads();
+}
+
+async function loadPqaLeads() {
+  const { data, error } = await supabase.from('pqa_lead')
+    .select('emp_id,short_name,nickname')
+    .eq('is_active', true);
+  if (error) {
+    console.warn('pqa_lead', error);
+    return;
+  }
+  STATE.pqaLeads = (data || []).sort((a, b) => (a.short_name || '').localeCompare(b.short_name || ''));
 }
 
 function updateAdminUI() {
@@ -701,6 +715,15 @@ function renderForm(table, data) {
           <option value="viewer" ${data && data.app_role === 'viewer' ? 'selected' : ''}>viewer</option>
         </select>
       </div>
+      <div class="field">
+        <label>ผูกกับ PQA Lead (สำหรับ default filter)</label>
+        <select id="f-pqa_emp_id">
+          <option value="">— ไม่ผูก —</option>
+          ${STATE.pqaLeads.map(l => `
+            <option value="${esc(l.emp_id)}" ${data && data.pqa_emp_id === l.emp_id ? 'selected' : ''}>${esc((l.nickname ? l.nickname + ' : ' : '') + l.short_name + ' (' + l.emp_id + ')')}</option>
+          `).join('')}
+        </select>
+      </div>
       <div class="field checkbox">
         <input type="checkbox" id="f-is_active" ${data && data.is_active ? 'checked' : ''}>
         <label for="f-is_active">Active</label>
@@ -780,6 +803,7 @@ function readFormData(table) {
     payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : 0;
   } else if (table === 'app_user') {
     payload.app_role = $('f-app_role').value;
+    payload.pqa_emp_id = $('f-pqa_emp_id').value || null;
     payload.is_active = $('f-is_active').checked;
   }
 

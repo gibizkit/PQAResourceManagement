@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signoff Room — PQA Resource Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* ---- topbar nav (canonical, same markup/classes as other pages) ---- */
+  .topbar .nav { display:flex; gap:4px; margin-left:6px; }
+  .topbar .nav a {
+    font-size:13px; text-decoration:none; color:var(--dk-text2);
+    padding:6px 12px; border-radius:8px; font-weight:600;
+  }
+  .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
+
+  /* ---- page head: title + mode toggle + month nav ---- */
+  .sr-page-head { display:flex; align-items:center; gap:14px; padding:16px 20px 12px; flex:0 0 auto; }
+  .sr-title { font-size:20px; font-weight:800; color:var(--dk-text); display:flex; align-items:center; gap:8px; }
+  .sr-subtitle { font-size:12.5px; color:var(--dk-text2); margin-top:2px; }
+  .sr-head-controls { margin-left:auto; display:flex; align-items:center; gap:12px; }
+
+  .sr-mode-toggle { display:flex; gap:2px; background:#fff; border:1px solid var(--dk-border-s); border-radius:10px; padding:3px; }
+  .sr-mode-btn { border:none; background:none; padding:6px 16px; border-radius:8px; font-size:12.5px; font-weight:700; color:var(--dk-text2); cursor:pointer; }
+  .sr-mode-btn.active { background:var(--dk-accent); color:#fff; }
+
+  .sr-month-nav { display:flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--dk-border-s); border-radius:10px; padding:3px 4px; }
+  .sr-month-nav button.nav-arrow { border:1px solid var(--dk-border-s); background:#fff; border-radius:7px; width:28px; height:28px; font-size:15px; color:var(--dk-text2); cursor:pointer; line-height:1; }
+  .sr-month-nav button.nav-arrow:hover { background:var(--dk-hover); }
+  .sr-month-nav .lbl { font-weight:700; font-size:13px; color:var(--dk-text); min-width:100px; text-align:center; }
+
+  /* ---- two-pane shell ---- */
+  .sr-shell {
+    flex:1; display:flex; min-height:0; margin:0 20px 20px;
+    border:1px solid var(--dk-border); border-radius:16px; overflow:hidden;
+    background:var(--dk-card); box-shadow:0 2px 10px rgba(34,28,21,.06);
+  }
+
+  /* ---- left rail ---- */
+  .sr-rail { width:328px; flex:0 0 328px; border-right:1px solid var(--dk-border); display:flex; flex-direction:column; background:var(--dk-surface); min-height:0; }
+  .sr-rail-head { padding:12px 12px 10px; border-bottom:1px solid var(--dk-border); flex:0 0 auto; }
+  .sr-search { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--dk-border-s); border-radius:10px; padding:7px 10px; }
+  .sr-search .ico { color:var(--dk-text3); font-size:13px; }
+  .sr-search input { border:none; background:none; outline:none; font-size:13px; color:var(--dk-text); width:100%; }
+  .sr-rail-meta { display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+  .sr-rail-heading { font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--dk-text3); }
+  .sr-rail-count { font-size:11px; color:var(--dk-text3); }
+  .sr-rail-list { flex:1; overflow:auto; min-height:0; }
+  .sr-group-label { padding:12px 14px 5px; font-size:10.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--dk-text3); }
+
+  .sr-room {
+    display:flex; gap:11px; width:100%; text-align:left; border:none; background:transparent;
+    border-left:3px solid transparent; border-bottom:1px solid var(--dk-border);
+    padding:11px 13px 11px 12px; cursor:pointer; align-items:flex-start;
+  }
+  .sr-room:hover { background:var(--dk-hover); }
+  .sr-room.active { border-left-color:var(--dk-accent); background:#fff; }
+  .sr-room-badge {
+    width:36px; height:36px; border-radius:10px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:800; background:var(--dk-accent-d); color:var(--dk-accent);
+  }
+  .sr-room-body { flex:1; min-width:0; }
+  .sr-room-top { display:flex; align-items:center; gap:6px; }
+  .sr-room-name { font-size:13px; font-weight:700; color:var(--dk-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+  .sr-room-time { font-size:10.5px; color:var(--dk-text3); flex:0 0 auto; }
+  .sr-room-snippet { display:block; font-size:11.5px; color:var(--dk-text2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sr-room-meta { display:flex; align-items:center; gap:6px; margin-top:6px; }
+
+  /* ---- right pane ---- */
+  .sr-conv { flex:1; display:flex; flex-direction:column; min-width:0; background:var(--dk-bg); }
+  .sr-room-header { display:flex; align-items:center; gap:12px; padding:13px 20px; border-bottom:1px solid var(--dk-border); background:#fff; flex:0 0 auto; }
+  .sr-room-header-badge { width:40px; height:40px; border-radius:11px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:var(--dk-accent-d); color:var(--dk-accent); }
+  .sr-room-header-info { min-width:0; flex:1; }
+  .sr-room-header-title { font-size:15px; font-weight:800; color:var(--dk-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sr-room-header-sub { font-size:12px; color:var(--dk-text2); margin-top:2px; }
+  .sr-room-header-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  .sr-doc-btn { border:1px solid var(--dk-border-s); background:#fff; border-radius:9px; padding:6px 11px; font-size:12px; font-weight:600; color:var(--dk-text2); white-space:nowrap; text-decoration:none; }
+  .sr-doc-btn:hover { background:var(--dk-hover); text-decoration:none; }
+
+  .sr-scroll { flex:1; overflow-y:auto; overflow-x:hidden; min-height:0; }
+
+  /* ---- pinned card ---- */
+  .sr-card-wrap { padding:20px 22px 6px; }
+  .sr-card { background:#fff; border:1px solid var(--dk-border); border-radius:14px; box-shadow:0 1px 2px rgba(34,28,21,.06); overflow:hidden; }
+  .sr-card-head { display:flex; gap:12px; padding:16px 18px 0; }
+  .sr-avatar { width:38px; height:38px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:#fff; }
+  .sr-avatar.sm { width:34px; height:34px; font-size:12px; }
+  .sr-avatar.xs { width:27px; height:27px; font-size:10.5px; }
+  .sr-card-headinfo { flex:1; min-width:0; }
+  .sr-card-headrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .sr-author { font-weight:800; font-size:14px; color:var(--dk-text); }
+  .sr-role-tag { font-size:10px; font-weight:700; color:var(--dk-accent); background:var(--dk-accent-d); padding:1px 8px; border-radius:20px; }
+  .sr-time { font-size:11.5px; color:var(--dk-text3); }
+  .sr-pin-tag { margin-left:auto; font-size:10px; font-weight:800; color:#a15c12; background:#fff4e0; padding:2px 9px; border-radius:20px; }
+  .sr-card-title { font-size:16px; font-weight:800; color:var(--dk-text); margin-top:9px; line-height:1.4; }
+  .sr-card-body { padding:12px 18px 2px 68px; }
+  .sr-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 24px; padding:4px 0 12px; }
+  .sr-card-field-label { font-size:11px; font-weight:700; color:var(--dk-text3); display:block; }
+  .sr-card-field-val { font-size:13.5px; color:var(--dk-text); font-weight:600; }
+  .sr-card-divider { height:1px; background:var(--dk-border); margin:2px 0 12px; }
+  .sr-card-section-title { font-size:13px; font-weight:800; color:var(--dk-text); }
+  .sr-card-scope { font-size:13.5px; color:var(--dk-text); line-height:1.55; white-space:pre-wrap; margin-top:6px; }
+  .sr-chips { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:13px; }
+  .sr-chip-label { font-size:12px; font-weight:700; color:var(--dk-text3); }
+  .sr-chip { font-size:12px; font-weight:700; color:var(--dk-accent); background:var(--dk-accent-d); padding:3px 10px; border-radius:7px; }
+
+  /* ---- reactions ---- */
+  .sr-reactions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:10px 16px; border-top:1px solid var(--dk-border); background:var(--dk-surface); position:relative; }
+  .sr-react-pill { display:inline-flex; align-items:center; gap:5px; border-radius:20px; padding:3px 10px; font-size:12.5px; font-weight:700; cursor:pointer; line-height:1.4; background:#fff; border:1px solid var(--dk-border-s); color:var(--dk-text2); }
+  .sr-react-pill.mine { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
+  .sr-react-add { border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text3); border-radius:20px; width:30px; height:26px; font-size:14px; cursor:pointer; line-height:1; }
+  .sr-react-add:hover { background:var(--dk-hover); }
+  .sr-reply-count { margin-left:auto; font-size:12px; color:var(--dk-text3); }
+  .sr-picker { position:absolute; bottom:46px; left:16px; background:#fff; border:1px solid var(--dk-border); border-radius:12px; box-shadow:0 6px 20px rgba(34,28,21,.15); padding:5px; display:flex; gap:2px; z-index:30; }
+  .sr-picker button { border:none; background:none; font-size:20px; padding:5px 7px; border-radius:8px; cursor:pointer; }
+  .sr-picker button:hover { background:var(--dk-hover); }
+
+  /* ---- thread ---- */
+  .sr-thread { padding:2px 22px 16px; }
+  .sr-thread-divider { display:flex; align-items:center; gap:10px; margin:8px 0 6px; }
+  .sr-thread-divider .line { height:1px; background:var(--dk-border); flex:1; }
+  .sr-thread-divider .txt { font-size:11.5px; font-weight:700; color:var(--dk-text3); }
+  .sr-thread-empty { padding:24px 0; text-align:center; color:var(--dk-text3); font-size:13px; }
+
+  .sr-comment { display:flex; gap:11px; padding:9px 0; }
+  .sr-comment-body { flex:1; min-width:0; }
+  .sr-comment-top { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .sr-comment-author { font-weight:700; font-size:13px; color:var(--dk-text); }
+  .sr-comment-text { font-size:13.5px; color:var(--dk-text); line-height:1.55; margin-top:3px; white-space:pre-wrap; }
+  .sr-comment-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:7px; position:relative; }
+  .sr-reply-btn { border:none; background:none; color:var(--dk-text2); font-size:12px; font-weight:600; cursor:pointer; padding:2px 4px; }
+  .sr-reply-btn:hover { text-decoration:underline; }
+  .sr-replies { border-left:2px solid var(--dk-border); margin:9px 0 2px; padding-left:14px; display:flex; flex-direction:column; gap:3px; }
+  .sr-reply { display:flex; gap:9px; padding:5px 0; }
+  .sr-reply-top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .sr-reply-author { font-weight:700; font-size:12.5px; color:var(--dk-text); }
+  .sr-reply-text { font-size:13px; color:var(--dk-text); line-height:1.5; margin-top:2px; white-space:pre-wrap; }
+  .sr-reply-form { margin:9px 0 4px; display:flex; gap:8px; align-items:center; }
+  .sr-reply-form input { flex:1; border:1px solid var(--dk-border-s); background:#fff; border-radius:10px; padding:8px 11px; font-size:13px; color:var(--dk-text); outline:none; }
+  .sr-reply-form input:focus { border-color:var(--dk-accent); }
+  .sr-send-sm { border:none; background:var(--dk-accent); color:#fff; border-radius:10px; padding:8px 15px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .sr-send-sm:hover { filter:brightness(1.05); }
+
+  /* ---- composer ---- */
+  .sr-composer { padding:12px 20px 16px; background:#fff; border-top:1px solid var(--dk-border); flex:0 0 auto; }
+  .sr-composer-box { border:1px solid var(--dk-border-s); border-radius:14px; padding:9px 12px; background:var(--dk-surface); }
+  .sr-composer-text { width:100%; border:none; background:transparent; resize:none; outline:none; font-size:13.5px; color:var(--dk-text); min-height:38px; line-height:1.5; font-family:inherit; }
+  .sr-composer-actions { display:flex; align-items:center; margin-top:2px; }
+  .sr-send-btn { margin-left:auto; border:none; background:var(--dk-accent); color:#fff; border-radius:10px; padding:8px 18px; font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .sr-send-btn:hover { filter:brightness(1.05); }
+  .sr-send-btn:disabled { opacity:.6; cursor:default; }
+
+  .sr-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--dk-text3); font-size:14px; text-align:center; padding:20px; }
+  .sr-rail-empty { padding:30px 16px; color:var(--dk-text3); font-size:13px; text-align:center; }
+
+  /* ---- avatar color palette (theme vars only, no hardcoded hex) ---- */
+  .sr-avatar-clr-0 { background:var(--dk-accent); }
+  .sr-avatar-clr-1 { background:var(--ph-uat); }
+  .sr-avatar-clr-2 { background:var(--ph-reg); }
+  .sr-avatar-clr-3 { background:var(--ph-sit); }
+  .sr-avatar-clr-4 { background:var(--btn-blue); }
+  .sr-avatar-clr-5 { background:var(--ph-tcprep); }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginPage" class="hidden">
+  <div class="login-card">
+    <h1>PQA Resource Mgmt</h1>
+    <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
+    <form id="loginForm" autocomplete="on">
+      <label for="email">อีเมล</label>
+      <input id="email" type="email" required placeholder="you@infinitaskt.com">
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" type="password" required placeholder="••••••••">
+      <button id="loginBtn" class="btn-primary" type="submit">เข้าสู่ระบบ</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <nav class="nav">
+      <a href="gantt.html">Project Gantt</a>
+      <a href="outsource.html">Outsource</a>
+      <a href="calendar.html">Calendar</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="signoff-review.html" class="active">Signoff Room</a>
+      <a href="admin.html" id="navAdmin">Admin</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="who" id="who"></span>
+    <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <div class="sr-page-head">
+    <div>
+      <div class="sr-title">💬 Signoff Room</div>
+      <div class="sr-subtitle">พื้นที่พูดคุยและรีวิวการ sign-off แยกเป็นห้องตามโปรเจกต์</div>
+    </div>
+    <div class="sr-head-controls">
+      <div class="sr-mode-toggle" id="modeToggle">
+        <button class="sr-mode-btn active" data-mode="monthly">รายเดือน</button>
+        <button class="sr-mode-btn" data-mode="all">ทั้งหมด</button>
+      </div>
+      <div class="sr-month-nav" id="monthNavWrap">
+        <button class="nav-arrow" id="srPrevMonth">‹</button>
+        <span class="lbl" id="srMonthLbl">-</span>
+        <button class="nav-arrow" id="srNextMonth">›</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sr-shell" id="srShell">
+    <!-- ===== left rail: rooms list ===== -->
+    <div class="sr-rail">
+      <div class="sr-rail-head">
+        <div class="sr-search">
+          <span class="ico">🔍</span>
+          <input id="roomSearch" placeholder="ค้นหาโปรเจกต์ / แอป / คน...">
+        </div>
+        <div class="sr-rail-meta">
+          <span class="sr-rail-heading" id="railHeading">ห้องของเดือนนี้</span>
+          <span class="sr-rail-count" id="railCount">0 ห้อง</span>
+        </div>
+      </div>
+      <div class="sr-rail-list" id="railList"></div>
+    </div>
+
+    <!-- ===== right pane: conversation ===== -->
+    <div class="sr-conv" id="convPane">
+      <div class="sr-empty">เลือกห้องทางซ้ายเพื่อเริ่มดูการสนทนา</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import {
+  supabase, $, toast, esc, dDisp, monthLabel
+} from './common.js';
+
+/* =====================================================================
+   CONSTANTS
+   ===================================================================== */
+const EMOJIS = ['👍','❤️','🎉','👀','✅','🚀'];
+const JIRA_RE = /[A-Z][A-Z0-9]+-\d+/g;
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = {
+  me: '',                 // logged-in email
+  userMap: {},             // email -> display_name
+  appMap: {},              // app_code -> app_name
+  projects: [],            // v_project_wide rows that have a signoff_date
+  projMap: {},              // project_key -> row
+  lastCommentMap: {},      // project_key -> {author_email, body, created_at} (most recent, non-root)
+
+  mode: 'monthly',          // 'monthly' | 'all'
+  y: 0, m: 0,               // monthly nav (1-based month)
+  search: '',
+
+  selectedKey: null,        // currently open room's project_key
+  room: null,                // loaded room detail (see loadRoom)
+  pickerOpenKey: null,       // emoji-picker open for 'card' or String(commentId)
+  replyOpenKey: null,        // reply box open for a comment id (number)
+};
+
+let realtimeChannel = null;
+
+/* =====================================================================
+   SMALL HELPERS
+   ===================================================================== */
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+function displayNameFor(email){
+  if (!email) return 'Unknown';
+  return S.userMap[email] || String(email).split('@')[0];
+}
+function initialsFor(name){
+  return String(name||'').trim().slice(0,2).toUpperCase() || '??';
+}
+function hashClr(seed){
+  let h = 0;
+  const s = String(seed||'');
+  for (let i=0; i<s.length; i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  return 'sr-avatar-clr-' + (h % 6);
+}
+function appNameOf(proj){
+  if (!proj) return '';
+  return S.appMap[proj.app] || proj.app || proj.other_app || '— ไม่มี App —';
+}
+function appShort(name){
+  if (!name) return '?';
+  const spaced = String(name).replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  const parts = spaced.split(/[\s_\-]+/).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(0,3).map(p=>p[0].toUpperCase()).join('');
+  return String(name).replace(/[^A-Za-z0-9ก-๙]/g,'').slice(0,3).toUpperCase() || '?';
+}
+function truncate(s, max){
+  s = String(s||'');
+  return s.length > max ? s.slice(0,max).trimEnd() + '…' : s;
+}
+/** Compact 'dd/mm HH:MM' timestamp for comments/replies. */
+function commentTimeFull(ts){
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function inMonth(dateStr, y, m){
+  if (!dateStr) return false;
+  const [dy, dm] = dateStr.split('-').map(Number);
+  return dy === y && dm === m;
+}
+function statusPillHTML(status){
+  const map = { 'Need Attention':'st-need', 'Ready to Start':'st-ready', 'In Progress':'st-prog', 'Completed':'st-done' };
+  if (!status) return '<span class="muted">—</span>';
+  return `<span class="status-pill ${map[status]||''}">${esc(status)}</span>`;
+}
+
+/* =====================================================================
+   AUTH (copied pattern from dashboard.html)
+   ===================================================================== */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn');
+  btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...'; $('loginErr').textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({
+    email: $('email').value.trim(), password: $('password').value
+  });
+  btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
+  if (error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
+});
+$('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
+supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
+(async () => { const { data } = await supabase.auth.getSession(); if (data.session) showApp(data.session); else showLogin(); })();
+
+function showLogin(){
+  $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden');
+  sessionBooted = false;
+  if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+}
+
+let sessionBooted = false;
+
+async function showApp(session){
+  $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+  S.me = session.user.email;
+  let who = session.user.email, role = '';
+  const { data:u } = await supabase.from('app_user').select('display_name,app_role')
+    .eq('email', session.user.email).maybeSingle();
+  if (u) { who = u.display_name; role = u.app_role; }
+  $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+
+  if (sessionBooted) return;
+  sessionBooted = true;
+
+  const now = new Date();
+  S.y = now.getFullYear();
+  S.m = now.getMonth() + 1;
+
+  wireStaticControls();
+  await loadMasterData();
+
+  // ?project= — preselect a room, switching mode if it isn't in the current month
+  const qp = new URLSearchParams(location.search).get('project');
+  if (qp && S.projMap[qp]) {
+    const proj = S.projMap[qp];
+    S.mode = inMonth(proj.signoff_date, S.y, S.m) ? 'monthly' : 'all';
+    S.selectedKey = qp;
+  }
+
+  updateModeUI();
+  renderRail();
+  if (S.selectedKey) loadRoom(S.selectedKey);
+}
+
+/* =====================================================================
+   MASTER DATA
+   ===================================================================== */
+async function loadMasterData(){
+  const [projRes, appRes, userRes, lastCmtRes] = await Promise.all([
+    supabase.from('v_project_wide')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,deploy_date,signoff_url,project_note,is_active')
+      .not('signoff_date', 'is', null),
+    supabase.from('app').select('app_code,app_name'),
+    supabase.from('app_user').select('email,display_name'),
+    supabase.from('signoff_comment')
+      .select('project_key,author_email,body,created_at')
+      .is('deleted_at', null).eq('is_root', false)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  for (const r of [projRes, appRes, userRes, lastCmtRes]) {
+    if (r.error) console.warn('signoff-review master data error', r.error);
+  }
+  if (projRes.error || appRes.error) toast('โหลดข้อมูลโปรเจกต์ไม่สำเร็จ', true);
+
+  S.projects = projRes.data || [];
+  S.projMap = {};
+  S.projects.forEach(p => { S.projMap[p.project_key] = p; });
+
+  S.appMap = {};
+  (appRes.data || []).forEach(a => { S.appMap[a.app_code] = a.app_name; });
+
+  S.userMap = {};
+  (userRes.data || []).forEach(u => { S.userMap[u.email] = u.display_name; });
+
+  S.lastCommentMap = {};
+  (lastCmtRes.data || []).forEach(c => {
+    if (!(c.project_key in S.lastCommentMap)) S.lastCommentMap[c.project_key] = c; // first = most recent (desc order)
+  });
+}
+
+/* =====================================================================
+   RAIL (room list)
+   ===================================================================== */
+function visibleProjects(){
+  let list = S.mode === 'monthly'
+    ? S.projects.filter(p => inMonth(p.signoff_date, S.y, S.m))
+    : S.projects.slice();
+
+  const q = S.search.trim().toLowerCase();
+  if (q) {
+    list = list.filter(p => {
+      const appName = appNameOf(p).toLowerCase();
+      return (p.project_name||'').toLowerCase().includes(q)
+        || appName.includes(q)
+        || (p.uat_lead||'').toLowerCase().includes(q);
+    });
+  }
+  return list;
+}
+function groupByMonth(list){
+  const groups = {};
+  list.forEach(p => {
+    const key = (p.signoff_date||'').slice(0,7); // 'yyyy-MM'
+    (groups[key] = groups[key] || []).push(p);
+  });
+  return Object.keys(groups).sort((a,b) => b.localeCompare(a))
+    .map(k => ({ label: monthLabel(k), items: groups[k] }));
+}
+function buildRoomItemHTML(p){
+  const active = S.selectedKey === p.project_key;
+  const appName = appNameOf(p);
+  const short = appShort(appName);
+  const last = S.lastCommentMap[p.project_key];
+  const snippet = last
+    ? `${displayNameFor(last.author_email)}: ${truncate(last.body, 44)}`
+    : 'ยังไม่มีความคิดเห็น';
+  const timeTxt = last ? commentTimeFull(last.created_at) : '';
+  return `
+    <button class="sr-room ${active?'active':''}" data-key="${esc(p.project_key)}">
+      <span class="sr-room-badge">${esc(short)}</span>
+      <span class="sr-room-body">
+        <span class="sr-room-top">
+          <span class="sr-room-name" title="${esc(p.project_name||'')}">${esc(p.project_name||'')}</span>
+          <span class="sr-room-time">${esc(timeTxt)}</span>
+        </span>
+        <span class="sr-room-snippet">${esc(snippet)}</span>
+        <span class="sr-room-meta">${statusPillHTML(p.status)}</span>
+      </span>
+    </button>`;
+}
+function renderRail(){
+  const list = visibleProjects();
+  $('railHeading').textContent = S.mode === 'monthly' ? 'ห้องของเดือนนี้' : 'ทุกห้อง';
+  $('railCount').textContent = `${list.length} ห้อง`;
+
+  const container = $('railList');
+  if (!list.length) {
+    const msg = S.search.trim() ? 'ไม่พบห้องที่ตรงกับคำค้นหา' : 'ไม่มีห้อง Signoff ในช่วงเวลาที่เลือก';
+    container.innerHTML = `<div class="sr-rail-empty">${esc(msg)}</div>`;
+    return;
+  }
+
+  const byDateAsc = (a,b) => (a.signoff_date||'').localeCompare(b.signoff_date||'');
+  if (S.mode === 'monthly') {
+    container.innerHTML = list.slice().sort(byDateAsc).map(buildRoomItemHTML).join('');
+  } else {
+    const groups = groupByMonth(list);
+    container.innerHTML = groups.map(g => `
+      <div class="sr-group-label">${esc(g.label)}</div>
+      ${g.items.slice().sort(byDateAsc).map(buildRoomItemHTML).join('')}
+    `).join('');
+  }
+}
+
+/* =====================================================================
+   ROOM (conversation pane)
+   ===================================================================== */
+function selectRoom(pk){
+  if (!S.projMap[pk]) return;
+  S.selectedKey = pk;
+  S.pickerOpenKey = null;
+  S.replyOpenKey = null;
+  renderRail();
+  loadRoom(pk);
+}
+
+async function loadRoom(pk){
+  $('convPane').innerHTML = '<div class="sr-empty">กำลังโหลด...</div>';
+  try {
+    // 1) root ("pinned card") comment, if it already exists
+    const { data: rootRow, error: rootErr } = await supabase.from('signoff_comment')
+      .select('id,author_email,created_at')
+      .eq('project_key', pk).eq('is_root', true).maybeSingle();
+    if (rootErr) throw rootErr;
+    const rootId = rootRow ? rootRow.id : null;
+
+    // 2) thread comments (non-root)
+    const { data: cmtRows, error: cmtErr } = await supabase.from('signoff_comment')
+      .select('id,parent_id,is_root,author_email,body,created_at,edited_at')
+      .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
+      .order('created_at', { ascending: true });
+    if (cmtErr) throw cmtErr;
+
+    const topLevel = [], byParent = {};
+    (cmtRows || []).forEach(c => {
+      if (c.parent_id == null) topLevel.push(c);
+      else (byParent[c.parent_id] = byParent[c.parent_id] || []).push(c);
+    });
+
+    // 3) reactions (counts + mine) for every comment id in this room + the card root
+    const ids = (cmtRows || []).map(c => c.id);
+    if (rootId) ids.push(rootId);
+    const counts = {}, mineSet = new Set();
+    if (ids.length) {
+      const [cntRes, mineRes] = await Promise.all([
+        supabase.from('v_signoff_reaction_count').select('comment_id,emoji,cnt').in('comment_id', ids),
+        supabase.from('signoff_reaction').select('comment_id,emoji,user_email').in('comment_id', ids),
+      ]);
+      if (cntRes.error) console.warn('reaction count load error', cntRes.error);
+      if (mineRes.error) console.warn('reaction mine load error', mineRes.error);
+      (cntRes.data || []).forEach(r => {
+        counts[r.comment_id] = counts[r.comment_id] || {};
+        counts[r.comment_id][r.emoji] = r.cnt;
+      });
+      (mineRes.data || []).forEach(r => {
+        if (r.user_email === S.me) mineSet.add(r.comment_id + '|' + r.emoji);
+      });
+    }
+
+    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, topLevel, byParent, counts, mineSet };
+    renderRoomFull(pk);
+    ensureRealtimeSub(pk);
+  } catch (err) {
+    console.warn('loadRoom error', err);
+    toast('โหลดข้อมูลห้องไม่สำเร็จ', true);
+    $('convPane').innerHTML = '<div class="sr-empty">โหลดข้อมูลห้องไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
+  }
+}
+
+function reactionListFor(commentId){
+  if (!S.room || commentId == null) return [];
+  const counts = S.room.counts[commentId] || {};
+  return EMOJIS.filter(e => counts[e] > 0)
+    .map(e => ({ emoji:e, count:counts[e], mine:S.room.mineSet.has(commentId+'|'+e) }));
+}
+function buildReactionsBlock(commentId, pickerKey){
+  const list = reactionListFor(commentId);
+  const cidAttr = commentId != null ? ` data-cid="${commentId}"` : '';
+  const pills = list.map(r => `
+    <button class="sr-react-pill ${r.mine?'mine':''}"${cidAttr} data-emoji="${esc(r.emoji)}">
+      <span>${r.emoji}</span>${r.count}
+    </button>`).join('');
+  const pickerOpen = S.pickerOpenKey === pickerKey;
+  const picker = pickerOpen ? `
+    <div class="sr-picker">
+      ${EMOJIS.map(e => `<button${cidAttr} data-emoji="${esc(e)}" data-target="${esc(pickerKey)}">${e}</button>`).join('')}
+    </div>` : '';
+  return `${pills}<button class="sr-react-add" data-add-target="${esc(pickerKey)}"${cidAttr}>🙂+</button>${picker}`;
+}
+
+function buildRoomHeaderHTML(proj){
+  const appName = appNameOf(proj);
+  const short = appShort(appName);
+  const docBtn = proj.signoff_url
+    ? `<a class="sr-doc-btn" href="${esc(proj.signoff_url)}" target="_blank" rel="noopener">📄 เอกสาร Signoff</a>`
+    : '';
+  return `
+    <div class="sr-room-header">
+      <span class="sr-room-header-badge">${esc(short)}</span>
+      <div class="sr-room-header-info">
+        <div class="sr-room-header-title" title="${esc(proj.project_name||'')}">${esc(proj.project_name||'')}</div>
+        <div class="sr-room-header-sub">${esc(appName)} · UAT Lead: ${esc(proj.uat_lead||'—')}</div>
+      </div>
+      <div class="sr-room-header-actions">
+        ${statusPillHTML(proj.status)}
+        ${docBtn}
+      </div>
+    </div>`;
+}
+
+function buildCardHTML(proj){
+  let appDisp = appNameOf(proj);
+  if (proj.other_app) appDisp += ` / ${proj.other_app}`;
+  const leadName = proj.uat_lead || '—';
+  const authorEmail = S.room.rootAuthorEmail;
+  const authorDisplay = authorEmail ? displayNameFor(authorEmail) : leadName;
+  const initials = initialsFor(authorDisplay);
+  const avClr = hashClr(authorDisplay);
+  const postedTime = S.room.rootCreatedAt ? commentTimeFull(S.room.rootCreatedAt) : '';
+  const noteRaw = proj.project_note || '';
+  const chips = [...new Set(noteRaw.match(JIRA_RE) || [])];
+  const signoffDisp = proj.signoff_date ? dDisp(proj.signoff_date) : '—';
+  const goLiveDisp = proj.deploy_date ? dDisp(proj.deploy_date) : '—';
+  const replyCount = S.room.topLevel.length;
+
+  return `
+    <div class="sr-card-wrap">
+      <div class="sr-card">
+        <div class="sr-card-head">
+          <span class="sr-avatar ${avClr}">${esc(initials)}</span>
+          <div class="sr-card-headinfo">
+            <div class="sr-card-headrow">
+              <span class="sr-author">${esc(authorDisplay)}</span>
+              <span class="sr-role-tag">UAT Lead</span>
+              ${postedTime ? `<span class="sr-time">${esc(postedTime)}</span>` : ''}
+              <span class="sr-pin-tag">📌 SIGNOFF REVIEW</span>
+            </div>
+            <div class="sr-card-title">${esc(proj.project_name||'')}</div>
+          </div>
+        </div>
+        <div class="sr-card-body">
+          <div class="sr-card-grid">
+            <div><span class="sr-card-field-label">แอป (App)</span><span class="sr-card-field-val">${esc(appDisp)}</span></div>
+            <div><span class="sr-card-field-label">UAT Lead</span><span class="sr-card-field-val">${esc(leadName)}</span></div>
+            <div><span class="sr-card-field-label">Signoff Date</span><span class="sr-card-field-val">${esc(signoffDisp)}</span></div>
+            <div><span class="sr-card-field-label">Target Go-Live</span><span class="sr-card-field-val">${esc(goLiveDisp)}</span></div>
+          </div>
+          <div class="sr-card-divider"></div>
+          <div class="sr-card-section-title">Scope / Business Requirement</div>
+          <div class="sr-card-scope">${noteRaw ? esc(noteRaw) : '<span class="muted">— ไม่มีรายละเอียด —</span>'}</div>
+          ${chips.length ? `<div class="sr-chips"><span class="sr-chip-label">อ้างอิง:</span>${chips.map(c=>`<span class="sr-chip">${esc(c)}</span>`).join('')}</div>` : ''}
+        </div>
+        <div class="sr-reactions">
+          ${buildReactionsBlock(S.room.rootId, 'card')}
+          <span class="sr-reply-count">💬 ${replyCount} ความคิดเห็น</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildReplyHTML(rp){
+  const dispName = displayNameFor(rp.author_email);
+  return `
+    <div class="sr-reply">
+      <span class="sr-avatar xs ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
+      <div>
+        <div class="sr-reply-top">
+          <span class="sr-reply-author">${esc(dispName)}</span>
+          <span class="sr-time">${esc(commentTimeFull(rp.created_at))}</span>
+        </div>
+        <div class="sr-reply-text">${esc(rp.body)}</div>
+      </div>
+    </div>`;
+}
+function buildCommentHTML(c){
+  const dispName = displayNameFor(c.author_email);
+  const isMine = c.author_email === S.me;
+  const replies = S.room.byParent[c.id] || [];
+  const replyOpen = S.replyOpenKey === c.id;
+  return `
+    <div class="sr-comment">
+      <span class="sr-avatar sm ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
+      <div class="sr-comment-body">
+        <div class="sr-comment-top">
+          <span class="sr-comment-author">${esc(dispName)}</span>
+          ${isMine ? '<span class="sr-role-tag">ฉัน</span>' : ''}
+          <span class="sr-time">${esc(commentTimeFull(c.created_at))}</span>
+        </div>
+        <div class="sr-comment-text">${esc(c.body)}</div>
+        <div class="sr-comment-actions">
+          ${buildReactionsBlock(c.id, String(c.id))}
+          <button class="sr-reply-btn" data-cid="${c.id}">↩ ตอบกลับ</button>
+        </div>
+        ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
+        ${replyOpen ? `
+          <div class="sr-reply-form">
+            <input class="sr-reply-input" data-cid="${c.id}" placeholder="ตอบกลับในเธรดนี้...">
+            <button class="sr-send-sm sr-send-reply" data-cid="${c.id}">ส่ง</button>
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+function buildThreadHTML(){
+  const top = S.room.topLevel;
+  const body = top.length
+    ? top.map(buildCommentHTML).join('')
+    : '<div class="sr-thread-empty">ยังไม่มีความคิดเห็น เริ่มพูดคุยได้เลย</div>';
+  return `
+    <div class="sr-thread">
+      <div class="sr-thread-divider"><span class="line"></span><span class="txt">${top.length} ความคิดเห็นในเธรด</span><span class="line"></span></div>
+      ${body}
+    </div>`;
+}
+function buildComposerHTML(proj){
+  return `
+    <div class="sr-composer">
+      <div class="sr-composer-box">
+        <textarea class="sr-composer-text" rows="1" placeholder="พิมพ์ข้อความในห้อง ${esc(appNameOf(proj))}..."></textarea>
+        <div class="sr-composer-actions">
+          <button class="sr-send-btn">ส่ง ➤</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderRoomFull(pk){
+  const proj = S.projMap[pk];
+  if (!proj || !S.room) { renderConvEmpty(); return; }
+  $('convPane').innerHTML = `
+    ${buildRoomHeaderHTML(proj)}
+    <div class="sr-scroll">
+      ${buildCardHTML(proj)}
+      ${buildThreadHTML()}
+    </div>
+    ${buildComposerHTML(proj)}`;
+}
+function rerenderRoomKeepData(){
+  if (S.room) renderRoomFull(S.room.pk);
+}
+function renderConvEmpty(){
+  const list = visibleProjects();
+  const msg = list.length ? 'เลือกห้องทางซ้ายเพื่อเริ่มดูการสนทนา' : 'ไม่มีห้อง Signoff ในช่วงเวลาที่เลือก';
+  $('convPane').innerHTML = `<div class="sr-empty">${esc(msg)}</div>`;
+}
+
+/* =====================================================================
+   ACTIONS — reactions, comments, replies
+   ===================================================================== */
+async function toggleReaction(commentId, emoji){
+  if (!S.me || commentId == null) return;
+  try {
+    const { data: existing, error: selErr } = await supabase.from('signoff_reaction')
+      .select('id').eq('comment_id', commentId).eq('user_email', S.me).eq('emoji', emoji).maybeSingle();
+    if (selErr) throw selErr;
+    if (existing) {
+      const { error } = await supabase.from('signoff_reaction').delete().eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('signoff_reaction').insert({ comment_id: commentId, user_email: S.me, emoji });
+      if (error) throw error;
+    }
+    S.pickerOpenKey = null;
+    if (S.room) await loadRoom(S.room.pk);
+    if (S.room) await refreshRailSnippet(S.room.pk);
+  } catch (err) {
+    console.warn('toggleReaction error', err);
+    toast('กดรีแอคชันไม่สำเร็จ', true);
+  }
+}
+async function toggleCardReaction(emoji){
+  if (!S.room) return;
+  try {
+    const { data: rootId, error } = await supabase.rpc('fn_ensure_signoff_root', { p_project_key: S.room.pk });
+    if (error) throw error;
+    await toggleReaction(rootId, emoji);
+  } catch (err) {
+    console.warn('toggleCardReaction error', err);
+    toast('กดรีแอคชันไม่สำเร็จ', true);
+  }
+}
+async function sendComment(){
+  if (!S.room) return;
+  const ta = document.querySelector('.sr-composer-text');
+  const v = (ta && ta.value || '').trim();
+  if (!v) return;
+  const btn = document.querySelector('.sr-send-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const { error } = await supabase.from('signoff_comment')
+      .insert({ project_key: S.room.pk, parent_id: null, author_email: S.me, body: v });
+    if (error) throw error;
+    await loadRoom(S.room.pk);
+    await refreshRailSnippet(S.room.pk);
+  } catch (err) {
+    console.warn('sendComment error', err);
+    toast('ส่งข้อความไม่สำเร็จ: ' + (err.message || ''), true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+async function sendReply(parentId){
+  if (!S.room || parentId == null) return;
+  const input = document.querySelector(`.sr-reply-input[data-cid="${parentId}"]`);
+  const v = (input && input.value || '').trim();
+  if (!v) return;
+  try {
+    const { error } = await supabase.from('signoff_comment')
+      .insert({ project_key: S.room.pk, parent_id: parentId, author_email: S.me, body: v });
+    if (error) throw error;
+    S.replyOpenKey = null;
+    await loadRoom(S.room.pk);
+    await refreshRailSnippet(S.room.pk);
+  } catch (err) {
+    console.warn('sendReply error', err);
+    toast('ส่งข้อความไม่สำเร็จ', true);
+  }
+}
+async function refreshRailSnippet(pk){
+  const { data, error } = await supabase.from('signoff_comment')
+    .select('project_key,author_email,body,created_at')
+    .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) { console.warn('refreshRailSnippet error', error); return; }
+  if (data && data.length) S.lastCommentMap[pk] = data[0];
+  renderRail();
+}
+
+/* =====================================================================
+   REALTIME (optional — schema:'pqa', not 'public')
+   ===================================================================== */
+function ensureRealtimeSub(pk){
+  if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+  try {
+    realtimeChannel = supabase.channel('signoff-' + pk)
+      .on('postgres_changes', { event:'*', schema:'pqa', table:'signoff_comment', filter:'project_key=eq.'+pk },
+        () => { if (S.selectedKey === pk) loadRoom(pk); })
+      .on('postgres_changes', { event:'*', schema:'pqa', table:'signoff_reaction' },
+        () => { if (S.selectedKey === pk) loadRoom(pk); })
+      .subscribe();
+  } catch (err) {
+    console.warn('realtime subscribe failed (non-fatal)', err);
+  }
+}
+
+/* =====================================================================
+   MODE / MONTH NAV / SEARCH — static controls wired once
+   ===================================================================== */
+function updateModeUI(){
+  document.querySelectorAll('#modeToggle .sr-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === S.mode));
+  $('monthNavWrap').classList.toggle('hidden', S.mode !== 'monthly');
+  $('srMonthLbl').textContent = monthLabel(new Date(S.y, S.m-1, 1));
+}
+function setMode(mode){
+  if (S.mode === mode) return;
+  S.mode = mode;
+  updateModeUI();
+  renderRail();
+}
+function changeMonth(delta){
+  const d = new Date(S.y, S.m - 1 + delta, 1);
+  S.y = d.getFullYear(); S.m = d.getMonth() + 1;
+  updateModeUI();
+  renderRail();
+}
+
+function wireStaticControls(){
+  $('modeToggle').addEventListener('click', e => {
+    const btn = e.target.closest('.sr-mode-btn');
+    if (btn) setMode(btn.dataset.mode);
+  });
+  $('srPrevMonth').addEventListener('click', () => changeMonth(-1));
+  $('srNextMonth').addEventListener('click', () => changeMonth(1));
+  $('roomSearch').addEventListener('input', e => { S.search = e.target.value; renderRail(); });
+
+  $('railList').addEventListener('click', e => {
+    const room = e.target.closest('.sr-room');
+    if (room) selectRoom(room.dataset.key);
+  });
+
+  // ---- delegated events inside the two-pane shell (rail selection handled above; conv pane below) ----
+  $('srShell').addEventListener('click', async e => {
+    const emojiBtn = e.target.closest('[data-emoji]');
+    if (emojiBtn) {
+      const emoji = emojiBtn.dataset.emoji;
+      const cidRaw = emojiBtn.dataset.cid;
+      if (cidRaw) await toggleReaction(Number(cidRaw), emoji);
+      else await toggleCardReaction(emoji);
+      return;
+    }
+    const addBtn = e.target.closest('.sr-react-add');
+    if (addBtn) {
+      const key = addBtn.dataset.addTarget;
+      S.pickerOpenKey = (S.pickerOpenKey === key) ? null : key;
+      rerenderRoomKeepData();
+      return;
+    }
+    const replyBtn = e.target.closest('.sr-reply-btn');
+    if (replyBtn) {
+      const cid = Number(replyBtn.dataset.cid);
+      S.replyOpenKey = (S.replyOpenKey === cid) ? null : cid;
+      rerenderRoomKeepData();
+      return;
+    }
+    const sendReplyBtn = e.target.closest('.sr-send-reply');
+    if (sendReplyBtn) { await sendReply(Number(sendReplyBtn.dataset.cid)); return; }
+
+    const sendBtn = e.target.closest('.sr-send-btn');
+    if (sendBtn) { await sendComment(); return; }
+  });
+
+  $('srShell').addEventListener('keydown', e => {
+    if (e.target.matches('.sr-composer-text') && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); sendComment();
+    }
+    if (e.target.matches('.sr-reply-input') && e.key === 'Enter') {
+      e.preventDefault(); sendReply(Number(e.target.dataset.cid));
+    }
+  });
+}
+</script>
+</body>
+</html>

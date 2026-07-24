@@ -210,6 +210,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
+      <a href="signoff-review.html">Signoff Room</a>
       <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -591,6 +592,8 @@ function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='
 /* ============ DEFAULT LEAD FILTER ============ */
 function applyDefaultLeadFilter(){
   S.filter.leads = new Set();
+  // admin เห็นทุก project เสมอ ไม่ต้องกรอง แม้จะผูก pqa_emp_id ไว้
+  if (S.user && S.user.app_role === 'admin') return;
   const me = S.user && S.user.pqa_emp_id;
   if (!me) return;
   const meLead = S.leads.find(l => l.emp_id === me);
@@ -1131,9 +1134,8 @@ if (!window.openSignoffReview) {
   window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
 }
 window.srOpenFromKey = function(pk){
-  const p = S.projects.find(x => x.project_key === pk);
-  if (!p) return;
-  window.openSignoffReview(pk, p.project_name, p.signoff_date || '');
+  // เปลี่ยนจากเปิด modal เดิม → พาไปหน้า Signoff Room พร้อม ?project=
+  location.href = 'signoff-review.html?project=' + encodeURIComponent(pk || '');
 };
 
 /* ============ BOOKING POPUP ============ */
