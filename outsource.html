@@ -302,7 +302,7 @@
       <a href="outsource.html" class="active">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="admin.html">Admin</a>
+      <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -639,6 +639,7 @@ async function showApp(session) {
     role = u.app_role;
   }
   $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
+  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
 
   await loadAll();
 }

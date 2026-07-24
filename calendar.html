@@ -130,7 +130,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html" class="active">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="admin.html">Admin</a>
+      <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -272,6 +272,7 @@ async function showApp(session) {
 
   const profile = await getProfile(session);
   $('who').innerHTML = `<b>${esc(profile.displayName)}</b>${profile.role ? ` · ${esc(profile.role)}` : ''}`;
+  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (profile.role === 'admin') ? '' : 'none';
 
   const today = new Date();
   S.y = today.getFullYear();

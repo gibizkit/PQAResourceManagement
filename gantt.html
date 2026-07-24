@@ -210,7 +210,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="admin.html">Admin</a>
+      <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -506,6 +506,7 @@ async function showApp(session){
   if(u){ who=u.display_name; role=u.app_role; S.user={ pqa_emp_id:u.pqa_emp_id, display_name:u.display_name, app_role:u.app_role }; }
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
 
   S.filter.start = addDays(TODAY, -7);
   S.filter.end   = defaultFilterEndStr();
