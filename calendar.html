@@ -416,10 +416,15 @@ function buildDayCell(ds, inMonth, monthData) {
   }
 
   const entries = monthData.byDate[ds] || [];
-  const bookedCnt = new Set(entries.map(e => e.resource_id)).size;
-  const reqCnt = requiredForDate(ds);
-  if (bookedCnt > 0 || reqCnt > 0) {
-    inner += `<div class="cal-meta">${bookedCnt}/${fmtNum(reqCnt)}</div>`;
+  // Booked/Required numbers only make sense on normal working days —
+  // weekends (no holiday entry) stay blank, and holidays show the holiday
+  // name instead (rendered above via cal-holiday-tag).
+  if (!holidayDesc && !isWeekendDay) {
+    const bookedCnt = new Set(entries.map(e => e.resource_id)).size;
+    const reqCnt = requiredForDate(ds);
+    if (bookedCnt > 0 || reqCnt > 0) {
+      inner += `<div class="cal-meta">${bookedCnt}/${fmtNum(reqCnt)}</div>`;
+    }
   }
 
   const projNames = [...new Set(entries.map(e => e.project_key))]

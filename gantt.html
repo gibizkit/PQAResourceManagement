@@ -662,14 +662,35 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
 function updateMsLabel(host, items, selectedSet, labelAll){
   const btn = host.querySelector('.ms-btn');
   const n = selectedSet.size;
-  btn.innerHTML = (n===0 ? labelAll : `${labelAll} (${n})`) + ' <span class="ms-count">▾</span>';
+  let label;
+  if (n === 0) {
+    label = labelAll;
+  } else if (n === 1) {
+    const only = [...selectedSet][0];
+    const it = items.find(x => x.value === only);
+    label = it ? it.label : labelAll;
+  } else {
+    label = `${n} รายการ`;
+  }
+  btn.innerHTML = `${esc(String(label))} <span class="ms-count">▾</span>`;
 }
 function syncMultiSelect(hostId, selectedSet){
   const host = $(hostId);
   host.querySelectorAll('.ms-list input').forEach(cb => cb.checked = selectedSet.has(cb.value));
   const btn = host.querySelector('.ms-btn');
   const labelAll = hostId==='msLead' ? 'ทุก Lead' : 'ทุก Project';
-  btn.innerHTML = (selectedSet.size===0 ? labelAll : `${labelAll} (${selectedSet.size})`) + ' <span class="ms-count">▾</span>';
+  const n = selectedSet.size;
+  let label;
+  if (n === 0) {
+    label = labelAll;
+  } else if (n === 1) {
+    const checked = host.querySelector('.ms-list input:checked');
+    const span = checked ? checked.nextElementSibling : null;
+    label = span ? span.textContent : labelAll;
+  } else {
+    label = `${n} รายการ`;
+  }
+  btn.innerHTML = `${esc(String(label))} <span class="ms-count">▾</span>`;
 }
 document.addEventListener('click', () => {
   document.querySelectorAll('.ms-panel').forEach(p => p.classList.add('hidden'));
