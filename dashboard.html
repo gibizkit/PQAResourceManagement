@@ -24,17 +24,6 @@
   .topbar .nav a:hover { background:var(--dk-hover); color:var(--dk-text); }
   .topbar .nav a.active { background:var(--dk-accent-d); color:var(--dk-accent); }
 
-  /* ---- mode toggle pill ---- */
-  .dash-mode-toggle {
-    display:flex; gap:2px; background:var(--dk-surface); border:1px solid var(--dk-border-s);
-    border-radius:10px; padding:3px;
-  }
-  .dash-mode-btn {
-    border:none; background:none; padding:6px 14px; border-radius:8px; font-size:12.5px;
-    font-weight:700; color:var(--dk-text2); cursor:pointer;
-  }
-  .dash-mode-btn.active { background:var(--dk-accent); color:#fff; }
-
   /* ---- view tabs ---- */
   .view-tabs { display:flex; gap:6px; flex-wrap:wrap; }
   .view-tab {
@@ -43,19 +32,6 @@
   }
   .view-tab:hover { background:var(--dk-hover); }
   .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
-
-  /* ---- month navigator (styled to match the Outsource-page date-filter look:
-     bordered pill, 13px font, 8px radius — see outsource.html .date-input) ---- */
-  .month-nav {
-    display:flex; align-items:center; gap:6px; background:#fff;
-    border:1px solid var(--dk-border-s); border-radius:8px; padding:4px 6px;
-  }
-  .month-nav button.nav-arrow {
-    border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; width:28px; height:28px;
-    font-size:14px; color:var(--dk-text2); cursor:pointer;
-  }
-  .month-nav button.nav-arrow:hover { background:var(--dk-hover); }
-  .month-nav .lbl { font-weight:700; font-size:13px; color:var(--dk-text); min-width:100px; text-align:center; padding:0 4px; }
 
   /* ---- toolbar row: view tabs (left) + period controls (right) on one line ---- */
   .dash-toolbar-row {
@@ -142,7 +118,7 @@
   }
   .toggle-ico { display:inline-block; width:14px; }
 
-  /* ---- collapsible summary (KPI cards + chart row) toggle — By Project / By OS only ---- */
+  /* ---- collapsible chart-row toggle — By Project / By OS only (KPI cards stay visible) ---- */
   .summary-toggle-row { display:flex; justify-content:flex-end; margin-bottom:8px; }
 
   /* ---- By OS pivot: frozen left columns ----
@@ -247,7 +223,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html" class="active">Dashboard</a>
-      <a href="signoff-review.html">Signoff Room</a>
+      <a href="signoff-review.html">Signoff Review</a>
       <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -256,15 +232,8 @@
   </div>
 
   <div class="main">
-    <div class="page-head">
-      <h2>📈 Dashboard</h2>
-      <div class="dash-mode-toggle" id="modeToggle">
-        <button class="dash-mode-btn active" data-mode="monthly">รายเดือน</button>
-        <button class="dash-mode-btn" data-mode="overall">ทั้งหมด</button>
-      </div>
-    </div>
 
-    <!-- ===== Toolbar row: view tabs (left) + period controls (right, one visible at a time) ===== -->
+    <!-- ===== Toolbar row: view tabs (left) + period controls (right) ===== -->
     <div class="toolbar dash-toolbar-row">
       <div class="view-tabs" id="viewTabs">
         <button class="view-tab active" data-view="project">📊 By Project</button>
@@ -273,18 +242,8 @@
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
 
-      <!-- Monthly: month navigator -->
-      <div class="period-controls" id="monthlyToolbar">
-        <div class="month-nav">
-          <button class="nav-arrow" id="prevMonthBtn">‹</button>
-          <span class="lbl" id="monthLbl">-</span>
-          <button class="nav-arrow" id="nextMonthBtn">›</button>
-        </div>
-        <button class="btn" id="todayBtn">Today</button>
-      </div>
-
-      <!-- Overall: custom Start–End range (compact inline "Period:") -->
-      <div class="period-controls hidden" id="overallToolbar">
+      <!-- Custom Start–End range (compact inline "Period:") — dashboard always runs in this mode -->
+      <div class="period-controls" id="overallToolbar">
         <div class="filters filters-inline">
           <span class="period-lbl">Period:</span>
           <input type="date" id="ovStart">
@@ -295,23 +254,23 @@
       </div>
     </div>
 
-    <!-- ===== Summary collapse toggle (By Project / By OS only — hides KPI cards + chart to
-         give the table more vertical space) ===== -->
+    <!-- ===== Chart-row collapse toggle (By Project / By OS only — hides the chart row to
+         give the table more vertical space; KPI cards stay visible) ===== -->
     <div class="summary-toggle-row hidden" id="summaryToggleRow">
-      <button class="btn sm" id="summaryToggleBtn">▲ ซ่อนสรุป</button>
+      <button class="btn sm" id="summaryToggleBtn">Hide chart</button>
     </div>
 
-    <!-- ===== KPI (monthly only, hidden on By Lead) ===== -->
+    <!-- ===== KPI (computed over the selected Period range, hidden on By Lead) ===== -->
     <div class="kpi-grid" id="kpiGrid">
       <div class="kpi-card kc-teal">
-        <div class="kpi-label">Total MD (MTD)</div>
+        <div class="kpi-label">Total MD (Period)</div>
         <div class="kpi-value" id="kpiTotalMD">0</div>
         <div class="kpi-sub">Effective MD = Booked − Leave</div>
       </div>
       <div class="kpi-card kc-purple">
         <div class="kpi-label">Total Booked OS</div>
         <div class="kpi-value" id="kpiBookedOs">0</div>
-        <div class="kpi-sub">คนที่ถูกจองในเดือนนี้</div>
+        <div class="kpi-sub">คนที่ถูกจองในช่วง Period นี้</div>
       </div>
       <div class="kpi-card kc-blue">
         <div class="kpi-label">Active Projects</div>
@@ -325,7 +284,7 @@
       </div>
     </div>
 
-    <!-- ===== Charts: By Project / By OS (monthly) ===== -->
+    <!-- ===== Charts: By Project / By OS ===== -->
     <div class="chart-row hidden" id="chartRow">
       <div class="chart-card">
         <div class="chart-card-title">MD by App (แยกตาม Phase)</div>
@@ -351,7 +310,7 @@
 <script type="module" src="./signoff.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, monthLabel, defaultFilterEndStr
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, defaultFilterEndStr
 } from './common.js';
 
 /* SIGNOFF REVIEW STUB (signoff.js may override — same defensive pattern as gantt.html) */
@@ -387,7 +346,6 @@ function fmtMD(v){
   if (isNaN(n)) return '0';
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
-function pad2(n){ return String(n).padStart(2,'0'); }
 /* Cap a (long) project name at 100 chars with an ellipsis; CSS .proj-name clamps it to 2 lines. */
 function truncName(s, max=100){
   s = String(s || '');
@@ -403,11 +361,11 @@ const S = {
 
   // "master" data — loaded once at app start, re-fetched on Refresh
   activeProjects: [],           // v_project_wide rows where is_active = true
-  activeProjMap: {},            // project_key -> row (for monthly aggregation, app label lookup)
-  allProjectsFull: [],           // v_project_wide rows for ALL projects (used in Overall mode's
-                                 // subviews so completed / inactive projects still show up)
-  allProjMap: {},                // project_key -> row for ALL projects (used in Overall mode so
-                                 // completed / inactive projects still get a proper App label)
+  activeProjMap: {},            // project_key -> row (used for the "Active Projects" KPI count)
+  allProjectsFull: [],           // v_project_wide rows for ALL projects (used everywhere else so
+                                 // completed / inactive projects still show up)
+  allProjMap: {},                // project_key -> row for ALL projects (so completed / inactive
+                                 // projects still get a proper App label)
   appList: [],                  // app table rows {app_code, app_name, sort_order}
   appOrder: {},                 // app_code -> sort_order (for consistent column/legend ordering)
   resourceMap: {},              // resource_id -> {nickname, full_name_en, role_code, resource_type}
@@ -415,13 +373,12 @@ const S = {
   projectLeadRows: [],          // project_lead rows (project_key, pqa_emp_id, is_main)
   phasesByProject: {},           // project_key -> [{phase_code,phase_label,start_date,end_date,sort_order}]
 
-  // shared period state (monthly = one calendar month, overall = a custom Start–End range)
-  dashMode: 'monthly',          // 'monthly' | 'overall'
+  // shared period state — dashboard always runs in "overall" custom Start–End range mode
+  dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
-  summaryCollapsed: false,      // KPI cards + chart row hidden? (By Project / By OS only)
-  dashY: 0, dashM: 0,           // selected year / 1-based month (monthly mode)
-  overallRange: { s:'', e:'' }, // selected Start/End (overall mode)
-  periodCacheKey: '',           // identifies the currently-loaded period (mode+range), '' = not loaded
+  chartCollapsed: false,        // chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only)
+  overallRange: { s:'', e:'' }, // selected Start/End
+  periodCacheKey: '',           // identifies the currently-loaded period (start|end range), '' = not loaded
   bookingDaily: [],             // v_booking_daily rows for the current period
   leaveDaily: [],                // v_leave_daily rows for the current period
   periodAgg: null,                // computed aggregates for the current period (see computeAgg)
@@ -436,19 +393,12 @@ const charts = { bar:null, donut:null };
 /* =====================================================================
    DATE HELPERS
    ===================================================================== */
-function monthFirstLast(y, m){
-  // m is 1-based (1..12)
-  const first = `${y}-${pad2(m)}-01`;
-  const lastDate = new Date(y, m, 0);           // day 0 of "next month" (0-based m) = last day of month m
-  const last = d2s(lastDate);
-  return { first, last };
-}
 function isWkndDate(ds){
   const dow = new Date(ds+'T00:00:00').getDay();
   return dow===0 || dow===6 || (ds in S.holidays);
 }
-function workingDaysInMonth(y, m){
-  const { first, last } = monthFirstLast(y, m);
+function workingDaysInRange(first, last){
+  if (!first || !last) return 0;
   let d = new Date(first+'T00:00:00');
   const end = new Date(last+'T00:00:00');
   let n = 0;
@@ -497,12 +447,9 @@ async function showApp(session){
   if (sessionBooted) return;
   sessionBooted = true;
 
-  const now = new Date();
-  S.dashY = now.getFullYear();
-  S.dashM = now.getMonth()+1;
-
   wireToolbar();
   await loadMasterData();
+  await ensureOverallRangeDefaults();
   await loadPeriod(true);
 }
 
@@ -556,27 +503,24 @@ async function loadMasterData(){
 }
 
 /* =====================================================================
-   PERIOD (shared by monthly-mode and overall-mode) DATA + AGGREGATION
+   PERIOD (custom Start–End "overall" range — the dashboard's only mode) DATA + AGGREGATION
    ===================================================================== */
-/** Currently active period range as {first,last} 'yyyy-MM-dd', regardless of mode. */
+/** Currently active period range as {first,last} 'yyyy-MM-dd'. */
 function currentRange(){
-  return S.dashMode === 'overall'
-    ? { first: S.overallRange.s, last: S.overallRange.e }
-    : monthFirstLast(S.dashY, S.dashM);
+  return { first: S.overallRange.s, last: S.overallRange.e };
 }
-/** Projects to show in the By Project / By Lead / Signoff subviews for the current mode. */
+/** Projects to show in the By Project / By Lead / Signoff subviews. */
 function currentProjectsList(){
-  return S.dashMode === 'overall' ? S.allProjectsFull : S.activeProjects;
+  return S.allProjectsFull;
 }
 function currentProjMap(){
-  return S.dashMode === 'overall' ? S.allProjMap : S.activeProjMap;
+  return S.allProjMap;
 }
 
 async function loadPeriod(force){
   const { first, last } = currentRange();
   if (!first || !last) return; // overall range not resolved yet
-  const key = `${S.dashMode}|${first}|${last}`;
-  if (S.dashMode === 'monthly') updateMonthLabel();
+  const key = `${first}|${last}`;
   if (!force && S.periodCacheKey === key) { renderAll(); return; }
 
   setViewLoading();
@@ -593,9 +537,8 @@ async function loadPeriod(force){
     S.bookingDaily = bkRes.data || [];
     S.leaveDaily = lvRes.data || [];
     S.periodCacheKey = key;
-    // monthly mode: only count bookings whose project is in the ACTIVE project set.
     // overall mode: count everything (historical/completed projects included too).
-    S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: S.dashMode === 'monthly' });
+    S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: false });
     renderAll();
   } catch (err) {
     console.error(err);
@@ -610,14 +553,14 @@ async function loadPeriod(force){
  *  - byAppPhase / phaseTotals / byProject / byProjectPhase / byOsApp all use RAW
  *    booked MD (sum of md_per_day from v_booking_daily) — this feeds the charts,
  *    the By Project table, and the By OS pivot cells.
- *  - kpiEffectiveMD (used ONLY for the "Total MD (MTD)" KPI card, monthly mode only)
- *    nets out leave: for every resource+day that has a booking, effective MD =
+ *  - kpiEffectiveMD (used ONLY for the "Total MD" KPI card) nets out leave: for
+ *    every resource+day that has a booking, effective MD =
  *    max(0, sum(booked md_per_day that day) - leave_md that day), then summed
  *    across the period. Days with leave but no booking don't count.
- *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped
- *    (monthly mode — "only count bookings whose project is in the active-projects
- *    set"). When false (overall mode), every booking counts and `projMap` is only
- *    used to resolve an App label.
+ *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped.
+ *    The dashboard always calls this with `restrict:false` (every booking counts,
+ *    including historical/completed projects) — `projMap` is only used to resolve
+ *    an App label. The flag is kept for flexibility but is currently always off.
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
@@ -684,32 +627,29 @@ function setViewLoading(){
   $('viewContainer').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
 }
 
-function updateMonthLabel(){
-  $('monthLbl').textContent = monthLabel(new Date(S.dashY, S.dashM-1, 1));
-}
-
 /* =====================================================================
-   SUMMARY COLLAPSE TOGGLE (KPI cards + chart) — By Project / By OS only
+   CHART-ROW COLLAPSE TOGGLE — By Project / By OS only (KPI cards stay visible)
    ===================================================================== */
 function renderSummaryToggle(){
   const relevant = S.dashView === 'project' || S.dashView === 'os';
   $('summaryToggleRow').classList.toggle('hidden', !relevant);
   if (!relevant) return;
-  $('summaryToggleBtn').textContent = S.summaryCollapsed ? '▼ แสดงสรุป' : '▲ ซ่อนสรุป';
+  $('summaryToggleBtn').textContent = S.chartCollapsed ? 'Show chart' : 'Hide chart';
 }
 
 /* =====================================================================
    KPI
    ===================================================================== */
 function renderKPI(){
-  const hide = S.dashMode === 'overall' || S.dashView === 'lead' || S.summaryCollapsed;
+  const hide = S.dashView === 'lead';
   $('kpiGrid').classList.toggle('hidden', hide);
   if (hide) return;
   const agg = S.periodAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
+  const { first, last } = currentRange();
   $('kpiTotalMD').textContent = fmtMD(agg.kpiEffectiveMD);
   $('kpiBookedOs').textContent = agg.bookedOsCount;
   $('kpiActiveProj').textContent = S.activeProjects.length;
-  $('kpiWorkDays').textContent = workingDaysInMonth(S.dashY, S.dashM);
+  $('kpiWorkDays').textContent = workingDaysInRange(first, last);
 }
 
 /* =====================================================================
@@ -723,7 +663,7 @@ function sortedApps(appKeys){
 }
 
 function renderCharts(){
-  const show = (S.dashView === 'project' || S.dashView === 'os') && !S.summaryCollapsed;
+  const show = (S.dashView === 'project' || S.dashView === 'os') && !S.chartCollapsed;
   $('chartRow').classList.toggle('hidden', !show);
   if (!show) return;
 
@@ -1091,7 +1031,7 @@ function renderSignoffView(container){
 }
 
 /* =====================================================================
-   OVERALL MODE — default range
+   PERIOD DEFAULTS (Start–End range)
    ===================================================================== */
 async function getOverallMinDate(){
   const { data, error } = await supabase.from('project_phase')
@@ -1104,7 +1044,8 @@ async function getOverallMinDate(){
   return data[0].start_date;
 }
 
-/** Populate S.overallRange with sane defaults the first time Overall mode is opened. */
+/** Populate S.overallRange with sane defaults on first load (Start = earliest known phase
+ *  start date; End = §4.2 standard, last day of the month 3 months ahead). */
 async function ensureOverallRangeDefaults(){
   if (S.overallRange.s && S.overallRange.e) return;
   const minDate = await getOverallMinDate();
@@ -1117,26 +1058,14 @@ async function ensureOverallRangeDefaults(){
    TOOLBAR WIRING
    ===================================================================== */
 function wireToolbar(){
-  $('modeToggle').addEventListener('click', e => {
-    const btn = e.target.closest('.dash-mode-btn');
-    if (!btn) return;
-    switchDashMode(btn.dataset.mode);
-  });
   $('viewTabs').addEventListener('click', e => {
     const btn = e.target.closest('.view-tab');
     if (!btn) return;
     switchDashView(btn.dataset.view);
   });
   $('summaryToggleBtn').addEventListener('click', () => {
-    S.summaryCollapsed = !S.summaryCollapsed;
+    S.chartCollapsed = !S.chartCollapsed;
     renderAll();
-  });
-  $('prevMonthBtn').addEventListener('click', () => changeMonth(-1));
-  $('nextMonthBtn').addEventListener('click', () => changeMonth(1));
-  $('todayBtn').addEventListener('click', () => {
-    const now = new Date();
-    S.dashY = now.getFullYear(); S.dashM = now.getMonth()+1;
-    loadPeriod(false);
   });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
@@ -1147,34 +1076,11 @@ function wireToolbar(){
   });
 }
 
-function switchDashMode(mode){
-  if (S.dashMode === mode) return;
-  S.dashMode = mode;
-  const monthly = mode === 'monthly';
-  $('monthlyToolbar').classList.toggle('hidden', !monthly);
-  $('overallToolbar').classList.toggle('hidden', monthly);
-  document.querySelectorAll('#modeToggle .dash-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
-
-  if (monthly) {
-    loadPeriod(false);
-  } else {
-    ensureOverallRangeDefaults().then(() => loadPeriod(false));
-  }
-}
-
 function switchDashView(view){
   if (S.dashView === view) return;
   S.dashView = view;
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
   renderAll();
-}
-
-/** Advance/retreat by exactly one calendar month (Date-based, avoids off-by-N bugs). */
-function changeMonth(delta){
-  const d = new Date(S.dashY, S.dashM - 1 + delta, 1);
-  S.dashY = d.getFullYear();
-  S.dashM = d.getMonth() + 1;
-  loadPeriod(false);
 }
 </script>
 </body>

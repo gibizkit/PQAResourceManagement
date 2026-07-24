@@ -133,7 +133,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="signoff-review.html">Signoff Room</a>
+      <a href="signoff-review.html">Signoff Review</a>
       <a href="admin.html" class="active">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -147,30 +147,51 @@
       <b>เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น</b><br>
       คุณไม่มีสิทธิ์เข้าถึงหน้านี้ — กรุณากลับไปหน้าโปรเจกต์
       <div style="margin-top:12px;">
-        <a class="btn" href="pqaResourceManagement.html">กลับหน้าแรก</a>
+        <a class="btn" href="gantt.html">กลับหน้าแรก</a>
       </div>
     </div>
 
     <div id="adminContent">
-    <div class="page-head">
-      <h2>Master Data Management</h2>
-    </div>
 
     <div id="adminNotice" class="admin-notice hidden">
       ต้องเป็น Admin จึงจะแก้ไขได้
     </div>
 
     <div class="tab-bar">
-      <button class="tab-btn" onclick="location.href='pqaResourceManagement.html'">Projects</button>
-      <button class="tab-btn active" onclick="switchTab('holiday')">Holiday</button>
+      <button class="tab-btn active" onclick="switchTab('project')">Projects</button>
+      <button class="tab-btn" onclick="switchTab('holiday')">Holiday</button>
       <button class="tab-btn" onclick="switchTab('app')">App</button>
       <button class="tab-btn" onclick="switchTab('phase')">Phase</button>
       <button class="tab-btn" onclick="switchTab('tester_role')">Tester Role</button>
       <button class="tab-btn" onclick="switchTab('app_user')">User</button>
     </div>
 
+    <!-- ============ PROJECT TAB ============ -->
+    <div id="tab-project" class="tab-content active">
+      <div class="page-head">
+        <h2>Projects</h2>
+        <span class="badge" id="projCount">0</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn accent" id="addProjectBtn" onclick="openAddProject()">+ เพิ่ม Project</button>
+        <button class="btn" id="refreshProjectBtn" onclick="loadProjects()">🔄 Refresh</button>
+        <input class="search" id="projectSearch" placeholder="ค้นหา ชื่อ / key / app / lead...">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Project Key</th><th>Project Name</th><th>App</th><th>UAT Lead</th>
+              <th>Status</th><th>UAT Start</th><th>UAT End</th><th>Signoff</th><th>Active</th><th class="center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows-project"><tr><td colspan="10" class="loading">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ============ HOLIDAY TAB ============ -->
-    <div id="tab-holiday" class="tab-content active">
+    <div id="tab-holiday" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addHolidayBtn" onclick="openAddModal('holiday')">+ เพิ่ม Holiday</button>
         <button class="btn" id="refreshHolidayBtn" onclick="loadData('holiday')">🔄 Refresh</button>
@@ -300,15 +321,91 @@
   </div>
 </div>
 
+<!-- ============ PROJECT MODAL ============ -->
+<div id="projOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="projModalTitle">เพิ่ม Project</h3>
+      <button class="x" onclick="closeProjectModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field">
+          <label>Project Key</label>
+          <input id="pfKey" placeholder="P2026070001">
+          <span class="hint">รูปแบบ P + ปีเดือน + running 4 หลัก</span>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="pfStatus">
+            <option value="">—</option>
+            <option>Need Attention</option>
+            <option>Ready to Start</option>
+            <option>In Progress</option>
+            <option>Completed</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Project Name *</label>
+        <input id="pfName" placeholder="ชื่อโปรเจกต์">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>App</label>
+          <select id="pfApp"><option value="">— เลือก App —</option></select>
+        </div>
+        <div class="field">
+          <label>Other App (ถ้าไม่มีใน list)</label>
+          <input id="pfOtherApp" placeholder="ชื่อ App ที่ยังไม่มีใน master">
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Signoff Date</label>
+          <input id="pfSignoff" type="date">
+        </div>
+        <div class="field">
+          <label>Deploy Date</label>
+          <input id="pfDeploy" type="date">
+        </div>
+      </div>
+      <div class="field">
+        <label>Signoff URL</label>
+        <input id="pfSignoffUrl" placeholder="https://...">
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <textarea id="pfNote" rows="2"></textarea>
+      </div>
+      <div class="field checkbox" id="pfActiveField" style="display:none;align-items:center;gap:8px">
+        <input type="checkbox" id="pfActive" style="width:auto;margin:0">
+        <label for="pfActive" style="margin:0">Active (เปิดใช้งานโปรเจกต์)</label>
+      </div>
+
+      <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
+      <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
+        <div>Phase</div><div>Start</div><div>End</div><div>MD</div><div>Resource</div>
+      </div>
+      <div id="pfPhaseRows"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="form-err" id="pfFormErr"></div>
+      <button class="btn" onclick="closeProjectModal()">ยกเลิก</button>
+      <button class="btn accent" id="pfSaveBtn" onclick="saveProject()">บันทึก</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { supabase, $, toast, esc, dDisp, parseInputDate } from './common.js';
+import { supabase, $, toast, esc, dDisp, parseInputDate, statusPill, fmtDate } from './common.js';
 
 /* ============ STATE ============ */
 window.STATE = {
   isAdmin: false,
-  currentTab: 'holiday',
+  currentTab: 'project',
   editingMode: false,
   editingPK: null,
   currentTable: null,
@@ -321,6 +418,19 @@ window.STATE = {
   appUsers: [],
   pqaLeads: []
 };
+
+/* ============ PROJECT TAB STATE (ported from pqaResourceManagement.html) ============ */
+const PROJECT_PHASES = [
+  { code: 'SIT',     name: 'SIT' },
+  { code: 'TCPREP',  name: 'TC Prep' },
+  { code: 'UAT',     name: 'UAT' },
+  { code: 'REG',     name: 'Reg' },
+  { code: 'SUPPORT', name: 'Support' },
+];
+let allProjects = [];
+let projectAppList = [];
+let editingProjectKey = null;       // null = add mode
+let existingProjectPhases = {};     // phase_code -> project_phase_id (edit mode)
 
 /* ============ AUTH ============ */
 $('loginForm').addEventListener('submit', async e => {
@@ -395,8 +505,9 @@ async function showApp(session) {
 
   updateAdminUI();
 
-  // Load initial data
-  await loadData('holiday');
+  // Load initial data — Projects is the default active tab
+  await loadProjectApps();
+  await loadProjects();
   await loadPqaLeads();
 }
 
@@ -447,7 +558,247 @@ window.switchTab = function(tab) {
   $(`tab-${tab}`).classList.add('active');
 
   // Load data for this tab
-  loadData(tab);
+  if (tab === 'project') {
+    loadProjects();
+  } else {
+    loadData(tab);
+  }
+};
+
+/* ============ PROJECT TAB (ported from pqaResourceManagement.html) ============ */
+function buildProjectPhaseRows(data) {
+  $('pfPhaseRows').innerHTML = PROJECT_PHASES.map(ph => {
+    const d = (data && data[ph.code]) || {};
+    return `<div class="phase-row" data-phase="${ph.code}">
+      <div class="ph-name">${ph.name}</div>
+      <input type="date" class="ph-start" value="${d.start_date || ''}">
+      <input type="date" class="ph-end" value="${d.end_date || ''}">
+      <input type="number" step="0.5" min="0" class="ph-md" placeholder="MD" value="${d.md ?? ''}">
+      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${d.resource_count ?? ''}">
+    </div>`;
+  }).join('');
+}
+
+function suggestProjectKey() {
+  const now = new Date();
+  const ym = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = 'P' + ym;
+  let max = 0;
+  allProjects.forEach(p => {
+    if (p.project_key && p.project_key.startsWith(prefix)) {
+      const n = parseInt(p.project_key.slice(prefix.length), 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  });
+  return prefix + String(max + 1).padStart(4, '0');
+}
+
+async function loadProjectApps() {
+  const { data, error } = await supabase.from('app').select('app_code,app_name')
+    .eq('is_active', true).order('sort_order', { nullsFirst: false });
+  if (error) {
+    console.warn('load project apps', error);
+    return;
+  }
+  projectAppList = data || [];
+  $('pfApp').innerHTML = '<option value="">— เลือก App —</option>' +
+    projectAppList.map(a => `<option value="${esc(a.app_code)}">${esc(a.app_code)}</option>`).join('');
+}
+
+async function loadProjects() {
+  $('rows-project').innerHTML = '<tr><td colspan="10" class="loading">กำลังโหลด...</td></tr>';
+  // req: แสดงทุกโปรเจกต์ ทั้ง is_active = Y และ N (ไม่กรอง active only)
+  const { data, error } = await supabase.from('v_project_wide').select('*')
+    .order('project_key', { ascending: false });
+  if (error) {
+    $('rows-project').innerHTML = `<tr><td colspan="10" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(error.message)}</td></tr>`;
+    return;
+  }
+  allProjects = data || [];
+  renderProjectRows();
+}
+
+function renderProjectRows() {
+  const searchEl = $('projectSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const rows = allProjects.filter(p => {
+    if (!q) return true;
+    return [p.project_key, p.project_name, p.app, p.other_app, p.uat_lead, p.status]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+  $('projCount').textContent = rows.length;
+  if (!rows.length) {
+    $('rows-project').innerHTML = '<tr><td colspan="10" class="loading">ไม่พบข้อมูล</td></tr>';
+    return;
+  }
+  $('rows-project').innerHTML = rows.map(p => `
+    <tr>
+      <td><b>${esc(p.project_key)}</b></td>
+      <td>${esc(p.project_name)}</td>
+      <td>${esc(p.app || p.other_app || '')}</td>
+      <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
+      <td>${statusPill(p.status)}</td>
+      <td>${fmtDate(p.uat_start)}</td>
+      <td>${fmtDate(p.uat_end)}</td>
+      <td>${fmtDate(p.signoff_date)}</td>
+      <td><span class="is-active-pill ${p.is_active ? 'yes' : 'no'}">${p.is_active ? 'Y' : 'N'}</span></td>
+      <td class="center">
+        <button class="btn sm" onclick="openEditProject('${esc(p.project_key)}')">✏️</button>
+      </td>
+    </tr>`).join('');
+}
+
+const _projectSearchEl = document.getElementById('projectSearch');
+if (_projectSearchEl) _projectSearchEl.addEventListener('input', renderProjectRows);
+
+window.openAddProject = function() {
+  editingProjectKey = null;
+  existingProjectPhases = {};
+  $('projModalTitle').textContent = 'เพิ่ม Project';
+  $('pfKey').value = suggestProjectKey();
+  $('pfKey').disabled = false;
+  $('pfName').value = '';
+  $('pfApp').value = '';
+  $('pfOtherApp').value = '';
+  $('pfStatus').value = '';
+  $('pfSignoff').value = '';
+  $('pfDeploy').value = '';
+  $('pfSignoffUrl').value = '';
+  $('pfNote').value = '';
+  $('pfActiveField').style.display = 'none';   // add mode: โปรเจกต์ใหม่ active อยู่แล้ว
+  buildProjectPhaseRows(null);
+  $('pfFormErr').textContent = '';
+  $('projOverlay').classList.remove('hidden');
+};
+
+window.openEditProject = async function(key) {
+  editingProjectKey = key;
+  existingProjectPhases = {};
+  $('projModalTitle').textContent = 'แก้ไข Project — ' + key;
+  const p = allProjects.find(x => x.project_key === key) || {};
+  $('pfKey').value = key;
+  $('pfKey').disabled = true;
+  $('pfName').value = p.project_name || '';
+  $('pfApp').value = p.app || '';
+  $('pfOtherApp').value = p.other_app || '';
+  $('pfStatus').value = p.status || '';
+  $('pfSignoff').value = p.signoff_date || '';
+  $('pfDeploy').value = p.deploy_date || '';
+  $('pfSignoffUrl').value = p.signoff_url || '';
+  $('pfNote').value = p.project_note || '';
+  $('pfActiveField').style.display = 'flex';   // แก้ is_active ได้ตอน edit (แทนปุ่มลบ)
+  $('pfActive').checked = p.is_active !== false;
+  $('pfFormErr').textContent = '';
+  $('projOverlay').classList.remove('hidden');
+
+  // โหลด phase จริงจาก project_phase
+  const { data: phs } = await supabase.from('project_phase')
+    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
+    .eq('project_key', key);
+  const map = {};
+  (phs || []).forEach(ph => {
+    map[ph.phase_code] = ph;
+    existingProjectPhases[ph.phase_code] = ph.project_phase_id;
+  });
+  buildProjectPhaseRows(map);
+};
+
+window.closeProjectModal = function() {
+  $('projOverlay').classList.add('hidden');
+};
+
+function readProjectPhases() {
+  return [...document.querySelectorAll('#pfPhaseRows .phase-row')].map(r => ({
+    phase_code: r.dataset.phase,
+    start_date: r.querySelector('.ph-start').value || null,
+    end_date: r.querySelector('.ph-end').value || null,
+    md: r.querySelector('.ph-md').value === '' ? null : Number(r.querySelector('.ph-md').value),
+    resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+  }));
+}
+
+window.saveProject = async function() {
+  const err = $('pfFormErr');
+  err.textContent = '';
+  const key = $('pfKey').value.trim();
+  const name = $('pfName').value.trim();
+  const app = $('pfApp').value || null;
+  const otherApp = $('pfOtherApp').value.trim() || null;
+
+  if (!/^[PU][0-9]{10}$/.test(key)) {
+    err.textContent = 'Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก';
+    return;
+  }
+  if (!name) {
+    err.textContent = 'กรุณากรอกชื่อ Project';
+    return;
+  }
+  if (!app && !otherApp) {
+    err.textContent = 'ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง';
+    return;
+  }
+
+  const btn = $('pfSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
+
+  const payload = {
+    project_key: key,
+    project_name: name,
+    app_code: app,
+    other_app: otherApp,
+    status: $('pfStatus').value || null,
+    signoff_date: $('pfSignoff').value || null,
+    deploy_date: $('pfDeploy').value || null,
+    signoff_url: $('pfSignoffUrl').value.trim() || null,
+    project_note: $('pfNote').value.trim() || null,
+  };
+  if (editingProjectKey) payload.is_active = $('pfActive').checked;   // ปิด/เปิดใช้งานผ่าน edit modal แทนปุ่มลบ
+
+  let res;
+  if (editingProjectKey) {
+    res = await supabase.from('project').update(payload).eq('project_key', editingProjectKey);
+  } else {
+    res = await supabase.from('project').insert(payload);
+  }
+
+  if (res.error) {
+    btn.disabled = false;
+    btn.textContent = 'บันทึก';
+    err.textContent = 'บันทึก Project ไม่สำเร็จ: ' + res.error.message;
+    return;
+  }
+
+  // ---- phases ----
+  const phases = readProjectPhases();
+  for (const ph of phases) {
+    const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null;
+    const existingId = existingProjectPhases[ph.phase_code];
+    if (hasData) {
+      const phPayload = {
+        project_key: key,
+        phase_code: ph.phase_code,
+        start_date: ph.start_date,
+        end_date: ph.end_date,
+        md: ph.md,
+        resource_count: ph.resource_count
+      };
+      if (existingId) {
+        await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);
+      } else {
+        await supabase.from('project_phase').insert(phPayload);
+      }
+    } else if (existingId) {
+      // เคลียร์ข้อมูลออก → ลบเฟสนั้น
+      await supabase.from('project_phase').delete().eq('project_phase_id', existingId);
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'บันทึก';
+  window.closeProjectModal();
+  toast(editingProjectKey ? 'อัปเดตแล้ว ✓' : 'เพิ่ม Project แล้ว ✓');
+  await loadProjects();
 };
 
 /* ============ LOAD DATA ============ */
@@ -874,7 +1225,9 @@ window.deleteRecord = async function(table, pk) {
 
 /* ============ ESC closes the modal (req 2) ============ */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('formOverlay').classList.contains('hidden')) window.closeModal();
+  if (e.key !== 'Escape') return;
+  if (!$('formOverlay').classList.contains('hidden')) window.closeModal();
+  if ($('projOverlay') && !$('projOverlay').classList.contains('hidden')) window.closeProjectModal();
 });
 
 </script>

@@ -136,21 +136,36 @@
     text-align: left;
   }
 
-  .col-name   { left: 0px;   width: 160px; min-width: 160px; }
-  .col-skills { left: 160px; width: 190px; min-width: 190px; }
-  .col-action { left: 350px; width: 46px;  min-width: 46px; text-align: center; }
+  .col-name   { left: 0px;   width: 198px; min-width: 198px; }
+  .col-skills { left: 198px; width: 190px; min-width: 190px; }
 
-  .os-table td.sticky-l0, .os-table td.sticky-l1, .os-table td.sticky-l2,
-  .os-table th.col-name, .os-table th.col-skills, .os-table th.col-action {
+  .os-table td.sticky-l0, .os-table td.sticky-l1,
+  .os-table th.col-name, .os-table th.col-skills {
     position: sticky;
     background: #fff;
   }
-  .os-table th.col-name, .os-table th.col-skills, .os-table th.col-action {
+  .os-table th.col-name, .os-table th.col-skills {
     background: var(--dk-surface);
   }
   .os-table td.sticky-l0 { left: 0px;   z-index: 6; }
-  .os-table td.sticky-l1 { left: 160px; z-index: 6; }
-  .os-table td.sticky-l2 { left: 350px; z-index: 6; }
+  .os-table td.sticky-l1 { left: 198px; z-index: 6; }
+
+  /* ---- name cell: edit button + name/role stacked, frozen together ---- */
+  .name-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .name-cell .edit-btn {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .name-cell-text {
+    min-width: 0;
+    overflow: hidden;
+  }
 
   .os-name {
     font-weight: 600;
@@ -302,7 +317,7 @@
       <a href="outsource.html" class="active">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="signoff-review.html">Signoff Room</a>
+      <a href="signoff-review.html">Signoff Review</a>
       <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -312,7 +327,6 @@
 
   <div class="main">
     <div class="page-head">
-      <h2>Outsource Management</h2>
       <span class="badge" id="osCount">0</span>
     </div>
 
@@ -783,7 +797,6 @@ function renderThead(days) {
   const row1 = `<tr>
     <th class="corner col-name" rowspan="3">Name</th>
     <th class="corner col-skills" rowspan="3">Skills</th>
-    <th class="corner col-action" rowspan="3">✏️</th>
     ${groups.map(g => `<th class="th-month" colspan="${g.count}">${esc(g.label)}</th>`).join('')}
   </tr>`;
 
@@ -883,6 +896,8 @@ function buildRow(p, days, conflictMap) {
   const conflictDates = conflictMap[p.resourceId] || [];
   const isConflict = conflictDates.length > 0;
   const roleName = roleLabel(p.roleCode);
+  // req 4: มี Last Working Date (end_date ของ outsource_staff) ต่อท้าย Role
+  const roleWithLastDay = roleName + (p.endDate ? ` (Last day ${dDisp(p.endDate)})` : '');
   const nameTitle = isConflict
     ? ` title="มีวันที่ Book เกิน MD: ${esc(conflictDates.map(dDispShort).join(', '))}"`
     : '';
@@ -891,13 +906,15 @@ function buildRow(p, days, conflictMap) {
 
   return `<tr>
     <td class="col-name sticky-l0">
-      <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(resName(p.nicknameName || p.nickname, p.fullName))}</div>
-      <div class="role-badge">${esc(roleName)}</div>
+      <div class="name-cell">
+        <button class="btn sm edit-btn" onclick="openLeavePlan('${p.resourceId}')" title="Edit">✏️</button>
+        <div class="name-cell-text">
+          <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(resName(p.nickname, p.fullName))}</div>
+          <div class="role-badge">${esc(roleWithLastDay)}</div>
+        </div>
+      </div>
     </td>
     <td class="col-skills sticky-l1" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
-    <td class="col-action sticky-l2 center">
-      <button class="btn sm" onclick="openLeavePlan('${p.resourceId}')">✏️</button>
-    </td>
     ${dayCells}
   </tr>`;
 }
@@ -917,7 +934,7 @@ function renderTbody(days) {
 
   const sortFn = (a, b) => (a.rank - b.rank) || (a.p.nicknameName || '').localeCompare(b.p.nicknameName || '');
   const groupBy = $('chkGroupBy').checked;
-  const colspan = 3 + days.length;
+  const colspan = 2 + days.length;
   let html = '';
 
   if (groupBy) {
@@ -984,7 +1001,7 @@ window.openManageBooking = function (resourceId, ds) {
   if (!p) return;
   MB_NAME = resourceId;
   MB_DATE = ds;
-  $('mbTitle').textContent = `Manage Booking | ${resName(p.nicknameName || p.nickname, p.fullName)} | ${dDisp(ds)}`;
+  $('mbTitle').textContent = `Manage Booking | ${resName(p.nickname, p.fullName)} | ${dDisp(ds)}`;
   mbCancelAdd();
   mbRenderTable();
   mbRefreshSummary();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Signoff Room — PQA Resource Management</title>
+<title>Signoff Review — PQA Resource Management</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="theme.css">
@@ -192,7 +192,7 @@
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
-      <a href="signoff-review.html" class="active">Signoff Room</a>
+      <a href="signoff-review.html" class="active">Signoff Review</a>
       <a href="admin.html" id="navAdmin">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -202,7 +202,6 @@
 
   <div class="sr-page-head">
     <div>
-      <div class="sr-title">💬 Signoff Room</div>
       <div class="sr-subtitle">พื้นที่พูดคุยและรีวิวการ sign-off แยกเป็นห้องตามโปรเจกต์</div>
     </div>
     <div class="sr-head-controls">
@@ -390,7 +389,7 @@ async function showApp(session){
    MASTER DATA
    ===================================================================== */
 async function loadMasterData(){
-  const [projRes, appRes, userRes, lastCmtRes] = await Promise.all([
+  const [projRes, appRes, userRes, lastCmtRes, roomKeysRes] = await Promise.all([
     supabase.from('v_project_wide')
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,deploy_date,signoff_url,project_note,is_active')
       .not('signoff_date', 'is', null),
@@ -400,14 +399,18 @@ async function loadMasterData(){
       .select('project_key,author_email,body,created_at')
       .is('deleted_at', null).eq('is_root', false)
       .order('created_at', { ascending: false }),
+    // req 7: only show projects that already have a "room" — i.e. any signoff_comment row
+    // (the root card is created from the Gantt modal via fn_upsert_signoff_review)
+    supabase.from('signoff_comment').select('project_key'),
   ]);
 
-  for (const r of [projRes, appRes, userRes, lastCmtRes]) {
+  for (const r of [projRes, appRes, userRes, lastCmtRes, roomKeysRes]) {
     if (r.error) console.warn('signoff-review master data error', r.error);
   }
   if (projRes.error || appRes.error) toast('โหลดข้อมูลโปรเจกต์ไม่สำเร็จ', true);
 
-  S.projects = projRes.data || [];
+  const roomKeys = new Set((roomKeysRes.data || []).map(r => r.project_key));
+  S.projects = (projRes.data || []).filter(p => roomKeys.has(p.project_key));
   S.projMap = {};
   S.projects.forEach(p => { S.projMap[p.project_key] = p; });
 
