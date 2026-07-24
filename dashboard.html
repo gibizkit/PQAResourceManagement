@@ -57,9 +57,16 @@
   .month-nav button.nav-arrow:hover { background:var(--dk-hover); }
   .month-nav .lbl { font-weight:700; font-size:13px; color:var(--dk-text); min-width:100px; text-align:center; padding:0 4px; }
 
-  .range-badge {
-    background:var(--dk-accent-d); color:var(--dk-accent); border-radius:10px;
-    padding:8px 14px; font-size:13px; font-weight:600; margin-bottom:14px; display:inline-block;
+  /* ---- toolbar row: view tabs (left) + period controls (right) on one line ---- */
+  .dash-toolbar-row {
+    display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  }
+  .period-controls { display:flex; align-items:flex-end; gap:10px; margin-left:auto; }
+
+  /* ---- long project-name cell: cap to 2 lines, ellipsis (works with JS 100-char cap) ---- */
+  td.proj-name {
+    max-width:340px; white-space:normal; word-break:break-word;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
   }
 
   /* ---- overall-mode range filter (mirrors gantt.html .filters/.fld) ---- */
@@ -194,38 +201,33 @@
       </div>
     </div>
 
-    <!-- ===== View tabs (shared — monthly & overall) ===== -->
-    <div class="toolbar">
+    <!-- ===== Toolbar row: view tabs (left) + period controls (right, one visible at a time) ===== -->
+    <div class="toolbar dash-toolbar-row">
       <div class="view-tabs" id="viewTabs">
         <button class="view-tab active" data-view="project">📊 By Project</button>
         <button class="view-tab" data-view="os">👤 By OS</button>
         <button class="view-tab" data-view="lead">👑 By Lead</button>
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
-    </div>
 
-    <!-- ===== Monthly toolbar (month navigator) ===== -->
-    <div class="toolbar" id="monthlyToolbar">
-      <div class="month-nav">
-        <button class="nav-arrow" id="prevMonthBtn">‹</button>
-        <span class="lbl" id="monthLbl">-</span>
-        <button class="nav-arrow" id="nextMonthBtn">›</button>
+      <!-- Monthly: month navigator -->
+      <div class="period-controls" id="monthlyToolbar">
+        <div class="month-nav">
+          <button class="nav-arrow" id="prevMonthBtn">‹</button>
+          <span class="lbl" id="monthLbl">-</span>
+          <button class="nav-arrow" id="nextMonthBtn">›</button>
+        </div>
+        <button class="btn" id="todayBtn">Today</button>
       </div>
-      <button class="btn" id="todayBtn">Today</button>
-      <button class="btn" id="refreshBtn">🔄 Refresh</button>
-    </div>
 
-    <!-- ===== Overall toolbar (custom Start–End range, mirrors gantt.html filter UX) ===== -->
-    <div class="toolbar hidden" id="overallToolbar">
-      <div class="filters">
-        <div class="fld"><label>Start Date</label><input type="date" id="ovStart"></div>
-        <div class="fld"><label>End Date</label><input type="date" id="ovEnd"></div>
-        <button class="btn accent" id="ovApplyBtn">แสดง</button>
+      <!-- Overall: custom Start–End range (mirrors gantt.html filter UX) -->
+      <div class="period-controls hidden" id="overallToolbar">
+        <div class="filters">
+          <div class="fld"><label>Start Date</label><input type="date" id="ovStart"></div>
+          <div class="fld"><label>End Date</label><input type="date" id="ovEnd"></div>
+          <button class="btn accent" id="ovApplyBtn">แสดง</button>
+        </div>
       </div>
-      <button class="btn" id="refreshOverallBtn">🔄 Refresh</button>
-    </div>
-    <div class="hidden" id="overallRangeWrap">
-      <span class="range-badge" id="overallRangeBadge">-</span>
     </div>
 
     <!-- ===== KPI (monthly only, hidden on By Lead) ===== -->
@@ -315,6 +317,11 @@ function fmtMD(v){
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
+/* Cap a (long) project name at 100 chars with an ellipsis; CSS .proj-name clamps it to 2 lines. */
+function truncName(s, max=100){
+  s = String(s || '');
+  return s.length > max ? s.slice(0, max).trimEnd() + '…' : s;
+}
 
 /* =====================================================================
    STATE
@@ -496,7 +503,7 @@ async function loadPeriod(force){
   const { first, last } = currentRange();
   if (!first || !last) return; // overall range not resolved yet
   const key = `${S.dashMode}|${first}|${last}`;
-  if (S.dashMode === 'monthly') updateMonthLabel(); else updateRangeBadge();
+  if (S.dashMode === 'monthly') updateMonthLabel();
   if (!force && S.periodCacheKey === key) { renderAll(); return; }
 
   setViewLoading();
@@ -605,14 +612,6 @@ function setViewLoading(){
 
 function updateMonthLabel(){
   $('monthLbl').textContent = monthLabel(new Date(S.dashY, S.dashM-1, 1));
-}
-
-function updateRangeBadge(){
-  $('overallRangeWrap').classList.toggle('hidden', S.dashMode !== 'overall');
-  if (S.dashMode !== 'overall') return;
-  $('overallRangeBadge').textContent = (S.overallRange.s && S.overallRange.e)
-    ? `ตั้งแต่ ${dDisp(S.overallRange.s)} – ${dDisp(S.overallRange.e)}`
-    : 'กำลังโหลด...';
 }
 
 /* =====================================================================
@@ -792,7 +791,7 @@ function renderProjectView(container){
     gTotal+=r.totalMD; gTcprep+=r.tcprep; gUat+=r.uat; gReg+=r.reg; gOther1+=r.other1; gOther2+=r.other2; gSupport+=r.support;
     return `<tr>
       <td>${esc(r.app)}</td>
-      <td>${esc(r.projectName)}</td>
+      <td class="proj-name" title="${esc(r.projectName)}">${esc(truncName(r.projectName))}</td>
       <td>${esc(r.lead) || '<span class="muted">—</span>'}</td>
       <td>${esc(r.uatPeriodDisp)}</td>
       <td class="right">${fmtMD(r.totalMD)}</td>
@@ -982,7 +981,7 @@ function renderSignoffView(container){
       <td>${esc(p.app)}</td>
       <td>${esc(p.lead) || '<span class="muted">—</span>'}</td>
       <td>${dDisp(p.signoff_date)}</td>
-      <td>${esc(p.projectName)}</td>
+      <td class="proj-name" title="${esc(p.projectName)}">${esc(truncName(p.projectName))}</td>
       <td class="center">${signoffBtn}</td>
       <td class="center">${docBtn}</td>
     </tr>`;
@@ -1050,16 +1049,6 @@ function wireToolbar(){
     S.dashY = now.getFullYear(); S.dashM = now.getMonth()+1;
     loadPeriod(false);
   });
-  $('refreshBtn').addEventListener('click', async () => {
-    S.periodCacheKey = '';
-    await loadMasterData();
-    await loadPeriod(true);
-  });
-  $('refreshOverallBtn').addEventListener('click', async () => {
-    S.periodCacheKey = '';
-    await loadMasterData();
-    await loadPeriod(true);
-  });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
     if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
@@ -1075,7 +1064,6 @@ function switchDashMode(mode){
   const monthly = mode === 'monthly';
   $('monthlyToolbar').classList.toggle('hidden', !monthly);
   $('overallToolbar').classList.toggle('hidden', monthly);
-  $('overallRangeWrap').classList.toggle('hidden', monthly);
   document.querySelectorAll('#modeToggle .dash-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
 
   if (monthly) {
