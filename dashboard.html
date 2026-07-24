@@ -307,16 +307,13 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="./signoff.js"></script>
+<!-- Signoff Review modal (threaded comments) — shared with gantt.html so both pages
+     open the exact same modal for "Review Signoff" -->
+<script type="module" src="./signoffReviewModal.js"></script>
 <script type="module">
 import {
   supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, defaultFilterEndStr
 } from './common.js';
-
-/* SIGNOFF REVIEW STUB (signoff.js may override — same defensive pattern as gantt.html) */
-if (!window.openSignoffReview) {
-  window.openSignoffReview = function(pk){ location.href = 'signoff-review.html?project=' + encodeURIComponent(pk || ''); };
-}
 
 /* =====================================================================
    CONSTANTS
@@ -382,6 +379,7 @@ const S = {
   bookingDaily: [],             // v_booking_daily rows for the current period
   leaveDaily: [],                // v_leave_daily rows for the current period
   periodAgg: null,                // computed aggregates for the current period (see computeAgg)
+  periodAggActiveOnly: null,      // same, but bookings restricted to is_active=true projects (By OS view)
 
   // sort state for the sortable subview tables
   projectSort: { key:'uatPeriod', dir:'asc' },
@@ -539,6 +537,8 @@ async function loadPeriod(force){
     S.periodCacheKey = key;
     // overall mode: count everything (historical/completed projects included too).
     S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: false });
+    // By OS view (§6): count MD only on bookings whose project is_active = true.
+    S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, S.activeProjMap, { restrict: true });
     renderAll();
   } catch (err) {
     console.error(err);
@@ -761,7 +761,9 @@ function wireSortHeader(theadEl, sortState, onChange){
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
-  return currentProjectsList().map(p => {
+  // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
+  // already server-filtered via .eq('is_active', true) in loadMasterData().
+  return S.activeProjects.map(p => {
     const pk = p.project_key;
     const phases = S.phasesByProject[pk] || [];
     const pAgg = agg.byProjectPhase[pk] || {};
@@ -864,7 +866,8 @@ function renderProjectView(container){
 
 /* ---- By OS (pivot: OS x App) ---- */
 function renderOsView(container){
-  const agg = S.periodAgg || { byOsApp:{}, byOsTotal:{} };
+  // §6: By OS counts MD only on bookings whose project is_active = true.
+  const agg = S.periodAggActiveOnly || { byOsApp:{}, byOsTotal:{} };
   const appSet = new Set();
   Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
   const apps = sortedApps([...appSet]);
@@ -998,7 +1001,7 @@ function renderSignoffView(container){
   const sorted = genericSort(rows, S.signoffSort, SIGNOFF_KEYFNS);
 
   const bodyRows = sorted.map(p => {
-    const signoffBtn = `<button class="ico-btn" title="Review Signoff" onclick="window.openSignoffReview('${esc(p.project_key)}','${esc(p.projectName)}','${esc(p.signoff_date)}')">🔎</button>`;
+    const signoffBtn = `<button class="ico-btn" title="Review Signoff" onclick="window.openSignoffReviewModal('${esc(p.project_key)}','${esc(p.projectName)}')">🔎</button>`;
     const docBtn = p.signoff_url
       ? `<button class="ico-btn" title="เปิดเอกสาร Signoff" onclick="window.open('${esc(p.signoff_url)}','_blank','noopener')">📄</button>`
       : `<button class="ico-btn" title="ไม่มีเอกสาร Signoff" disabled>📄</button>`;

@@ -182,17 +182,8 @@
   .area.hidden { display:none; }
   .bk-err { color:var(--danger); font-size:12.5px; min-height:16px; margin-top:8px; }
 
-  /* ---- gantt-embedded Signoff Review modal ---- */
-  #signoffReviewOverlay .modal { width:720px; }
-  .sr-modal-card { background:var(--dk-surface); border:1px solid var(--dk-border); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
-  .sr-modal-card-meta { font-size:11px; color:var(--dk-text3); margin-bottom:6px; }
-  .sr-modal-card-body { font-size:13.5px; color:var(--dk-text); line-height:1.55; white-space:pre-wrap; }
-  .sr-modal-thread-title { font-weight:700; font-size:13px; color:var(--dk-text); margin:14px 0 6px; }
-  .sr-modal-comment { padding:8px 0; border-top:1px solid var(--dk-border); }
-  .sr-modal-comment:first-child { border-top:none; }
-  .sr-modal-comment-top { font-size:12px; color:var(--dk-text2); }
-  .sr-modal-comment-text { font-size:13px; color:var(--dk-text); margin-top:3px; white-space:pre-wrap; }
-  .sr-modal-reply { margin:6px 0 0 16px; padding:6px 10px; background:var(--dk-surface); border-radius:8px; font-size:12.5px; color:var(--dk-text); }
+  /* Signoff Review modal (.sr-modal-* / #signoffReviewOverlay) now lives in signoffReviewModal.js,
+     shared with dashboard.html, so both pages open the exact same modal. */
 
   /* ---- cell notes (project+phase+date), phase rows only ---- */
   .note-cell { cursor:pointer; }
@@ -432,23 +423,7 @@
   </div>
 </div>
 
-<!-- ============ SIGNOFF REVIEW MODAL (project-scoped, reads/writes signoff_comment) ============ -->
-<div id="signoffReviewOverlay" class="overlay hidden">
-  <div class="modal">
-    <div class="modal-head">
-      <h3 id="signoffReviewTitle">Signoff Review</h3>
-      <button class="x" onclick="closeSignoffReviewModal()">×</button>
-    </div>
-    <div class="modal-body" id="signoffReviewBody">
-      <div class="loading">กำลังโหลด...</div>
-    </div>
-    <div class="modal-foot">
-      <a class="btn" id="signoffReviewFullLink" href="signoff-review.html" target="_blank" rel="noopener">เปิดหน้าเต็ม ↗</a>
-      <span class="spacer" style="flex:1"></span>
-      <button class="btn" onclick="closeSignoffReviewModal()">ปิด</button>
-    </div>
-  </div>
-</div>
+<!-- Signoff Review modal is injected by signoffReviewModal.js (shared with dashboard.html) -->
 
 <!-- ============ CELL NOTE POPUP (project + phase + date) ============ -->
 <div id="noteOverlay" class="overlay hidden">
@@ -475,8 +450,8 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Signoff review module (Phase 2.3) -->
-<script type="module" src="./signoff.js"></script>
+<!-- Signoff Review modal (threaded comments) — shared with dashboard.html -->
+<script type="module" src="./signoffReviewModal.js"></script>
 
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr } from './common.js';
@@ -1211,111 +1186,12 @@ window.openSignoffDoc = function(pk){
   window.open(p.signoff_url, '_blank', 'noopener');
 };
 
-/* ============ SIGNOFF REVIEW STUB (signoff.js may override) ============ */
-if (!window.openSignoffReview) {
-  window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
-}
+/* ============ SIGNOFF REVIEW (modal is injected by shared signoffReviewModal.js —
+   also used by dashboard.html, so both pages open the exact same modal) ============ */
 window.srOpenFromKey = function(pk){
   // เปิด modal Signoff Review ของโปรเจกต์นี้ในหน้า Gantt เลย (ไม่ต้องพาไปหน้าอื่น)
-  window.openSignoffReviewModal(pk);
-};
-
-/* ============ SIGNOFF REVIEW MODAL (project-scoped: signoff_comment) ============ */
-function shortEmail(email){ return email ? String(email).split('@')[0] : 'ไม่ทราบ'; }
-function commentTimeShort(ts){
-  if (!ts) return '';
-  const d = new Date(ts); if (isNaN(d.getTime())) return '';
-  const p = n => String(n).padStart(2,'0');
-  return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-window.openSignoffReviewModal = async function(pk){
-  if (!pk) return;
-  $('signoffReviewFullLink').href = 'signoff-review.html?project=' + encodeURIComponent(pk);
-  $('signoffReviewOverlay').classList.remove('hidden');
-  await loadSignoffReviewModal(pk);
-};
-window.closeSignoffReviewModal = function(){ $('signoffReviewOverlay').classList.add('hidden'); };
-
-async function loadSignoffReviewModal(pk){
-  $('signoffReviewBody').innerHTML = '<div class="loading">กำลังโหลด...</div>';
-  try {
-    const { data: rootRow, error: rootErr } = await supabase.from('signoff_comment')
-      .select('id,body,author_email,created_at,edited_at')
-      .eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle();
-    if (rootErr) throw rootErr;
-
-    const { data: cmtRows, error: cmtErr } = await supabase.from('signoff_comment')
-      .select('id,parent_id,is_root,author_email,body,created_at')
-      .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
-      .order('created_at', { ascending:true });
-    if (cmtErr) throw cmtErr;
-
-    const topLevel = [], byParent = {};
-    (cmtRows || []).forEach(c => {
-      if (c.parent_id == null) topLevel.push(c);
-      else (byParent[c.parent_id] ||= []).push(c);
-    });
-
-    renderSignoffReviewModal(pk, rootRow, topLevel, byParent);
-  } catch (err) {
-    console.warn('loadSignoffReviewModal error', err);
-    $('signoffReviewBody').innerHTML = `<div class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(err.message||String(err))}</div>`;
-  }
-}
-
-function renderSignoffReviewModal(pk, rootRow, topLevel, byParent){
-  const p = S.projects.find(x => x.project_key === pk) || {};
-  $('signoffReviewTitle').textContent = 'Signoff Review — ' + (p.project_name || pk);
-
-  const cardHtml = rootRow
-    ? `<div class="sr-modal-card">
-        <div class="sr-modal-card-meta">โดย ${esc(shortEmail(rootRow.author_email))} · ${rootRow.created_at ? dDisp(rootRow.created_at.slice(0,10)) : ''}${rootRow.edited_at ? ' (แก้ไขแล้ว)' : ''}</div>
-        <div class="sr-modal-card-body">${esc(rootRow.body || '')}</div>
-      </div>`
-    : `<div class="muted" style="margin-bottom:10px">ยังไม่มี Signoff Review สำหรับโปรเจกต์นี้ — เพิ่มได้ด้านล่าง</div>`;
-
-  const threadHtml = topLevel.length
-    ? topLevel.map(c => `
-        <div class="sr-modal-comment">
-          <div class="sr-modal-comment-top"><b>${esc(shortEmail(c.author_email))}</b> <span class="muted">${esc(commentTimeShort(c.created_at))}</span></div>
-          <div class="sr-modal-comment-text">${esc(c.body)}</div>
-          ${(byParent[c.id]||[]).map(r => `
-            <div class="sr-modal-reply">
-              <b>${esc(shortEmail(r.author_email))}</b> <span class="muted">${esc(commentTimeShort(r.created_at))}</span>
-              <div>${esc(r.body)}</div>
-            </div>`).join('')}
-        </div>`).join('')
-    : `<div class="muted" style="padding:8px 0">ยังไม่มีความคิดเห็น</div>`;
-
-  $('signoffReviewBody').innerHTML = `
-    ${cardHtml}
-    <div class="field" style="margin-top:6px">
-      <label>${rootRow ? 'แก้ไข Signoff Review' : 'เพิ่ม Signoff Review'}</label>
-      <textarea id="signoffReviewText" rows="4">${esc(rootRow ? (rootRow.body||'') : '')}</textarea>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div class="form-err" id="signoffReviewErr" style="margin-right:auto"></div>
-      <button class="btn accent sm" onclick="saveSignoffReviewModal('${esc(pk)}')">บันทึก</button>
-    </div>
-    <div class="sr-modal-thread-title">ความคิดเห็นในห้อง (${topLevel.length})</div>
-    ${threadHtml}
-  `;
-}
-
-window.saveSignoffReviewModal = async function(pk){
-  const ta = $('signoffReviewText');
-  const err = $('signoffReviewErr'); if (err) err.textContent='';
-  const body = ta ? ta.value.trim() : '';
-  if (!body){ if (err) err.textContent='กรุณากรอกข้อความ Signoff Review'; return; }
-  try {
-    const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: pk, p_body: body });
-    if (error) throw error;
-    toast('บันทึก Signoff Review แล้ว ✓');
-    await loadSignoffReviewModal(pk);
-  } catch (e) {
-    if (err) err.textContent = 'บันทึกไม่สำเร็จ: ' + (e.message || String(e));
-  }
+  const p = S.projects.find(x => x.project_key === pk);
+  window.openSignoffReviewModal(pk, p ? p.project_name : pk);
 };
 
 /* ============ CELL NOTE POPUP (project + phase + date → project_comment) ============ */
@@ -1579,7 +1455,8 @@ document.addEventListener('keydown', e => {
   if (!$('bkOverlay').classList.contains('hidden')) window.closeBookingPopup();
   else if (!$('projOverlay').classList.contains('hidden')) window.closeProjModal();
   else if (!$('noteOverlay').classList.contains('hidden')) window.closeNoteCell();
-  else if (!$('signoffReviewOverlay').classList.contains('hidden')) window.closeSignoffReviewModal();
+  // signoffReviewOverlay ESC handling lives in signoffReviewModal.js itself (element is
+  // lazily injected, so it may not exist in the DOM yet).
 });
 
 window.coEdit = function(i, field, val){ coRows[i][field] = field==='md'?Number(val):val; };

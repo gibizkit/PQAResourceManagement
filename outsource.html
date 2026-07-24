@@ -36,9 +36,8 @@
   }
 
   /* ============ TOOLBAR / FILTERS ============ */
-  .toolbar2 {
-    margin-top: -6px;
-  }
+  /* toggles now live inside .filters (moved from a separate .toolbar2 row — req §7) */
+  .filters .chk { margin-left: 4px; }
 
   /* ---- filters (white card, matches Project Gantt) ---- */
   .filters {
@@ -136,19 +135,19 @@
     text-align: left;
   }
 
-  .col-name   { left: 0px;   width: 198px; min-width: 198px; }
-  .col-skills { left: 198px; width: 190px; min-width: 190px; }
+  .col-name   { left: 0px; width: 198px; min-width: 198px; }
+  .col-skills { width: 190px; min-width: 190px; }
 
-  .os-table td.sticky-l0, .os-table td.sticky-l1,
-  .os-table th.col-name, .os-table th.col-skills {
+  /* Freeze ONLY the first column (Name) — Skills scrolls with the rest of the grid. */
+  .os-table td.sticky-l0,
+  .os-table th.col-name {
     position: sticky;
     background: #fff;
   }
-  .os-table th.col-name, .os-table th.col-skills {
+  .os-table th.col-name {
     background: var(--dk-surface);
   }
-  .os-table td.sticky-l0 { left: 0px;   z-index: 6; }
-  .os-table td.sticky-l1 { left: 198px; z-index: 6; }
+  .os-table td.sticky-l0 { left: 0px; z-index: 6; }
 
   /* ---- name cell: edit button + name/role stacked, frozen together ---- */
   .name-cell {
@@ -328,9 +327,6 @@
   <div class="main">
     <div class="page-head">
       <span class="badge" id="osCount">0</span>
-    </div>
-
-    <div class="toolbar">
       <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
     </div>
 
@@ -352,8 +348,6 @@
         <input class="date-input" id="fEnd" placeholder="dd/mm/yyyy" maxlength="10">
       </div>
       <button class="btn" id="applyBtn">แสดง</button>
-    </div>
-    <div class="toolbar toolbar2">
       <label class="chk"><input type="checkbox" id="chkGroupBy" checked> Group by Booked &amp; Vacant Resource</label>
       <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ แสดงเฉพาะ Booking Conflict</label>
     </div>
@@ -914,7 +908,7 @@ function buildRow(p, days, conflictMap) {
         </div>
       </div>
     </td>
-    <td class="col-skills sticky-l1" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
+    <td class="col-skills" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
     ${dayCells}
   </tr>`;
 }
