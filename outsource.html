@@ -39,16 +39,45 @@
   .toolbar2 {
     margin-top: -6px;
   }
-  .toolbar .date-input {
+
+  /* ---- filters (white card, matches Project Gantt) ---- */
+  .filters {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    background: var(--dk-card);
+    border: 1px solid var(--dk-border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(34, 28, 21, .04);
+  }
+  .filters .fld {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .filters label {
+    font-size: 11px;
+    color: var(--dk-text3);
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+  .filters input.search {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--dk-border-s);
+    min-width: 200px;
+    font-size: 13px;
+  }
+  .toolbar .date-input, .filters .date-input {
     width: 118px;
     padding: 8px 10px;
     border-radius: 8px;
     border: 1px solid var(--dk-border-s);
     font-size: 13px;
-  }
-  .toolbar .to-label {
-    color: var(--dk-text3);
-    font-size: 12.5px;
   }
   .chk {
     display: flex;
@@ -249,7 +278,7 @@
 <body>
 
 <!-- ============ LOGIN ============ -->
-<div id="loginPage">
+<div id="loginPage" class="hidden">
   <div class="login-card">
     <h1>PQA Resource Mgmt</h1>
     <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
@@ -269,8 +298,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
     <nav class="page-nav">
-      <a href="pqaResourceManagement.html">Projects</a>
-      <a href="gantt.html">Gantt</a>
+      <a href="gantt.html">Project Gantt</a>
       <a href="outsource.html" class="active">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -287,13 +315,24 @@
       <span class="badge" id="osCount">0</span>
     </div>
 
-    <div class="toolbar">
-      <button class="btn" id="refreshBtn">🔄 Refresh</button>
-      <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
-      <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
-      <input class="date-input" id="fStart" placeholder="dd/mm/yyyy" maxlength="10">
-      <span class="to-label">ถึง</span>
-      <input class="date-input" id="fEnd" placeholder="dd/mm/yyyy" maxlength="10">
+    <div class="filters">
+      <div class="fld">
+        <label>ชื่อ Outsource</label>
+        <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
+      </div>
+      <div class="fld">
+        <label>Skills</label>
+        <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
+      </div>
+      <div class="fld">
+        <label>Start Date</label>
+        <input class="date-input" id="fStart" placeholder="dd/mm/yyyy" maxlength="10">
+      </div>
+      <div class="fld">
+        <label>End Date</label>
+        <input class="date-input" id="fEnd" placeholder="dd/mm/yyyy" maxlength="10">
+      </div>
+      <button class="btn" id="applyBtn">แสดง</button>
     </div>
     <div class="toolbar toolbar2">
       <label class="chk"><input type="checkbox" id="chkGroupBy" checked> Group by Booked &amp; Vacant Resource</label>
@@ -433,7 +472,7 @@
 <script type="module">
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
-  leaveMD, LEAVE_ABBR, isWknd, loadHolidays
+  leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -498,12 +537,6 @@ function addDaysToDate(d, n) {
 
 function addDaysStr(ds, n) {
   return d2s(addDaysToDate(new Date(ds + 'T00:00:00'), n));
-}
-
-function monthLabel(ds) {
-  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const [y, m] = ds.split('-');
-  return `${names[Number(m) - 1]} ${y}`;
 }
 
 function roleLabel(roleCode) {
@@ -581,6 +614,7 @@ supabase.auth.onAuthStateChange((_evt, session) => {
 (async () => {
   const { data } = await supabase.auth.getSession();
   if (data.session) showApp(data.session);
+  else showLogin();
 })();
 
 function showLogin() {
@@ -611,7 +645,7 @@ function setDefaultRangeIfEmpty() {
   const today = new Date();
   S.range = {
     s: d2s(addDaysToDate(today, -10)),
-    e: d2s(addDaysToDate(today, 30))
+    e: defaultFilterEndStr()
   };
   $('fStart').value = dDisp(S.range.s);
   $('fEnd').value = dDisp(S.range.e);
@@ -851,7 +885,7 @@ function buildRow(p, days, conflictMap) {
 
   return `<tr>
     <td class="col-name sticky-l0">
-      <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(p.nicknameName || p.fullName)}</div>
+      <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(resName(p.nicknameName || p.nickname, p.fullName))}</div>
       <div class="role-badge">${esc(roleName)}</div>
     </td>
     <td class="col-skills sticky-l1" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
@@ -906,7 +940,6 @@ function renderTbody(days) {
 }
 
 /* ============ TOOLBAR EVENTS ============ */
-$('refreshBtn').addEventListener('click', loadAll);
 $('fName').addEventListener('input', renderGrid);
 $('fSkills').addEventListener('input', renderGrid);
 $('chkGroupBy').addEventListener('change', renderGrid);
@@ -924,6 +957,7 @@ async function onRangeChange() {
 }
 $('fStart').addEventListener('change', onRangeChange);
 $('fEnd').addEventListener('change', onRangeChange);
+$('applyBtn').addEventListener('click', onRangeChange);
 
 /* ============ MANAGE BOOKING MODAL ============ */
 window.openManageBooking = function (resourceId, ds) {
@@ -931,7 +965,7 @@ window.openManageBooking = function (resourceId, ds) {
   if (!p) return;
   MB_NAME = resourceId;
   MB_DATE = ds;
-  $('mbTitle').textContent = `Manage Booking | ${p.nickname || p.fullName} | ${dDisp(ds)}`;
+  $('mbTitle').textContent = `Manage Booking | ${resName(p.nicknameName || p.nickname, p.fullName)} | ${dDisp(ds)}`;
   mbCancelAdd();
   mbRenderTable();
   mbRefreshSummary();

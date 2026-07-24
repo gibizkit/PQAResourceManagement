@@ -106,7 +106,7 @@
 <body>
 
 <!-- ============ LOGIN ============ -->
-<div id="loginPage">
+<div id="loginPage" class="hidden">
   <div class="login-card">
     <h1>PQA Resource Mgmt</h1>
     <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
@@ -126,8 +126,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
     <nav class="nav">
-      <a href="pqaResourceManagement.html">Projects</a>
-      <a href="gantt.html">Gantt</a>
+      <a href="gantt.html">Project Gantt</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html" class="active">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -182,7 +181,8 @@
 <script type="module">
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort,
-  isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut
+  isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut,
+  resName, monthLabel, MONTH_ABBR
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -198,9 +198,6 @@ const DEFAULT_PHASE_MAP = {
   REG:     { name: 'Reg',      sort: 40 },
   SUPPORT: { name: 'Support',  sort: 50 }
 };
-const MONTH_NAMES_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
-  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-const MONTH_SHORT_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 const TODAY = d2s(new Date());
 
@@ -261,6 +258,7 @@ onAuth(session => {
 (async () => {
   const session = await getSession();
   if (session) showApp(session);
+  else showLogin();
 })();
 
 function showLogin() {
@@ -377,7 +375,7 @@ function requiredForDate(ds) {
 
 /* ============ RENDER MONTH GRID ============ */
 async function renderMonth(force) {
-  $('monthBtn').textContent = `${MONTH_NAMES_TH[S.m - 1]} ${S.y}`;
+  $('monthBtn').textContent = monthLabel(`${S.y}-${String(S.m).padStart(2, '0')}`);
   $('calGrid').innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
     const monthData = await loadMonthData(S.y, S.m, force);
@@ -466,7 +464,7 @@ function renderMonthPanel() {
       <button type="button" class="btn sm" onclick="calPickerYear(1)">›</button>
     </div>
     <div class="cal-picker-grid">
-      ${MONTH_SHORT_TH.map((nm, i) => {
+      ${MONTH_ABBR.map((nm, i) => {
         const mm = i + 1;
         const active = pickerYear === S.y && mm === S.m;
         return `<button type="button" class="cal-picker-month${active ? ' active' : ''}" onclick="calPickMonth(${pickerYear},${mm})">${nm}</button>`;
@@ -545,7 +543,7 @@ function buildDayDetailHtml(ds) {
 
     const rows = [...g.resourceIds].map(rid => {
       const r = S.resourceMap[rid] || {};
-      return { name: r.nickname || r.full_name_en || rid, role: r.role_code };
+      return { name: resName(r.nickname, r.full_name_en) || rid, role: r.role_code };
     }).sort((a, b) => (roleRank(a.role) - roleRank(b.role)) || String(a.name).localeCompare(String(b.name)));
 
     return `<div class="cal-group">

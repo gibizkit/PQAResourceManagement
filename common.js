@@ -262,3 +262,70 @@ export function statusPill(status) {
 export function fmtDate(d) {
   return d ? dDisp(d) : '<span class="muted">—</span>';
 }
+
+/* ============ RESOURCE / NAME DISPLAY ============ */
+
+/**
+ * Format a resource/OS name as "nickname : full name".
+ * Handles either part being missing gracefully.
+ * @param {string} nickname — e.g. 'มะเหมี่ยว'
+ * @param {string} fullName — e.g. 'Pattaraphan Satim'
+ * @returns {string} 'มะเหมี่ยว : Pattaraphan Satim' (or whichever part exists)
+ */
+export function resName(nickname, fullName) {
+  const nn = (nickname == null ? '' : String(nickname)).trim();
+  const fn = (fullName == null ? '' : String(fullName)).trim();
+  if (nn && fn) return `${nn} : ${fn}`;
+  return nn || fn || '';
+}
+
+/* ============ MONTH LABEL (Mmm-yyyy) ============ */
+
+/** English 3-letter month abbreviations (index 0 = Jan) */
+export const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Format a month as 'Mmm-yyyy' (e.g. 'Jul-2026').
+ * Accepts a Date, or a string 'yyyy-MM' / 'yyyy-MM-dd'.
+ * @param {Date|string} d
+ * @returns {string} 'Mmm-yyyy' or '' if unparseable
+ */
+export function monthLabel(d) {
+  let y, m;
+  if (d instanceof Date) {
+    y = d.getFullYear();
+    m = d.getMonth();
+  } else if (typeof d === 'string' && d) {
+    const p = d.split('-');
+    y = parseInt(p[0], 10);
+    m = parseInt(p[1], 10) - 1;
+  } else {
+    return '';
+  }
+  if (isNaN(y) || isNaN(m) || m < 0 || m > 11) return '';
+  return `${MONTH_ABBR[m]}-${y}`;
+}
+
+/* ============ DEFAULT FILTER END (last day of month, +3 months ahead) ============ */
+
+/**
+ * Default End date for range filters = last day of the month that is
+ * 3 months ahead of the base month.
+ * Example: base 24 Jul 2026 → 31 Oct 2026.
+ * Formula: new Date(year, month + 3 + 1, 0) → day 0 of the following month.
+ * @param {Date} [base=new Date()]
+ * @returns {Date}
+ */
+export function defaultFilterEnd(base = new Date()) {
+  return new Date(base.getFullYear(), base.getMonth() + 3 + 1, 0);
+}
+
+/**
+ * Same as defaultFilterEnd() but returns a 'yyyy-MM-dd' string.
+ * @param {Date} [base=new Date()]
+ * @returns {string} 'yyyy-MM-dd'
+ */
+export function defaultFilterEndStr(base = new Date()) {
+  return d2s(defaultFilterEnd(base));
+}

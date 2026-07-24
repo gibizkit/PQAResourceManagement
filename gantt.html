@@ -55,6 +55,21 @@
   .ms-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:8px; font-size:13px; cursor:pointer; }
   .ms-item:hover { background:var(--dk-hover); }
   .ms-item input { margin:0; accent-color:var(--dk-accent); }
+  /* type-to-search inside multiselect panel */
+  .ms-search-wrap { position:relative; padding:4px 6px 6px; }
+  .ms-search { width:100%; box-sizing:border-box; padding:7px 26px 7px 10px; border-radius:8px;
+    border:1px solid var(--dk-border-s); font-size:12.5px; background:#fff; color:var(--dk-text); }
+  .ms-search:focus { outline:none; border-color:var(--dk-accent); }
+  .ms-search-x { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    border:none; background:none; cursor:pointer; font-size:15px; line-height:1; color:var(--dk-text3);
+    width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+  .ms-search-x:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .filters select { padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
+    font-size:13px; background:#fff; color:var(--dk-text); font-weight:600; }
+  .filters select:focus { outline:none; border-color:var(--dk-accent); }
+  .filters .chk { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:600;
+    color:var(--dk-text); text-transform:none; letter-spacing:0; padding:8px 0; cursor:pointer; }
+  .filters .chk input { accent-color:var(--dk-accent); margin:0; }
   .ms-tools { display:flex; gap:6px; padding:4px 6px 8px; border-bottom:1px solid var(--dk-border); margin-bottom:4px; }
   .ms-tools button { font-size:11px; padding:4px 9px; border-radius:7px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
   .ms-tools button:hover { background:var(--dk-hover); }
@@ -171,7 +186,7 @@
 <body>
 
 <!-- ============ LOGIN ============ -->
-<div id="loginPage">
+<div id="loginPage" class="hidden">
   <div class="login-card">
     <h1>PQA Resource Mgmt</h1>
     <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
@@ -191,8 +206,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
     <nav class="nav">
-      <a href="pqaResourceManagement.html">Projects</a>
-      <a href="gantt.html" class="active">Gantt</a>
+      <a href="gantt.html" class="active">Project Gantt</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -211,7 +225,6 @@
 
     <div class="toolbar">
       <button class="btn accent" id="addBtn">+ เพิ่ม Project</button>
-      <button class="btn" id="refreshBtn">🔄 Refresh</button>
       <button class="btn" id="collapseAllBtn">⊟ Collapse All</button>
       <button class="btn" id="expandAllBtn">⊞ Expand All</button>
     </div>
@@ -226,12 +239,29 @@
         <div class="ms" id="msLead"></div>
       </div>
       <div class="fld">
+        <label>App</label>
+        <div class="ms" id="msApp"></div>
+      </div>
+      <div class="fld">
+        <label>Order</label>
+        <select id="fOrder">
+          <option value="">Default (App · Lead · Date)</option>
+          <option value="timeline">Timeline</option>
+          <option value="app">App</option>
+          <option value="lead">UAT Lead</option>
+        </select>
+      </div>
+      <div class="fld">
         <label>Start Date</label>
         <input type="date" id="fStart">
       </div>
       <div class="fld">
         <label>End Date</label>
         <input type="date" id="fEnd">
+      </div>
+      <div class="fld">
+        <label>Current</label>
+        <label class="chk"><input type="checkbox" id="fCurrent"> เฉพาะเฟสปัจจุบัน</label>
       </div>
       <button class="btn" id="applyBtn">แสดง</button>
     </div>
@@ -393,7 +423,7 @@
 <script type="module" src="./signoff.js"></script>
 
 <script type="module">
-import { supabase, $, toast, esc, dDisp, d2s, statusPill } from './common.js';
+import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -435,7 +465,8 @@ const S = {
   holidays: {},
   user: null,
   collapsed: {},
-  filter: { projects:new Set(), leads:new Set(), start:'', end:'' },
+  appOrder: {},
+  filter: { projects:new Set(), leads:new Set(), apps:new Set(), start:'', end:'', order:'', current:false },
   renderedPhases: [],
 };
 
@@ -462,7 +493,7 @@ $('loginForm').addEventListener('submit', async e => {
 });
 $('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
 supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
-(async () => { const { data } = await supabase.auth.getSession(); if(data.session) showApp(data.session); })();
+(async () => { const { data } = await supabase.auth.getSession(); if(data.session) showApp(data.session); else showLogin(); })();
 
 function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
 
@@ -476,7 +507,7 @@ async function showApp(session){
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
 
   S.filter.start = addDays(TODAY, -7);
-  S.filter.end   = addDays(TODAY, 45);
+  S.filter.end   = defaultFilterEndStr();
   $('fStart').value = S.filter.start;
   $('fEnd').value   = S.filter.end;
 
@@ -507,6 +538,8 @@ async function loadAll(){
     S.bookings = bkRes.data || [];
     S.leads    = leadRes.data || [];
     S.apps     = appRes.error ? [] : (appRes.data || []);
+    S.appOrder = {};
+    S.apps.forEach((a, i) => { S.appOrder[a.app_code] = i; }); // app already sorted by sort_order
 
     S.resourceMap = {};
     S.outsourceList = [];
@@ -577,6 +610,10 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
   host.innerHTML = `
     <button class="ms-btn" type="button">${labelAll} <span class="ms-count">▾</span></button>
     <div class="ms-panel hidden">
+      <div class="ms-search-wrap">
+        <input type="text" class="ms-search" placeholder="พิมพ์เพื่อค้นหา...">
+        <button type="button" class="ms-search-x" title="ล้างคำค้นหา">×</button>
+      </div>
       <div class="ms-tools">
         <button type="button" data-act="all">เลือกทั้งหมด</button>
         <button type="button" data-act="none">ล้าง</button>
@@ -586,8 +623,20 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
   const btn = host.querySelector('.ms-btn');
   const panel = host.querySelector('.ms-panel');
   const list = host.querySelector('.ms-list');
+  const search = host.querySelector('.ms-search');
+  const searchX = host.querySelector('.ms-search-x');
   list.innerHTML = items.map(it =>
-    `<label class="ms-item"><input type="checkbox" value="${esc(it.value)}"${selectedSet.has(it.value)?' checked':''}><span>${esc(it.label)}</span></label>`).join('');
+    `<label class="ms-item" data-label="${esc(String(it.label).toLowerCase())}"><input type="checkbox" value="${esc(it.value)}"${selectedSet.has(it.value)?' checked':''}><span>${esc(it.label)}</span></label>`).join('');
+
+  const applySearch = () => {
+    const q = search.value.trim().toLowerCase();
+    list.querySelectorAll('.ms-item').forEach(el => {
+      el.style.display = (!q || (el.dataset.label||'').includes(q)) ? '' : 'none';
+    });
+  };
+  search.oninput = applySearch;
+  search.onclick = (e) => e.stopPropagation();
+  searchX.onclick = (e) => { e.stopPropagation(); search.value=''; applySearch(); search.focus(); };
 
   btn.onclick = (e) => { e.stopPropagation(); panel.classList.toggle('hidden'); };
   panel.onclick = (e) => { e.stopPropagation(); };
@@ -633,23 +682,79 @@ function buildFilters(){
     S.leads.slice().sort((a,b)=>String(a.short_name).localeCompare(String(b.short_name)))
       .map(l => ({ value:l.emp_id, label:l.short_name })),
     S.filter.leads, 'ทุก Lead');
+  makeMultiSelect('msApp',
+    S.apps.map(a => ({ value:a.app_code, label:a.app_name || a.app_code })),
+    S.filter.apps, 'ทุก App');
 }
 
 /* ============ FILTER PROJECTS ============ */
+// min/max phase dates for a project. excludeSit → skip SIT phase (for "Project Date").
+function projSpan(pk, excludeSit){
+  let mn=null, mx=null;
+  (S.phasesByProject[pk]||[]).forEach(ph => {
+    if (excludeSit && ph.phase_code === 'SIT') return;
+    if (ph.start_date && (!mn || ph.start_date < mn)) mn = ph.start_date;
+    if (ph.end_date   && (!mx || ph.end_date   > mx)) mx = ph.end_date;
+  });
+  return { mn, mx };
+}
+function projLeadName(pk){
+  const arr = S.leadsByProject[pk]||[];
+  const m = arr.find(l => l.is_main) || arr[0];
+  return m ? String(m.short_name) : '￿';   // no lead → sort last
+}
+function appIdx(p){
+  return (p.app_code != null && p.app_code in S.appOrder) ? S.appOrder[p.app_code] : 9999;
+}
+
 function filteredProjects(){
   return S.projects.filter(p => {
     if (S.filter.projects.size && !S.filter.projects.has(p.project_key)) return false;
+    if (S.filter.apps.size && !(p.app_code && S.filter.apps.has(p.app_code))) return false;
     if (S.filter.leads.size) {
       const ids = (S.leadsByProject[p.project_key]||[]).map(l => l.emp_id);
       if (!ids.some(id => S.filter.leads.has(id))) return false;
     }
+    // req 13: only projects whose span overlaps the Start–End window
+    const { mn, mx } = projSpan(p.project_key, false);
+    if (!mn || !mx) return false;                       // no dates → no overlap
+    if (!(mn <= S.filter.end && mx >= S.filter.start)) return false;
     return true;
   });
 }
 
+/* ============ SORT PROJECTS (Order filter / default) ============ */
+function sortProjects(list){
+  const arr = list.slice();
+  const order = S.filter.order;
+  const byName = (a,b) => String(a.project_name).localeCompare(String(b.project_name));
+  const minStart = (p, exclSit) => projSpan(p.project_key, exclSit).mn || '9999-12-31';
+
+  if (order === 'timeline'){
+    // min start_date across ALL phases (incl. SIT)
+    arr.sort((a,b) => { const sa=minStart(a,false), sb=minStart(b,false);
+      return sa<sb?-1 : sa>sb?1 : byName(a,b); });
+  } else if (order === 'app'){
+    arr.sort((a,b) => (appIdx(a)-appIdx(b)) || byName(a,b));
+  } else if (order === 'lead'){
+    arr.sort((a,b) => projLeadName(a.project_key).localeCompare(projLeadName(b.project_key)) || byName(a,b));
+  } else {
+    // req 10 default: App → Lead → Project Date (min start EXCLUDING SIT) → Project Name
+    arr.sort((a,b) => {
+      const ai = appIdx(a)-appIdx(b); if (ai) return ai;
+      const la = projLeadName(a.project_key).localeCompare(projLeadName(b.project_key)); if (la) return la;
+      const da = minStart(a,true), db = minStart(b,true);
+      if (da<db) return -1; if (da>db) return 1;
+      return byName(a,b);
+    });
+  }
+  return arr;
+}
+
 /* ============ CURRENT PHASE (for collapsed rows) ============ */
 function currentPhaseInfo(pk){
-  const phs = (S.phasesByProject[pk]||[]).filter(ph => ph.start_date && ph.end_date);
+  // req 11: current-phase computation EXCLUDES the SIT phase
+  const phs = (S.phasesByProject[pk]||[]).filter(ph => ph.start_date && ph.end_date && ph.phase_code !== 'SIT');
   if (!phs.length) return null;
   const cur = phs.find(ph => TODAY >= ph.start_date && TODAY <= ph.end_date);
   if (cur) return { code:cur.phase_code, label:phaseName(cur.phase_code), state:'active' };
@@ -686,7 +791,7 @@ function runCells(days, start, end, color, opt){
 /* ============ RENDER GANTT ============ */
 function renderGantt(){
   const days = eachDay(S.filter.start, S.filter.end);
-  const visible = filteredProjects();
+  const visible = sortProjects(filteredProjects());
   $('projCount').textContent = visible.length;
 
   if (!days.length){ $('ganttScroll').innerHTML = '<div class="empty">ช่วงวันที่ไม่ถูกต้อง</div>'; return; }
@@ -698,10 +803,7 @@ function renderGantt(){
     if (last && last.ym===ym) last.count++;
     else months.push({ ym, count:1 });
   });
-  const monthLabel = ym => {
-    const [y,m]=ym.split('-'); const names=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-    return `${names[+m]} ${y}`;
-  };
+  // month header labels via shared helper → 'Mmm-yyyy' (e.g. 'Jul-2026')
 
   let head = '<thead><tr>' +
     '<th class="sticky-col c0" rowspan="2">Project</th>' +
@@ -718,9 +820,17 @@ function renderGantt(){
   S.renderedPhases = [];
   let body = '<tbody>';
   visible.forEach(p => {
+    const pk = p.project_key;
     body += summaryRow(p, days);
-    if (!S.collapsed[p.project_key]) {
-      (S.phasesByProject[p.project_key]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
+    if (S.filter.current) {
+      // req 9: show only the current phase (the one within the Start–End window)
+      const info = currentPhaseInfo(pk);
+      if (info && info.code) {
+        const ph = (S.phasesByProject[pk]||[]).find(x => x.phase_code === info.code);
+        if (ph) body += phaseRow(p, ph, days);
+      }
+    } else if (!S.collapsed[pk]) {
+      (S.phasesByProject[pk]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
       if (p.signoff_date || p.deploy_date) body += milestoneRow(p, days);
     }
   });
@@ -733,29 +843,28 @@ function renderGantt(){
 function summaryRow(p, days){
   const pk = p.project_key;
   const collapsed = S.collapsed[pk];
-  let mn=null, mx=null;
-  (S.phasesByProject[pk]||[]).forEach(ph => {
-    if (ph.phase_code === 'SIT') return;
-    if (ph.start_date && (!mn || ph.start_date < mn)) mn = ph.start_date;
-    if (ph.end_date   && (!mx || ph.end_date   > mx)) mx = ph.end_date;
-  });
+  const { mn, mx } = projSpan(pk, true);   // project span excludes SIT
   const lead = (S.leadsByProject[pk]||[]).find(l => l.is_main) || (S.leadsByProject[pk]||[])[0];
   const app = p.app_code || p.other_app || '';
 
   const cells = runCells(days, mn, mx, 'var(--ph-summary)', { summary:true });
 
-  // req 4: no project_key in meta — only app · lead
+  // req 4: no project_key in meta — app · lead · status
   const metaParts = [];
   if (app) metaParts.push(esc(app));
   metaParts.push(lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —');
+  if (p.status) metaParts.push(statusPill(p.status));
   const meta = metaParts.join(' · ');
 
-  // req 2: collapsed shows current phase; expanded shows status pill
-  const c1inner = collapsed ? phaseChipHtml(currentPhaseInfo(pk)) : statusPill(p.status);
+  // req 12 + 14: collapse/expand toggle lives in the Phase/Booked column, next to the
+  // current-phase chip — shown BOTH when collapsed and when expanded.
+  const toggleBtn = `<button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>`;
+  const c1inner = `<div class="ph-row" style="justify-content:flex-start">${toggleBtn}${phaseChipHtml(currentPhaseInfo(pk))}</div>`;
 
-  // req 5: view signoff document button when there's a link
-  const docBtn = p.signoff_url
-    ? `<button class="ico" title="เปิดเอกสาร Signoff" onclick="openSignoffDoc('${esc(pk)}')">📄</button>` : '';
+  // req 15: Action column = pencil (edit) + signoff icon + doc icon
+  const editBtn = `<button class="ico" onclick="openProjEdit('${esc(pk)}')" title="แก้ไข Project detail">✏️</button>`;
+  const soBtn   = `<button class="ico" onclick="window.srOpenFromKey('${esc(pk)}')" title="Review Signoff">🔎</button>`;
+  const docBtn  = `<button class="ico" onclick="openSignoffDoc('${esc(pk)}')" title="เปิดเอกสาร Signoff">📄</button>`;
 
   return `<tr class="prow-sum">
     <td class="sticky-col c0" title="${esc(p.project_name)}">
@@ -764,11 +873,7 @@ function summaryRow(p, days){
     </td>
     <td class="sticky-col c1">${c1inner}</td>
     <td class="sticky-col c2">
-      <div class="act">
-        <button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>
-        <button class="ico" onclick="openProjEdit('${esc(pk)}')" title="แก้ไข Project detail">✏️</button>
-        ${docBtn}
-      </div>
+      <div class="act">${editBtn}${soBtn}${docBtn}</div>
     </td>
     ${cells}
   </tr>`;
@@ -829,13 +934,14 @@ function fmtNum(n){ return Number.isInteger(n) ? String(n) : String(n); }
 window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderGantt(); };
 $('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 $('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
-$('refreshBtn').onclick     = loadAll;
 $('addBtn').onclick         = () => openProjAdd();
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
   renderGantt();
 };
+$('fOrder').onchange   = () => { S.filter.order = $('fOrder').value; renderGantt(); };
+$('fCurrent').onchange = () => { S.filter.current = $('fCurrent').checked; renderGantt(); };
 
 /* ============ PROJECT EDIT MODAL (req 1) ============ */
 let editingKey = null;
@@ -1033,7 +1139,7 @@ function bookingsOfPhase(){
     .filter(b => b.project_key===popCtx.pk && b.phase_code===popCtx.phaseCode)
     .sort((a,b) => (a.start_date<b.start_date?-1:a.start_date>b.start_date?1:0) || resName(a.resource_id).localeCompare(resName(b.resource_id)));
 }
-function resName(rid){ const r=S.resourceMap[rid]; return r ? (r.nickname||r.full_name_en||rid) : rid; }
+function resName(rid){ const r=S.resourceMap[rid]; return r ? (fmtResName(r.nickname, r.full_name_en) || rid) : rid; }
 
 function renderBkRows(){
   const rows = bookingsOfPhase();
@@ -1055,7 +1161,7 @@ window.bkStartAdd = function(){
   $('bkResPickWrap').classList.remove('hidden');
   $('bkEditName').classList.add('hidden');
   $('bkResPick').innerHTML = S.outsourceList.map(r =>
-    `<label><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(r.nickname||r.full_name_en)} <span style="color:var(--dk-text3);font-size:11px">${esc(r.full_name_en)}</span></span></label>`).join('')
+    `<label><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(fmtResName(r.nickname, r.full_name_en))}</span></label>`).join('')
     || '<div style="color:var(--dk-text3);padding:8px">ไม่มี Outsource ที่ active</div>';
   $('bkStart').value = popCtx.phStart;
   $('bkEnd').value   = popCtx.phEnd;

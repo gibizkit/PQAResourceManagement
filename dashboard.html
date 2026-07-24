@@ -44,20 +44,48 @@
   .view-tab:hover { background:var(--dk-hover); }
   .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
 
-  /* ---- month navigator ---- */
-  .month-nav { display:flex; align-items:center; gap:8px; }
+  /* ---- month navigator (styled to match the Outsource-page date-filter look:
+     bordered pill, 13px font, 8px radius — see outsource.html .date-input) ---- */
+  .month-nav {
+    display:flex; align-items:center; gap:6px; background:#fff;
+    border:1px solid var(--dk-border-s); border-radius:8px; padding:4px 6px;
+  }
   .month-nav button.nav-arrow {
-    border:1px solid var(--dk-border-s); background:#fff; border-radius:8px; width:30px; height:30px;
+    border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; width:28px; height:28px;
     font-size:14px; color:var(--dk-text2); cursor:pointer;
   }
   .month-nav button.nav-arrow:hover { background:var(--dk-hover); }
-  .month-nav .lbl { font-weight:700; font-size:14px; color:var(--dk-text); min-width:120px; text-align:center; cursor:pointer; }
-  .month-nav .lbl:hover { color:var(--dk-accent); }
+  .month-nav .lbl { font-weight:700; font-size:13px; color:var(--dk-text); min-width:100px; text-align:center; padding:0 4px; }
 
   .range-badge {
     background:var(--dk-accent-d); color:var(--dk-accent); border-radius:10px;
     padding:8px 14px; font-size:13px; font-weight:600; margin-bottom:14px; display:inline-block;
   }
+
+  /* ---- overall-mode range filter (mirrors gantt.html .filters/.fld) ---- */
+  .filters {
+    display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;
+  }
+  .filters .fld { display:flex; flex-direction:column; gap:5px; }
+  .filters label { font-size:11px; color:var(--dk-text3); font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
+  .filters input[type=date] {
+    padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
+    font-size:13px; background:#fff; color:var(--dk-text);
+  }
+  .filters input[type=date]:focus { outline:none; border-color:var(--dk-accent); }
+
+  /* ---- sortable table headers ---- */
+  table.dash-table th.sortable { cursor:pointer; user-select:none; }
+  table.dash-table th.sortable:hover { color:var(--dk-text); }
+  table.dash-table th .sort-ico { margin-left:4px; opacity:.6; font-size:10px; }
+  table.dash-table th.sort-active .sort-ico { opacity:1; color:var(--dk-accent); }
+  .ico-btn {
+    border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; width:26px; height:26px;
+    font-size:13px; cursor:pointer; line-height:1;
+  }
+  .ico-btn:hover { background:var(--dk-hover); }
+  .ico-btn[disabled] { opacity:.35; cursor:default; }
+  .ico-btn[disabled]:hover { background:#fff; }
 
   /* ---- KPI cards ---- */
   .kpi-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:16px; }
@@ -75,7 +103,6 @@
 
   /* ---- charts ---- */
   .chart-row { display:grid; grid-template-columns:3fr 2fr; gap:14px; margin-bottom:16px; }
-  .dash-overall-charts { display:flex; flex-direction:column; gap:14px; margin-bottom:16px; }
   .chart-card { background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px 16px; }
   .chart-card-title { font-size:13px; font-weight:700; color:var(--dk-text); margin-bottom:10px; }
   .donut-row { display:flex; align-items:center; gap:16px; }
@@ -127,7 +154,7 @@
 <body>
 
 <!-- ============ LOGIN ============ -->
-<div id="loginPage">
+<div id="loginPage" class="hidden">
   <div class="login-card">
     <h1>PQA Resource Mgmt</h1>
     <p class="sub">เข้าสู่ระบบด้วย Supabase</p>
@@ -147,8 +174,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
     <nav class="nav">
-      <a href="pqaResourceManagement.html">Projects</a>
-      <a href="gantt.html">Gantt</a>
+      <a href="gantt.html">Project Gantt</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html" class="active">Dashboard</a>
@@ -168,14 +194,18 @@
       </div>
     </div>
 
-    <!-- ===== Monthly toolbar ===== -->
-    <div class="toolbar" id="monthlyToolbar">
+    <!-- ===== View tabs (shared — monthly & overall) ===== -->
+    <div class="toolbar">
       <div class="view-tabs" id="viewTabs">
         <button class="view-tab active" data-view="project">📊 By Project</button>
         <button class="view-tab" data-view="os">👤 By OS</button>
         <button class="view-tab" data-view="lead">👑 By Lead</button>
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
+    </div>
+
+    <!-- ===== Monthly toolbar (month navigator) ===== -->
+    <div class="toolbar" id="monthlyToolbar">
       <div class="month-nav">
         <button class="nav-arrow" id="prevMonthBtn">‹</button>
         <span class="lbl" id="monthLbl">-</span>
@@ -183,12 +213,15 @@
       </div>
       <button class="btn" id="todayBtn">Today</button>
       <button class="btn" id="refreshBtn">🔄 Refresh</button>
-      <button class="btn hidden" id="collapseAllBtn">⊟ Collapse All</button>
-      <button class="btn hidden" id="expandAllBtn">⊞ Expand All</button>
     </div>
 
-    <!-- ===== Overall toolbar ===== -->
+    <!-- ===== Overall toolbar (custom Start–End range, mirrors gantt.html filter UX) ===== -->
     <div class="toolbar hidden" id="overallToolbar">
+      <div class="filters">
+        <div class="fld"><label>Start Date</label><input type="date" id="ovStart"></div>
+        <div class="fld"><label>End Date</label><input type="date" id="ovEnd"></div>
+        <button class="btn accent" id="ovApplyBtn">แสดง</button>
+      </div>
       <button class="btn" id="refreshOverallBtn">🔄 Refresh</button>
     </div>
     <div class="hidden" id="overallRangeWrap">
@@ -234,22 +267,7 @@
       </div>
     </div>
 
-    <!-- ===== Overall charts ===== -->
-    <div class="dash-overall-charts hidden" id="overallChartsWrap">
-      <div class="chart-card">
-        <div class="chart-card-title">MD by App (แยกตาม Phase) — ทั้งหมด</div>
-        <canvas id="overallBarChart" height="70"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">Phase Breakdown — ทั้งหมด</div>
-        <div class="donut-row">
-          <div class="donut-canvas-wrap"><canvas id="overallDonutChart" width="150" height="150"></canvas></div>
-          <div class="donut-legend" id="overallDonutLegend"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== Monthly view content ===== -->
+    <!-- ===== View content (shared — monthly & overall) ===== -->
     <div id="viewContainer"></div>
 
   </div>
@@ -257,10 +275,16 @@
 
 <div class="toast" id="toast"></div>
 
+<script type="module" src="./signoff.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, monthLabel, defaultFilterEndStr
 } from './common.js';
+
+/* SIGNOFF REVIEW STUB (signoff.js may override — same defensive pattern as gantt.html) */
+if (!window.openSignoffReview) {
+  window.openSignoffReview = function(){ toast('Signoff Review — coming soon'); };
+}
 
 /* =====================================================================
    CONSTANTS
@@ -291,7 +315,6 @@ function fmtMD(v){
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
-const MONTH_NAMES_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 /* =====================================================================
    STATE
@@ -303,32 +326,33 @@ const S = {
   // "master" data — loaded once at app start, re-fetched on Refresh
   activeProjects: [],           // v_project_wide rows where is_active = true
   activeProjMap: {},            // project_key -> row (for monthly aggregation, app label lookup)
-  allProjMap: {},                // project_key -> {app, other_app} for ALL projects (used in Overall mode so
-                                 // completed / inactive projects still get a proper App label on the charts)
+  allProjectsFull: [],           // v_project_wide rows for ALL projects (used in Overall mode's
+                                 // subviews so completed / inactive projects still show up)
+  allProjMap: {},                // project_key -> row for ALL projects (used in Overall mode so
+                                 // completed / inactive projects still get a proper App label)
   appList: [],                  // app table rows {app_code, app_name, sort_order}
   appOrder: {},                 // app_code -> sort_order (for consistent column/legend ordering)
   resourceMap: {},              // resource_id -> {nickname, full_name_en, role_code, resource_type}
   leadsAll: [],                 // pqa_lead rows (is_active = true)
   projectLeadRows: [],          // project_lead rows (project_key, pqa_emp_id, is_main)
+  phasesByProject: {},           // project_key -> [{phase_code,phase_label,start_date,end_date,sort_order}]
 
-  // monthly mode
+  // shared period state (monthly = one calendar month, overall = a custom Start–End range)
   dashMode: 'monthly',          // 'monthly' | 'overall'
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
-  dashY: 0, dashM: 0,           // selected year / 1-based month
-  monthCacheKey: '',            // 'YYYY-MM' of the currently loaded month, '' = not loaded
-  bookingDaily: [],             // v_booking_daily rows for selected month
-  leaveDaily: [],                // v_leave_daily rows for selected month
-  monthAgg: null,                // computed aggregates for selected month (see computeMonthAgg)
-  dashCollapsed: {},             // appKey -> true = collapsed (By Project view)
+  dashY: 0, dashM: 0,           // selected year / 1-based month (monthly mode)
+  overallRange: { s:'', e:'' }, // selected Start/End (overall mode)
+  periodCacheKey: '',           // identifies the currently-loaded period (mode+range), '' = not loaded
+  bookingDaily: [],             // v_booking_daily rows for the current period
+  leaveDaily: [],                // v_leave_daily rows for the current period
+  periodAgg: null,                // computed aggregates for the current period (see computeAgg)
 
-  // overall mode
-  overallCacheKey: '',          // '' = not loaded, 'loaded' = loaded
-  overallRange: { s:'', e:'' },
-  overallBookingDaily: [],
-  overallAgg: null,
+  // sort state for the sortable subview tables
+  projectSort: { key:'uatPeriod', dir:'asc' },
+  signoffSort: { key:'signoffDate', dir:'asc' },
 };
 
-const charts = { bar:null, donut:null, overallBar:null, overallDonut:null };
+const charts = { bar:null, donut:null };
 
 /* =====================================================================
    DATE HELPERS
@@ -368,9 +392,18 @@ $('loginForm').addEventListener('submit', async e => {
 });
 $('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
 supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
-(async () => { const { data } = await supabase.auth.getSession(); if (data.session) showApp(data.session); })();
+(async () => { const { data } = await supabase.auth.getSession(); if (data.session) showApp(data.session); else showLogin(); })();
 
-function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
+function showLogin(){
+  $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden');
+  sessionBooted = false; // allow a fresh login to re-run the full boot sequence
+}
+
+// Supabase's auth listener + the initial getSession() call can both resolve to the same
+// session on first load (and onAuthStateChange may itself fire more than once) — without
+// this guard that means loadMasterData()/loadPeriod() (and therefore chart create/destroy)
+// running 2-3x in a row, which is exactly what caused the chart-flicker bug (task 6).
+let sessionBooted = false;
 
 async function showApp(session){
   $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
@@ -381,29 +414,34 @@ async function showApp(session){
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
   S.user = { displayName: who, role };
 
+  if (sessionBooted) return;
+  sessionBooted = true;
+
   const now = new Date();
   S.dashY = now.getFullYear();
   S.dashM = now.getMonth()+1;
 
   wireToolbar();
   await loadMasterData();
-  await loadMonthly(true);
+  await loadPeriod(true);
 }
 
 /* =====================================================================
    MASTER DATA (loaded once, cached — Refresh reloads it)
    ===================================================================== */
 async function loadMasterData(){
-  const [holidays, projRes, allProjRes, appRes, resRes, leadRes, plRes] = await Promise.all([
+  const [holidays, projRes, allProjRes, appRes, resRes, leadRes, plRes, phaseRes] = await Promise.all([
     loadHolidays(),
     supabase.from('v_project_wide')
-      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,is_active')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active')
       .eq('is_active', true),
-    supabase.from('v_project_wide').select('project_key,app,other_app'),
+    supabase.from('v_project_wide')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active'),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
     supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role').eq('is_active', true),
     supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
+    supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,sort_order'),
   ]);
 
   S.holidays = holidays || {};
@@ -412,8 +450,9 @@ async function loadMasterData(){
   S.activeProjMap = {};
   S.activeProjects.forEach(p => { S.activeProjMap[p.project_key] = p; });
 
+  S.allProjectsFull = allProjRes.data || [];
   S.allProjMap = {};
-  (allProjRes.data || []).forEach(p => { S.allProjMap[p.project_key] = p; });
+  S.allProjectsFull.forEach(p => { S.allProjMap[p.project_key] = p; });
 
   S.appList = appRes.data || [];
   S.appOrder = {};
@@ -425,21 +464,42 @@ async function loadMasterData(){
   S.leadsAll = (leadRes.data || []).slice().sort((a,b)=>String(a.short_name).localeCompare(String(b.short_name)));
   S.projectLeadRows = plRes.data || [];
 
-  for (const r of [projRes, appRes, resRes, leadRes, plRes]) {
+  S.phasesByProject = {};
+  (phaseRes.data || []).forEach(ph => {
+    (S.phasesByProject[ph.project_key] = S.phasesByProject[ph.project_key] || []).push(ph);
+  });
+  Object.values(S.phasesByProject).forEach(arr => arr.sort((a,b) => (a.sort_order ?? 999) - (b.sort_order ?? 999)));
+
+  for (const r of [projRes, allProjRes, appRes, resRes, leadRes, plRes, phaseRes]) {
     if (r.error) { console.warn('master data load error', r.error); }
   }
 }
 
 /* =====================================================================
-   MONTHLY DATA + AGGREGATION
+   PERIOD (shared by monthly-mode and overall-mode) DATA + AGGREGATION
    ===================================================================== */
-async function loadMonthly(force){
-  const key = `${S.dashY}-${pad2(S.dashM)}`;
-  updateMonthLabel();
-  if (!force && S.monthCacheKey === key) { renderAll(); return; }
+/** Currently active period range as {first,last} 'yyyy-MM-dd', regardless of mode. */
+function currentRange(){
+  return S.dashMode === 'overall'
+    ? { first: S.overallRange.s, last: S.overallRange.e }
+    : monthFirstLast(S.dashY, S.dashM);
+}
+/** Projects to show in the By Project / By Lead / Signoff subviews for the current mode. */
+function currentProjectsList(){
+  return S.dashMode === 'overall' ? S.allProjectsFull : S.activeProjects;
+}
+function currentProjMap(){
+  return S.dashMode === 'overall' ? S.allProjMap : S.activeProjMap;
+}
+
+async function loadPeriod(force){
+  const { first, last } = currentRange();
+  if (!first || !last) return; // overall range not resolved yet
+  const key = `${S.dashMode}|${first}|${last}`;
+  if (S.dashMode === 'monthly') updateMonthLabel(); else updateRangeBadge();
+  if (!force && S.periodCacheKey === key) { renderAll(); return; }
 
   setViewLoading();
-  const { first, last } = monthFirstLast(S.dashY, S.dashM);
   try {
     const [bkRes, lvRes] = await Promise.all([
       supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
@@ -452,8 +512,10 @@ async function loadMonthly(force){
 
     S.bookingDaily = bkRes.data || [];
     S.leaveDaily = lvRes.data || [];
-    S.monthCacheKey = key;
-    S.monthAgg = computeMonthAgg();
+    S.periodCacheKey = key;
+    // monthly mode: only count bookings whose project is in the ACTIVE project set.
+    // overall mode: count everything (historical/completed projects included too).
+    S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: S.dashMode === 'monthly' });
     renderAll();
   } catch (err) {
     console.error(err);
@@ -462,40 +524,45 @@ async function loadMonthly(force){
 }
 
 /**
- * Aggregate the month's booking/leave rows.
+ * Aggregate a set of booking/leave rows over an arbitrary period.
  *
  * NOTE on MD calculation (per task spec):
- *  - byAppPhase / phaseTotals / byProject / byOsApp all use RAW booked MD
- *    (sum of md_per_day from v_booking_daily) — this feeds the charts,
+ *  - byAppPhase / phaseTotals / byProject / byProjectPhase / byOsApp all use RAW
+ *    booked MD (sum of md_per_day from v_booking_daily) — this feeds the charts,
  *    the By Project table, and the By OS pivot cells.
- *  - kpiEffectiveMD (used ONLY for the "Total MD (MTD)" KPI card) nets out
- *    leave: for every resource+day that has a booking, effective MD =
- *    max(0, sum(booked md_per_day that day) - leave_md that day), then
- *    summed across the month. Days with leave but no booking don't count
- *    (nothing to net against).
- *  - Everything here is restricted to bookings whose project is in the
- *    ACTIVE project set (S.activeProjMap) — matches spec: "Only count
- *    bookings whose project is in the active-projects set."
+ *  - kpiEffectiveMD (used ONLY for the "Total MD (MTD)" KPI card, monthly mode only)
+ *    nets out leave: for every resource+day that has a booking, effective MD =
+ *    max(0, sum(booked md_per_day that day) - leave_md that day), then summed
+ *    across the period. Days with leave but no booking don't count.
+ *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped
+ *    (monthly mode — "only count bookings whose project is in the active-projects
+ *    set"). When false (overall mode), every booking counts and `projMap` is only
+ *    used to resolve an App label.
  */
-function computeMonthAgg(){
-  const byAppPhase = {};     // app -> phase -> md
-  const phaseTotals = {};    // phase -> md
-  const byProject = {};      // project_key -> md
-  const byOsApp = {};        // resource_id -> app -> md
-  const byOsTotal = {};      // resource_id -> md
+function computeAgg(bookingRows, leaveRows, projMap, opts){
+  const restrict = !!(opts && opts.restrict);
+  const byAppPhase = {};       // app -> phase -> md
+  const phaseTotals = {};      // phase -> md
+  const byProject = {};        // project_key -> md
+  const byProjectPhase = {};   // project_key -> phase -> md
+  const byOsApp = {};          // resource_id -> app -> md
+  const byOsTotal = {};        // resource_id -> md
   const bookedOsSet = new Set();
-  const dailyBookedByResDay = {}; // 'resId|date' -> md sum (active projects only)
+  const dailyBookedByResDay = {}; // 'resId|date' -> md sum
 
-  S.bookingDaily.forEach(row => {
-    const proj = S.activeProjMap[row.project_key];
-    if (!proj) return; // skip bookings whose project isn't in the active set
+  bookingRows.forEach(row => {
+    const proj = projMap[row.project_key];
+    if (restrict && !proj) return; // skip bookings whose project isn't in the restricted set
     const md = Number(row.md_per_day) || 0;
-    const app = proj.app || proj.other_app || '— ไม่มี App —';
+    const app = proj ? (proj.app || proj.other_app || '— ไม่มี App —') : '— ไม่ทราบ App —';
 
     byAppPhase[app] = byAppPhase[app] || {};
     byAppPhase[app][row.phase_code] = (byAppPhase[app][row.phase_code] || 0) + md;
     phaseTotals[row.phase_code] = (phaseTotals[row.phase_code] || 0) + md;
     byProject[row.project_key] = (byProject[row.project_key] || 0) + md;
+
+    byProjectPhase[row.project_key] = byProjectPhase[row.project_key] || {};
+    byProjectPhase[row.project_key][row.phase_code] = (byProjectPhase[row.project_key][row.phase_code] || 0) + md;
 
     const res = S.resourceMap[row.resource_id];
     if (res && res.resource_type === 'outsource') {
@@ -511,7 +578,7 @@ function computeMonthAgg(){
 
   // leave map (unrestricted by project — leave is per-person, not per-project)
   const leaveByResDay = {};
-  S.leaveDaily.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
+  leaveRows.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
 
   let kpiEffectiveMD = 0;
   Object.keys(dailyBookedByResDay).forEach(k => {
@@ -520,14 +587,13 @@ function computeMonthAgg(){
     kpiEffectiveMD += Math.max(0, booked - leave);
   });
 
-  return { byAppPhase, phaseTotals, byProject, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
+  return { byAppPhase, phaseTotals, byProject, byProjectPhase, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
 }
 
 /* =====================================================================
    RENDER — ORCHESTRATION
    ===================================================================== */
 function renderAll(){
-  if (S.dashMode === 'overall') { renderOverall(); return; }
   renderKPI();
   renderCharts();
   renderView();
@@ -538,17 +604,25 @@ function setViewLoading(){
 }
 
 function updateMonthLabel(){
-  $('monthLbl').textContent = `${MONTH_NAMES_TH[S.dashM-1]} ${S.dashY}`;
+  $('monthLbl').textContent = monthLabel(new Date(S.dashY, S.dashM-1, 1));
+}
+
+function updateRangeBadge(){
+  $('overallRangeWrap').classList.toggle('hidden', S.dashMode !== 'overall');
+  if (S.dashMode !== 'overall') return;
+  $('overallRangeBadge').textContent = (S.overallRange.s && S.overallRange.e)
+    ? `ตั้งแต่ ${dDisp(S.overallRange.s)} – ${dDisp(S.overallRange.e)}`
+    : 'กำลังโหลด...';
 }
 
 /* =====================================================================
    KPI
    ===================================================================== */
 function renderKPI(){
-  const hide = S.dashView === 'lead';
+  const hide = S.dashMode === 'overall' || S.dashView === 'lead';
   $('kpiGrid').classList.toggle('hidden', hide);
   if (hide) return;
-  const agg = S.monthAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
+  const agg = S.periodAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
   $('kpiTotalMD').textContent = fmtMD(agg.kpiEffectiveMD);
   $('kpiBookedOs').textContent = agg.bookedOsCount;
   $('kpiActiveProj').textContent = S.activeProjects.length;
@@ -570,7 +644,7 @@ function renderCharts(){
   $('chartRow').classList.toggle('hidden', !show);
   if (!show) return;
 
-  const agg = S.monthAgg || { byAppPhase:{}, phaseTotals:{} };
+  const agg = S.periodAgg || { byAppPhase:{}, phaseTotals:{} };
   const apps = sortedApps(Object.keys(agg.byAppPhase));
 
   // ---- stacked bar: MD by App, stacked by phase ----
@@ -616,8 +690,6 @@ function renderCharts(){
    VIEW SWITCHING
    ===================================================================== */
 function renderView(){
-  $('collapseAllBtn').classList.toggle('hidden', S.dashView !== 'project');
-  $('expandAllBtn').classList.toggle('hidden', S.dashView !== 'project');
   const c = $('viewContainer');
   if (S.dashView === 'project') renderProjectView(c);
   else if (S.dashView === 'os') renderOsView(c);
@@ -625,76 +697,150 @@ function renderView(){
   else renderSignoffView(c);
 }
 
-/* ---- By Project ---- */
-function renderProjectView(container){
-  const agg = S.monthAgg || { byProject:{} };
-  const groups = {};
-  S.activeProjects.forEach(p => {
-    const appKey = p.app || p.other_app || '— ไม่มี App —';
-    groups[appKey] = groups[appKey] || { label: appKey, projects: [], totalMD: 0 };
-    const md = agg.byProject[p.project_key] || 0;
-    groups[appKey].projects.push({ ...p, md });
-    groups[appKey].totalMD += md;
+/* ---- generic sortable-table helpers (By Project + Signoff) ---- */
+function sortIco(sortState, key){
+  if (sortState.key !== key) return '';
+  return `<span class="sort-ico">${sortState.dir === 'asc' ? '▲' : '▼'}</span>`;
+}
+function thSort(label, key, sortState, extraClass){
+  const cls = ['sortable', sortState.key === key ? 'sort-active' : '', extraClass||''].join(' ').trim();
+  return `<th class="${cls}" data-sort-key="${esc(key)}">${esc(label)}${sortIco(sortState, key)}</th>`;
+}
+function genericSort(rows, sortState, keyFns){
+  const kf = keyFns[sortState.key] || (() => null);
+  const dir = sortState.dir === 'desc' ? -1 : 1;
+  return rows.slice().sort((a,b) => {
+    const va = kf(a), vb = kf(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
   });
-  const appKeys = sortedApps(Object.keys(groups));
+}
+function wireSortHeader(theadEl, sortState, onChange){
+  theadEl.addEventListener('click', e => {
+    const th = e.target.closest('th.sortable');
+    if (!th) return;
+    const key = th.dataset.sortKey;
+    if (sortState.key === key) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    else { sortState.key = key; sortState.dir = 'asc'; }
+    onChange();
+  });
+}
 
-  if (!appKeys.length) {
-    container.innerHTML = '<div class="empty-state">ไม่พบ Active Project</div>';
+/* ---- By Project ----
+   One row per project (flat — not grouped by App) so every phase-MD column
+   and the UAT period can be shown/sorted at project granularity. "App" is the
+   first column per spec; "Project Name" is kept as an extra identifying
+   column right after it (a bare App column with no project name would make
+   rows impossible to tell apart). */
+const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
+function buildProjectRows(){
+  const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
+  return currentProjectsList().map(p => {
+    const pk = p.project_key;
+    const phases = S.phasesByProject[pk] || [];
+    const pAgg = agg.byProjectPhase[pk] || {};
+    const totalMD = agg.byProject[pk] || 0;
+
+    // any phase besides the 4 standard ones (e.g. SIT, custom-labeled phases) is an "Other"
+    const otherCodes = new Set();
+    phases.forEach(ph => { if (!PROJECT_STD_PHASES.includes(ph.phase_code)) otherCodes.add(ph.phase_code); });
+    Object.keys(pAgg).forEach(c => { if (!PROJECT_STD_PHASES.includes(c)) otherCodes.add(c); });
+    const otherSorted = [...otherCodes].sort((a,b) => {
+      const pa = phases.find(x => x.phase_code === a), pb = phases.find(x => x.phase_code === b);
+      return (pa && pa.sort_order != null ? pa.sort_order : 999) - (pb && pb.sort_order != null ? pb.sort_order : 999);
+    });
+    let other1 = 0, other2 = 0;
+    otherSorted.forEach((c, i) => { const v = pAgg[c] || 0; if (i === 0) other1 += v; else other2 += v; });
+
+    // UAT period = TC Prep phase start_date through the max end_date across all phases
+    const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
+    let maxEnd = null;
+    phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+    const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+    const periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
+    const uatPeriodDisp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
+      : periodStart ? dDisp(periodStart) : '—';
+
+    return {
+      app: p.app || p.other_app || '— ไม่มี App —',
+      projectName: p.project_name || '',
+      lead: p.uat_lead || '',
+      uatPeriodDisp, uatPeriodSortKey: periodStart || '',
+      totalMD, tcprep: pAgg.TCPREP || 0, uat: pAgg.UAT || 0, reg: pAgg.REG || 0,
+      other1, other2, support: pAgg.SUPPORT || 0,
+    };
+  });
+}
+const PROJECT_KEYFNS = {
+  app: r => r.app, lead: r => r.lead, uatPeriod: r => r.uatPeriodSortKey,
+  totalMD: r => r.totalMD, tcprep: r => r.tcprep, uat: r => r.uat, reg: r => r.reg,
+  other1: r => r.other1, other2: r => r.other2, support: r => r.support,
+};
+function renderProjectView(container){
+  const rows = buildProjectRows();
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state">ไม่พบ Project</div>';
     return;
   }
+  const sorted = genericSort(rows, S.projectSort, PROJECT_KEYFNS);
 
-  let grandMD = 0, grandCount = 0;
-  const bodyRows = appKeys.map(appKey => {
-    const g = groups[appKey];
-    grandMD += g.totalMD; grandCount += g.projects.length;
-    const collapsed = !!S.dashCollapsed[appKey];
-    const projRows = collapsed ? '' : g.projects.slice()
-      .sort((a,b) => (a.project_name||'').localeCompare(b.project_name||''))
-      .map(p => `<tr class="dash-proj-row">
-        <td></td>
-        <td>${esc(p.project_name)}</td>
-        <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
-        <td class="right">${fmtMD(p.md)}</td>
-      </tr>`).join('');
-    return `<tr class="dash-app-row" onclick="window.toggleDashApp('${esc(appKey)}')">
-        <td class="center"><span class="toggle-ico">${collapsed?'▶':'▼'}</span></td>
-        <td>${esc(appKey)} <span class="muted">(${g.projects.length})</span></td>
-        <td></td>
-        <td class="right">${fmtMD(g.totalMD)}</td>
-      </tr>${projRows}`;
+  let gTotal=0, gTcprep=0, gUat=0, gReg=0, gOther1=0, gOther2=0, gSupport=0;
+  const bodyRows = sorted.map(r => {
+    gTotal+=r.totalMD; gTcprep+=r.tcprep; gUat+=r.uat; gReg+=r.reg; gOther1+=r.other1; gOther2+=r.other2; gSupport+=r.support;
+    return `<tr>
+      <td>${esc(r.app)}</td>
+      <td>${esc(r.projectName)}</td>
+      <td>${esc(r.lead) || '<span class="muted">—</span>'}</td>
+      <td>${esc(r.uatPeriodDisp)}</td>
+      <td class="right">${fmtMD(r.totalMD)}</td>
+      <td class="right">${fmtMD(r.tcprep)}</td>
+      <td class="right">${fmtMD(r.uat)}</td>
+      <td class="right">${fmtMD(r.reg)}</td>
+      <td class="right">${fmtMD(r.other1)}</td>
+      <td class="right">${fmtMD(r.other2)}</td>
+      <td class="right">${fmtMD(r.support)}</td>
+    </tr>`;
   }).join('');
 
   container.innerHTML = `
     <div class="dash-table-wrap">
-      <table class="dash-table">
-        <thead><tr><th style="width:30px"></th><th>App / Project Name</th><th>UAT Lead</th><th class="right">MD (MTD)</th></tr></thead>
+      <table class="dash-table" id="projectTable">
+        <thead><tr>
+          ${thSort('App','app',S.projectSort)}
+          <th>Project Name</th>
+          ${thSort('Lead','lead',S.projectSort)}
+          ${thSort('UAT period','uatPeriod',S.projectSort)}
+          ${thSort('Total MD','totalMD',S.projectSort,'right')}
+          ${thSort('TC Prep (MD)','tcprep',S.projectSort,'right')}
+          ${thSort('UAT (MD)','uat',S.projectSort,'right')}
+          ${thSort('Regression (MD)','reg',S.projectSort,'right')}
+          ${thSort('Other1 (MD)','other1',S.projectSort,'right')}
+          ${thSort('Other2 (MD)','other2',S.projectSort,'right')}
+          ${thSort('Support (MD)','support',S.projectSort,'right')}
+        </tr></thead>
         <tbody>${bodyRows}</tbody>
-        <tfoot class="dash-total"><tr><td colspan="3">รวมทั้งหมด (${grandCount} projects)</td><td class="right">${fmtMD(grandMD)}</td></tr></tfoot>
+        <tfoot class="dash-total"><tr>
+          <td colspan="4">รวมทั้งหมด (${rows.length} projects)</td>
+          <td class="right">${fmtMD(gTotal)}</td>
+          <td class="right">${fmtMD(gTcprep)}</td>
+          <td class="right">${fmtMD(gUat)}</td>
+          <td class="right">${fmtMD(gReg)}</td>
+          <td class="right">${fmtMD(gOther1)}</td>
+          <td class="right">${fmtMD(gOther2)}</td>
+          <td class="right">${fmtMD(gSupport)}</td>
+        </tr></tfoot>
       </table>
     </div>`;
-}
 
-window.toggleDashApp = function(appKey){
-  S.dashCollapsed[appKey] = !S.dashCollapsed[appKey];
-  renderProjectView($('viewContainer'));
-};
-$('collapseAllBtn').addEventListener('click', () => {
-  Object.keys(collectAppKeys()).forEach(k => S.dashCollapsed[k] = true);
-  renderProjectView($('viewContainer'));
-});
-$('expandAllBtn').addEventListener('click', () => {
-  Object.keys(collectAppKeys()).forEach(k => S.dashCollapsed[k] = false);
-  renderProjectView($('viewContainer'));
-});
-function collectAppKeys(){
-  const m = {};
-  S.activeProjects.forEach(p => { m[p.app || p.other_app || '— ไม่มี App —'] = true; });
-  return m;
+  wireSortHeader(container.querySelector('#projectTable thead'), S.projectSort, () => renderProjectView(container));
 }
 
 /* ---- By OS (pivot: OS x App) ---- */
 function renderOsView(container){
-  const agg = S.monthAgg || { byOsApp:{}, byOsTotal:{} };
+  const agg = S.periodAgg || { byOsApp:{}, byOsTotal:{} };
   const appSet = new Set();
   Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
   const apps = sortedApps([...appSet]);
@@ -705,7 +851,7 @@ function renderOsView(container){
     .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
 
   if (!apps.length) {
-    container.innerHTML = '<div class="empty-state">ไม่มี Booking ในเดือนนี้</div>';
+    container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booking ในช่วงที่เลือก</div>';
     return;
   }
 
@@ -721,7 +867,7 @@ function renderOsView(container){
     }).join('');
     grandTotal += r.total;
     return `<tr>
-      <td class="td-os-name">${esc(r.nickname || r.full_name_en)}</td>
+      <td class="td-os-name">${esc(resName(r.nickname, r.full_name_en))}</td>
       <td class="td-os-role">${esc(roleLabelFor(r.role_code))}</td>
       <td class="td-os-total">${fmtMD(r.total)}</td>
       ${cells}
@@ -753,10 +899,11 @@ function roleLabelFor(code){
 
 /* ---- By Lead (matrix: Lead x App) ----
    Source of truth: project_lead + pqa_lead (both main & additional leads), scoped
-   to the ACTIVE project set — NOT time/month-bound (it's a coverage matrix, not
-   an MD report), matching the simpler of the two allowed paths in the task spec. */
+   to the current project set (active only in monthly mode; all projects in overall
+   mode) — NOT time/day-bound (it's a coverage matrix, not an MD report), matching
+   the simpler of the two allowed paths in the task spec. */
 function renderLeadView(container){
-  const projByKey = S.activeProjMap;
+  const projByKey = currentProjMap();
   const leadCoverage = {}; // emp_id -> Set(app)
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
@@ -770,7 +917,7 @@ function renderLeadView(container){
   const apps = sortedApps([...appSet]);
 
   if (!apps.length) {
-    container.innerHTML = '<div class="empty-state">ไม่พบข้อมูล Lead / App สำหรับ Project ที่ Active</div>';
+    container.innerHTML = '<div class="empty-state">ไม่พบข้อมูล Lead / App สำหรับ Project ชุดที่เลือก</div>';
     return;
   }
 
@@ -778,7 +925,7 @@ function renderLeadView(container){
   let grandCells = 0;
   const bodyRows = S.leadsAll.map(l => {
     const cov = leadCoverage[l.emp_id] || new Set();
-    if (!cov.size) return ''; // lead with no active project — skip row (keeps matrix relevant)
+    if (!cov.size) return ''; // lead with no project in the current set — skip row (keeps matrix relevant)
     const cells = apps.map(a => {
       const has = cov.has(a);
       if (has) { colCount[a]++; grandCells++; }
@@ -803,35 +950,64 @@ function renderLeadView(container){
 }
 
 /* ---- Signoff ---- */
+const SIGNOFF_KEYFNS = {
+  app: r => r.app, lead: r => r.lead, signoffDate: r => r.signoff_date || '', projectName: r => r.projectName,
+};
 function renderSignoffView(container){
-  const { first, last } = monthFirstLast(S.dashY, S.dashM);
-  const rows = S.activeProjects
+  const { first, last } = currentRange();
+  const rows = currentProjectsList()
     .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
-    .sort((a,b) => (a.signoff_date||'').localeCompare(b.signoff_date||''));
+    .map(p => ({
+      project_key: p.project_key,
+      app: p.app || p.other_app || '',
+      lead: p.uat_lead || '',
+      signoff_date: p.signoff_date,
+      projectName: p.project_name,
+      signoff_url: p.signoff_url || '',
+    }));
 
   if (!rows.length) {
-    container.innerHTML = `<div class="empty-state">ไม่มี Project ที่ Signoff ในเดือน ${MONTH_NAMES_TH[S.dashM-1]} ${S.dashY}</div>`;
+    container.innerHTML = `<div class="empty-state">ไม่มี Project ที่ Signoff ในช่วงที่เลือก (${dDisp(first)} – ${dDisp(last)})</div>`;
     return;
   }
 
-  const bodyRows = rows.map(p => `<tr>
-      <td>${esc(p.project_name)}</td>
-      <td>${esc(p.app || p.other_app || '')}</td>
-      <td>${esc(p.uat_lead || '') || '<span class="muted">—</span>'}</td>
+  const sorted = genericSort(rows, S.signoffSort, SIGNOFF_KEYFNS);
+
+  const bodyRows = sorted.map(p => {
+    const signoffBtn = `<button class="ico-btn" title="Review Signoff" onclick="window.openSignoffReview('${esc(p.project_key)}','${esc(p.projectName)}','${esc(p.signoff_date)}')">🔎</button>`;
+    const docBtn = p.signoff_url
+      ? `<button class="ico-btn" title="เปิดเอกสาร Signoff" onclick="window.open('${esc(p.signoff_url)}','_blank','noopener')">📄</button>`
+      : `<button class="ico-btn" title="ไม่มีเอกสาร Signoff" disabled>📄</button>`;
+    return `<tr>
+      <td>${esc(p.app)}</td>
+      <td>${esc(p.lead) || '<span class="muted">—</span>'}</td>
       <td>${dDisp(p.signoff_date)}</td>
-    </tr>`).join('');
+      <td>${esc(p.projectName)}</td>
+      <td class="center">${signoffBtn}</td>
+      <td class="center">${docBtn}</td>
+    </tr>`;
+  }).join('');
 
   container.innerHTML = `
     <div class="dash-table-wrap">
-      <table class="dash-table">
-        <thead><tr><th>Project Name</th><th>App</th><th>UAT Lead</th><th>Signoff Date</th></tr></thead>
+      <table class="dash-table" id="signoffTable">
+        <thead><tr>
+          ${thSort('App','app',S.signoffSort)}
+          ${thSort('Lead','lead',S.signoffSort)}
+          ${thSort('Signoff Date','signoffDate',S.signoffSort)}
+          ${thSort('Project Name','projectName',S.signoffSort)}
+          <th class="center">Signoff</th>
+          <th class="center">Doc</th>
+        </tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
     </div>`;
+
+  wireSortHeader(container.querySelector('#signoffTable thead'), S.signoffSort, () => renderSignoffView(container));
 }
 
 /* =====================================================================
-   OVERALL MODE
+   OVERALL MODE — default range
    ===================================================================== */
 async function getOverallMinDate(){
   const { data, error } = await supabase.from('project_phase')
@@ -844,87 +1020,13 @@ async function getOverallMinDate(){
   return data[0].start_date;
 }
 
-async function loadOverall(force){
-  if (!force && S.overallCacheKey === 'loaded') { renderOverall(); return; }
-  try {
-    const minDate = await getOverallMinDate();
-    const today = d2s(new Date());
-    S.overallRange = { s: minDate, e: today };
-    const { data, error } = await supabase.from('v_booking_daily')
-      .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
-      .gte('work_date', minDate).lte('work_date', today);
-    if (error) throw error;
-    S.overallBookingDaily = data || [];
-    S.overallAgg = computeOverallAgg();
-    S.overallCacheKey = 'loaded';
-    renderOverall();
-  } catch (err) {
-    console.error(err);
-    toast('โหลดข้อมูล Overall ไม่สำเร็จ: ' + (err.message||String(err)), true);
-  }
-}
-
-/**
- * Overall mode uses S.allProjMap (ALL projects, not just currently-active)
- * so historical/completed projects still get a proper App label on the
- * long-range trend charts — unlike monthly mode which intentionally
- * restricts to the active-projects set per spec.
- */
-function computeOverallAgg(){
-  const byAppPhase = {};
-  const phaseTotals = {};
-  S.overallBookingDaily.forEach(row => {
-    const proj = S.allProjMap[row.project_key];
-    const app = proj ? (proj.app || proj.other_app || '— ไม่มี App —') : '— ไม่ทราบ App —';
-    const md = Number(row.md_per_day) || 0;
-    byAppPhase[app] = byAppPhase[app] || {};
-    byAppPhase[app][row.phase_code] = (byAppPhase[app][row.phase_code] || 0) + md;
-    phaseTotals[row.phase_code] = (phaseTotals[row.phase_code] || 0) + md;
-  });
-  return { byAppPhase, phaseTotals };
-}
-
-function renderOverall(){
-  $('overallRangeWrap').classList.remove('hidden');
-  $('overallRangeBadge').textContent = S.overallRange.s
-    ? `ตั้งแต่ ${dDisp(S.overallRange.s)} – ${dDisp(S.overallRange.e)}`
-    : 'กำลังโหลด...';
-
-  const agg = S.overallAgg || { byAppPhase:{}, phaseTotals:{} };
-  const apps = sortedApps(Object.keys(agg.byAppPhase));
-
-  const barDatasets = PHASE_CODES.map(code => ({
-    label: phaseName(code),
-    backgroundColor: cssVar(phaseColorVar(code)),
-    data: apps.map(app => Math.round((agg.byAppPhase[app]?.[code] || 0) * 100) / 100),
-  }));
-  if (charts.overallBar) charts.overallBar.destroy();
-  charts.overallBar = new Chart($('overallBarChart').getContext('2d'), {
-    type: 'bar',
-    data: { labels: apps, datasets: barDatasets },
-    options: {
-      responsive: true,
-      plugins: { legend: { position:'bottom', labels:{ font:{ size:11 } } } },
-      scales: { x: { stacked:true, ticks:{ font:{ size:10 } } }, y: { stacked:true, beginAtZero:true } }
-    }
-  });
-
-  const phaseLabels = PHASE_CODES.filter(c => agg.phaseTotals[c]);
-  const phaseValues = phaseLabels.map(c => Math.round((agg.phaseTotals[c]||0)*100)/100);
-  const phaseColors = phaseLabels.map(c => cssVar(phaseColorVar(c)));
-  if (charts.overallDonut) charts.overallDonut.destroy();
-  charts.overallDonut = new Chart($('overallDonutChart').getContext('2d'), {
-    type: 'doughnut',
-    data: { labels: phaseLabels.map(phaseName), datasets: [{ data: phaseValues, backgroundColor: phaseColors }] },
-    options: { responsive:false, plugins: { legend: { display:false } }, cutout:'62%' }
-  });
-  const total = phaseValues.reduce((a,b)=>a+b, 0);
-  $('overallDonutLegend').innerHTML = phaseLabels.length ? phaseLabels.map((c,i) => `
-    <div class="donut-legend-row">
-      <span class="donut-legend-sw" style="background:${phaseColors[i]}"></span>
-      <span>${esc(phaseName(c))}</span>
-      <span class="donut-legend-val">${fmtMD(phaseValues[i])} MD${total?` (${Math.round(phaseValues[i]/total*100)}%)`:''}</span>
-    </div>`).join('') : '<div class="donut-legend-row muted">ไม่มีข้อมูล</div>';
+/** Populate S.overallRange with sane defaults the first time Overall mode is opened. */
+async function ensureOverallRangeDefaults(){
+  if (S.overallRange.s && S.overallRange.e) return;
+  const minDate = await getOverallMinDate();
+  S.overallRange = { s: minDate, e: defaultFilterEndStr() }; // §4.2 standard: End = last day of month +3 ahead
+  $('ovStart').value = S.overallRange.s;
+  $('ovEnd').value = S.overallRange.e;
 }
 
 /* =====================================================================
@@ -946,17 +1048,24 @@ function wireToolbar(){
   $('todayBtn').addEventListener('click', () => {
     const now = new Date();
     S.dashY = now.getFullYear(); S.dashM = now.getMonth()+1;
-    loadMonthly(false);
+    loadPeriod(false);
   });
   $('refreshBtn').addEventListener('click', async () => {
-    S.monthCacheKey = ''; S.overallCacheKey = '';
+    S.periodCacheKey = '';
     await loadMasterData();
-    await loadMonthly(true);
+    await loadPeriod(true);
   });
   $('refreshOverallBtn').addEventListener('click', async () => {
-    S.overallCacheKey = '';
+    S.periodCacheKey = '';
     await loadMasterData();
-    await loadOverall(true);
+    await loadPeriod(true);
+  });
+  $('ovApplyBtn').addEventListener('click', () => {
+    const s = $('ovStart').value, e = $('ovEnd').value;
+    if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
+    if (s > e) { toast('End ต้องไม่ก่อน Start', true); return; }
+    S.overallRange = { s, e };
+    loadPeriod(true);
   });
 }
 
@@ -967,14 +1076,13 @@ function switchDashMode(mode){
   $('monthlyToolbar').classList.toggle('hidden', !monthly);
   $('overallToolbar').classList.toggle('hidden', monthly);
   $('overallRangeWrap').classList.toggle('hidden', monthly);
-  $('overallChartsWrap').classList.toggle('hidden', monthly);
-  $('kpiGrid').classList.toggle('hidden', !monthly);
-  $('chartRow').classList.toggle('hidden', true); // recalculated by renderAll() below
-  $('viewContainer').classList.toggle('hidden', !monthly);
   document.querySelectorAll('#modeToggle .dash-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode===mode));
 
-  if (monthly) { renderAll(); }
-  else { loadOverall(false); }
+  if (monthly) {
+    loadPeriod(false);
+  } else {
+    ensureOverallRangeDefaults().then(() => loadPeriod(false));
+  }
 }
 
 function switchDashView(view){
@@ -984,11 +1092,12 @@ function switchDashView(view){
   renderAll();
 }
 
+/** Advance/retreat by exactly one calendar month (Date-based, avoids off-by-N bugs). */
 function changeMonth(delta){
-  let m = S.dashM + delta, y = S.dashY;
-  if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
-  S.dashM = m; S.dashY = y;
-  loadMonthly(false);
+  const d = new Date(S.dashY, S.dashM - 1 + delta, 1);
+  S.dashY = d.getFullYear();
+  S.dashM = d.getMonth() + 1;
+  loadPeriod(false);
 }
 </script>
 </body>
