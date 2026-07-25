@@ -202,7 +202,7 @@
 
   <div class="sr-page-head">
     <div>
-      <div class="sr-subtitle">พื้นที่พูดคุยและรีวิวการ sign-off แยกเป็นห้องตามโปรเจกต์</div>
+      <div class="sr-subtitle">พื้นที่พูดคุยและรีวิวการ sign-off</div>
     </div>
     <div class="sr-head-controls">
       <div class="sr-mode-toggle" id="modeToggle">
@@ -226,8 +226,8 @@
           <input id="roomSearch" placeholder="ค้นหาโปรเจกต์ / แอป / คน...">
         </div>
         <div class="sr-rail-meta">
-          <span class="sr-rail-heading" id="railHeading">ห้องของเดือนนี้</span>
-          <span class="sr-rail-count" id="railCount">0 ห้อง</span>
+          <span class="sr-rail-heading" id="railHeading">Signoff เดือนนี้</span>
+          <span class="sr-rail-count" id="railCount">0 Signoff</span>
         </div>
       </div>
       <div class="sr-rail-list" id="railList"></div>
@@ -235,7 +235,7 @@
 
     <!-- ===== right pane: conversation ===== -->
     <div class="sr-conv" id="convPane">
-      <div class="sr-empty">เลือกห้องทางซ้ายเพื่อเริ่มดูการสนทนา</div>
+      <div class="sr-empty">เลือกทางซ้ายเพื่อเริ่มดูการสนทนา</div>
     </div>
   </div>
 </div>
@@ -478,12 +478,12 @@ function buildRoomItemHTML(p){
 }
 function renderRail(){
   const list = visibleProjects();
-  $('railHeading').textContent = S.mode === 'monthly' ? 'ห้องของเดือนนี้' : 'ทุกห้อง';
-  $('railCount').textContent = `${list.length} ห้อง`;
+  $('railHeading').textContent = S.mode === 'monthly' ? 'Signoff เดือนนี้' : 'Signoff ทั้งหมด';
+  $('railCount').textContent = `${list.length} หัวข้อ`;
 
   const container = $('railList');
   if (!list.length) {
-    const msg = S.search.trim() ? 'ไม่พบห้องที่ตรงกับคำค้นหา' : 'ไม่มีห้อง Signoff ในช่วงเวลาที่เลือก';
+    const msg = S.search.trim() ? 'ไม่พบที่ตรงกับคำค้นหา' : 'ไม่มี Signoff ในช่วงเวลาที่เลือก';
     container.innerHTML = `<div class="sr-rail-empty">${esc(msg)}</div>`;
     return;
   }
@@ -560,8 +560,8 @@ async function loadRoom(pk){
     ensureRealtimeSub(pk);
   } catch (err) {
     console.warn('loadRoom error', err);
-    toast('โหลดข้อมูลห้องไม่สำเร็จ', true);
-    $('convPane').innerHTML = '<div class="sr-empty">โหลดข้อมูลห้องไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
+    toast('โหลดข้อมูลไม่สำเร็จ', true);
+    $('convPane').innerHTML = '<div class="sr-empty">โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
   }
 }
 
@@ -636,7 +636,7 @@ function buildCardHTML(proj){
             <div><span class="sr-card-field-label">Target Go-Live</span><span class="sr-card-field-val">${esc(goLiveDisp)}</span></div>
           </div>
           <div class="sr-card-divider"></div>
-          <div class="sr-card-section-title">Scope / Business Requirement</div>
+          <div class="sr-card-section-title">Note</div>
           <div class="sr-card-scope">${noteRaw ? esc(noteRaw) : '<span class="muted">— ไม่มีรายละเอียด —</span>'}</div>
           ${chips.length ? `<div class="sr-chips"><span class="sr-chip-label">อ้างอิง:</span>${chips.map(c=>`<span class="sr-chip">${esc(c)}</span>`).join('')}</div>` : ''}
         </div>
@@ -644,7 +644,7 @@ function buildCardHTML(proj){
     </div>`;
 }
 
-/* คอมเมนต์แรกของเธรด = โพสต์ root (Signoff Review) ที่ UAT Lead เปิดห้อง
+/* คอมเมนต์แรกของเธรด = โพสต์ root (Signoff Review) ที่ UAT Lead เปิดหัวข้อ
    แสดง author + เนื้อหา review + reactions + ปุ่มตอบกลับ + reply ที่ผูกกับ root */
 function buildRootCommentHTML(proj){
   const rootId = S.room.rootId;
@@ -745,7 +745,7 @@ function buildComposerHTML(proj){
   return `
     <div class="sr-composer">
       <div class="sr-composer-box">
-        <textarea class="sr-composer-text" rows="1" placeholder="พิมพ์ข้อความในห้อง ${esc(appNameOf(proj))}..."></textarea>
+        <textarea class="sr-composer-text" rows="1" placeholder="พิมพ์ข้อความในหัวข้อ ${esc(appNameOf(proj))}..."></textarea>
         <div class="sr-composer-actions">
           <button class="sr-send-btn">ส่ง ➤</button>
         </div>
@@ -769,7 +769,7 @@ function rerenderRoomKeepData(){
 }
 function renderConvEmpty(){
   const list = visibleProjects();
-  const msg = list.length ? 'เลือกห้องทางซ้ายเพื่อเริ่มดูการสนทนา' : 'ไม่มีห้อง Signoff ในช่วงเวลาที่เลือก';
+  const msg = list.length ? 'เลือกหัวข้อทางซ้ายเพื่อเริ่มดูการสนทนา' : 'ไม่มี Signoff ในช่วงเวลาที่เลือก';
   $('convPane').innerHTML = `<div class="sr-empty">${esc(msg)}</div>`;
 }
 
