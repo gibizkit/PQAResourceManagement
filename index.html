@@ -23,6 +23,8 @@
     --resource-soft:rgba(37,99,166,.12);
     --asset:#B75B36;
     --asset-soft:rgba(183,91,54,.12);
+    --automation:#2E8B6F;
+    --automation-soft:rgba(46,139,111,.12);
     --radius-lg:18px;
     --radius-md:12px;
     --dur:200ms;
@@ -115,6 +117,7 @@
   .app-icon svg{width:22px;height:22px;stroke-width:2;}
   .app[data-accent="resource"] .app-icon{background:var(--resource-soft);color:var(--resource);}
   .app[data-accent="asset"] .app-icon{background:var(--asset-soft);color:var(--asset);}
+  .app[data-accent="automation"] .app-icon{background:var(--automation-soft);color:var(--automation);}
   .app-meta{flex:1;min-width:0;}
   .app-name{display:block;font-size:15px;font-weight:700;line-height:1.4;}
   .app-desc{display:block;font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
@@ -245,7 +248,7 @@
 
     <div class="app-list" id="appList"></div>
 
-    <p class="footer-note">หากเปิดผ่าน Desktop Browser แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
+    <p class="footer-note">หากเปิดผ่าน Chrome แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
   </main>
 
   <div class="viewer" id="viewer" hidden>
@@ -261,8 +264,10 @@
 
 <script>
   // ================================================================
-  // แก้ URL ของแต่ละระบบที่จุดนี้จุดเดียวพอ
-  // เพิ่ม modes: ['browser'] ถ้าระบบนั้นมีแค่โหมดเดียว (ไม่ต้องมีปุ่มมือถือ)
+  // แก้ URL / วิธีเปิดของแต่ละระบบที่จุดนี้จุดเดียวพอ
+  //
+  //   type: "menu"   -> กดแล้วขยายเมนู เลือกเปิดใน Chrome / มือถือ (ค่าเริ่มต้น)
+  //   type: "newtab" -> กดแล้วเปิดแท็บใหม่ทันที (เหมือน Automate)
   // ================================================================
   var APPS = [
     {
@@ -270,8 +275,8 @@
       accent: "resource",
       name: "PQA Resource Management",
       desc: "จัดการทรัพยากรและกำลังคนของทีม",
-      url: "https://script.google.com/macros/s/AKfycbz-uuXZlNVQEQXxhols66DzUr7afWQo2CgIYBuu6XycW1HXwJWVLfDwlJpRzZfOcnoRXQ/exec",
-      manual: "https://gibizkit.github.io/PQAResourceManagement/PQA-Resource-Management-Manual.html",
+      type: "newtab",
+      url: "https://gibizkit.github.io/PQAResourceManagement/gantt.html",
       icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
     },
     {
@@ -279,25 +284,26 @@
       accent: "asset",
       name: "PQA Asset Update",
       desc: "อัปเดตและติดตามสถานะทรัพย์สิน",
-      url: "https://script.google.com/macros/s/AKfycbzPIplV1J5xUWsf3I1s7bOAqk1fPwhYgKYZrwPPYIXv0qYcLCoAP4LbulYUNTM8--w/exec",
+      type: "menu",
+      url: "https://script.google.com/macros/s/AKfycbx_fAIfSy0O6QoG-XmNzPLEwijFhVwhJXV6SnDMpdMr8uzWpRbLRjrlKX1B27GdMNUK/exec",
       icon: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/>'
     },
     {
       id: "automation",
-      accent: "asset",
-      name: "PQA Test Automation Dashboard",
-      desc: "ติดตามผลการทดสอบอัตโนมัติของทีม QA",
+      accent: "automation",
+      name: "Automation Result",
+      desc: "ดูผลการรัน Automation Test (Robot Dashboard)",
+      type: "newtab",
       url: "http://34.87.95.167/userContent/robot-dashboard/dashboard.html",
-      modes: ["newtab"],
-      icon: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'
+      icon: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>'
     }
   ];
   // ================================================================
 
   var ICON_MONITOR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>';
   var ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>';
-  var ICON_BOOK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
   var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  var ICON_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
 
   var listEl = document.getElementById('appList');
   var viewer = document.getElementById('viewer');
@@ -311,21 +317,27 @@
     wrap.className = 'app';
     wrap.setAttribute('data-accent', app.accent);
 
-    var modes = app.modes || ['browser', 'mobile'];
-    var buttonsHtml = '';
-    if (modes.indexOf('browser') !== -1) {
-      buttonsHtml += '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Desktop Browser</button>';
-    }
-    if (modes.indexOf('newtab') !== -1) {
-      buttonsHtml += '<a href="' + app.url + '" target="_blank" rel="noopener" class="mode-btn" style="text-decoration:none;display:flex;">' + ICON_MONITOR + ' เปิดในแท็บใหม่</a>';
-    }
-    if (modes.indexOf('mobile') !== -1) {
-      buttonsHtml += '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>';
-    }
-    if (app.manual) {
-      buttonsHtml += '<a href="' + app.manual + '" target="_blank" rel="noopener" class="mode-btn" style="text-decoration:none;display:flex;">' + ICON_BOOK + ' ดูคู่มือ</a>';
+    if (app.type === 'newtab') {
+      // ---- โหมดเปิดแท็บใหม่ (เหมือน Automate) ----
+      wrap.innerHTML =
+        '<button class="app-trigger" type="button">' +
+          '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
+          '<span class="app-meta">' +
+            '<span class="app-name">' + app.name + '</span>' +
+            '<span class="app-desc">' + app.desc + '</span>' +
+          '</span>' +
+          '<span class="app-chevron">' + ICON_EXTERNAL + '</span>' +
+        '</button>';
+
+      wrap.querySelector('.app-trigger').addEventListener('click', function(){
+        window.open(app.url, '_blank', 'noopener');
+      });
+
+      listEl.appendChild(wrap);
+      return;
     }
 
+    // ---- โหมดเมนู (ค่าเริ่มต้น) ----
     wrap.innerHTML =
       '<button class="app-trigger" aria-expanded="false" aria-controls="panel-' + app.id + '">' +
         '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
@@ -337,7 +349,8 @@
       '</button>' +
       '<div class="app-panel" id="panel-' + app.id + '">' +
         '<div class="app-panel-inner"><div class="app-panel-content">' +
-          buttonsHtml +
+          '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Chrome</button>' +
+          '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>' +
           '<p class="fallback">หากปุ่มไม่ทำงาน <a href="' + app.url + '" target="_blank" rel="noopener">คลิกที่นี่</a></p>' +
         '</div></div>' +
       '</div>';
@@ -350,18 +363,12 @@
       panel.classList.toggle('open', !isOpen);
     });
 
-    var browserBtn = wrap.querySelector('[data-action="browser"]');
-    if (browserBtn) {
-      browserBtn.addEventListener('click', function(){
-        openBrowser(app, trigger);
-      });
-    }
-    var mobileBtn = wrap.querySelector('[data-action="mobile"]');
-    if (mobileBtn) {
-      mobileBtn.addEventListener('click', function(){
-        openMobile(app);
-      });
-    }
+    wrap.querySelector('[data-action="browser"]').addEventListener('click', function(){
+      openBrowser(app, trigger);
+    });
+    wrap.querySelector('[data-action="mobile"]').addEventListener('click', function(){
+      openMobile(app);
+    });
 
     listEl.appendChild(wrap);
   });
