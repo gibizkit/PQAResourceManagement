@@ -392,7 +392,8 @@ async function loadMasterData(){
   const [projRes, appRes, userRes, lastCmtRes, roomKeysRes] = await Promise.all([
     supabase.from('v_project_wide')
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,deploy_date,signoff_url,project_note,is_active')
-      .not('signoff_date', 'is', null),
+      .not('signoff_date', 'is', null)
+      .eq('is_active', true),   // req: แสดงเฉพาะโปรเจกต์ที่ยัง active (isActive=Y)
     supabase.from('app').select('app_code,app_name'),
     supabase.from('app_user').select('email,display_name'),
     supabase.from('signoff_comment')
