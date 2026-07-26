@@ -2,401 +2,167 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PQA Directory</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PQA System Directory</title>
 <style>
   :root{
-    --bg:#FBF6EF;
-    --surface:#FFFFFF;
-    --surface-2:#F7EEE1;
-    --border:rgba(34,28,21,.10);
-    --border-strong:rgba(34,28,21,.18);
-    --text:#221C15;
-    --text-secondary:rgba(34,28,21,.62);
-    --accent:#B75B36;
-    --accent-soft:rgba(183,91,54,.12);
-    --accent-press:rgba(183,91,54,.22);
-    --resource:#2563A6;
-    --resource-soft:rgba(37,99,166,.12);
-    --asset:#B75B36;
-    --asset-soft:rgba(183,91,54,.12);
-    --automation:#2E8B6F;
-    --automation-soft:rgba(46,139,111,.12);
-    --radius-lg:18px;
-    --radius-md:12px;
-    --dur:200ms;
-    --ease:cubic-bezier(.4,0,.2,1);
+    --bg:#f7f1e8;
+    --card:#ffffff;
+    --title:#2b2b2b;
+    --sub:#8a857c;
+    --line:#ece5da;
+    --manual-bd:#e3c9b8;
+    --manual-tx:#b06a4a;
+    --ic1-bg:#e7e9fb; --ic1-tx:#4c56d6;
+    --ic2-bg:#f6dfe0; --ic2-tx:#c06a4a;
+    --ic3-bg:#dfeee6; --ic3-tx:#4a9678;
+    --open-bg:#a8663f; --open-tx:#ffffff;
   }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  *{box-sizing:border-box;margin:0;padding:0}
   body{
-    min-height:100dvh;
-    font-family:'Noto Sans Thai','Noto Sans',system-ui,sans-serif;
-    font-weight:500;
-    -webkit-font-smoothing:antialiased;
-  }
-  button{font-family:inherit;}
-  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px;}
-  @media (prefers-reduced-motion: reduce){
-    *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
-  }
-
-  /* ---------- Directory screen ---------- */
-  #directory{
-    min-height:100dvh;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    padding:48px 20px calc(32px + env(safe-area-inset-bottom));
-  }
-  .header{
-    width:100%;
-    max-width:480px;
-    text-align:center;
-    margin-bottom:32px;
-  }
-  .kicker{
-    font-size:12px;
-    font-weight:600;
-    letter-spacing:.12em;
-    color:var(--accent);
-    text-transform:uppercase;
-    margin:0 0 10px;
-  }
-  .header h1{
-    font-size:22px;
-    font-weight:700;
-    margin:0 0 8px;
-    line-height:1.35;
-  }
-  .header p{
-    font-size:14px;
-    color:var(--text-secondary);
-    margin:0;
-    line-height:1.5;
-  }
-
-  .app-list{
-    width:100%;
-    max-width:480px;
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
-  .app{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius-lg);
-    overflow:hidden;
-  }
-  .app-trigger{
-    width:100%;
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding:16px;
-    min-height:64px;
-    background:transparent;
-    border:none;
-    color:var(--text);
-    cursor:pointer;
-    text-align:left;
-    transition:background var(--dur) var(--ease);
-  }
-  .app-trigger:hover{background:rgba(34,28,21,.04);}
-  .app-trigger:active{background:rgba(34,28,21,.06);}
-  .app-icon{
-    flex:none;
-    width:44px;height:44px;
-    border-radius:var(--radius-md);
-    display:flex;align-items:center;justify-content:center;
-  }
-  .app-icon svg{width:22px;height:22px;stroke-width:2;}
-  .app[data-accent="resource"] .app-icon{background:var(--resource-soft);color:var(--resource);}
-  .app[data-accent="asset"] .app-icon{background:var(--asset-soft);color:var(--asset);}
-  .app[data-accent="automation"] .app-icon{background:var(--automation-soft);color:var(--automation);}
-  .app-meta{flex:1;min-width:0;}
-  .app-name{display:block;font-size:15px;font-weight:700;line-height:1.4;}
-  .app-desc{display:block;font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4;}
-  .app-chevron{
-    flex:none;
-    width:32px;height:32px;
-    display:flex;align-items:center;justify-content:center;
-    color:var(--text-secondary);
-  }
-  .app-chevron svg{
-    width:18px;height:18px;stroke-width:2;
-    transition:transform var(--dur) var(--ease);
-  }
-  .app-trigger[aria-expanded="true"] .app-chevron svg{transform:rotate(180deg);color:var(--text);}
-
-  .app-panel{
-    display:grid;
-    grid-template-rows:0fr;
-    transition:grid-template-rows var(--dur) var(--ease);
-  }
-  .app-panel.open{grid-template-rows:1fr;}
-  .app-panel-inner{overflow:hidden;min-height:0;}
-  .app-panel-content{
-    padding:0 16px 16px;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-  }
-  .mode-btn{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    min-height:48px;
-    padding:12px 16px;
-    border-radius:var(--radius-md);
-    border:1px solid var(--border-strong);
-    background:var(--surface-2);
-    color:var(--text);
-    font-size:14px;
-    font-weight:600;
-    cursor:pointer;
-    transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
-  }
-  .mode-btn svg{width:18px;height:18px;stroke-width:2;flex:none;}
-  .mode-btn:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
-  .mode-btn:active{transform:scale(.98);background:var(--accent-press);}
-  .fallback{
-    margin:2px 0 0;
-    font-size:12px;
-    color:var(--text-secondary);
-    text-align:center;
-    line-height:1.5;
-  }
-  .fallback a{color:var(--accent);}
-
-  .footer-note{
-    max-width:480px;
-    width:100%;
-    text-align:center;
-    font-size:12px;
-    color:var(--text-secondary);
-    margin-top:28px;
-    line-height:1.6;
-  }
-
-  /* ---------- Fullscreen app viewer ---------- */
-  .viewer{
-    position:fixed;inset:0;
+    font-family:"Sarabun","Segoe UI",system-ui,sans-serif;
     background:var(--bg);
-    display:flex;
-    flex-direction:column;
-    z-index:100;
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    padding:40px 20px;
   }
-  .viewer[hidden]{display:none;}
-  .viewer-bar{
-    flex:none;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
-    background:var(--surface);
-    border-bottom:1px solid var(--border);
+  .wrap{width:100%;max-width:760px}
+  .head{text-align:center;margin-bottom:34px}
+  .eyebrow{
+    letter-spacing:.28em;font-size:14px;font-weight:600;
+    color:var(--sub);text-transform:uppercase;margin-bottom:10px;
   }
-  .back-btn{
-    display:flex;align-items:center;gap:6px;
-    min-height:40px;
-    padding:8px 12px;
-    border-radius:10px;
-    border:1px solid var(--border-strong);
-    background:var(--surface-2);
-    color:var(--text);
-    font-size:13px;
-    font-weight:600;
-    cursor:pointer;
-    transition:background var(--dur) var(--ease);
-  }
-  .back-btn svg{width:16px;height:16px;stroke-width:2;}
-  .back-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);}
-  .viewer-title{
-    font-size:14px;
-    font-weight:600;
-    color:var(--text-secondary);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  }
-  .viewer iframe{
-    flex:1;
-    width:100%;
-    border:none;
-    background:#fff;
-  }
+  h1{font-size:38px;color:var(--title);font-weight:800;margin-bottom:12px}
+  .head p{color:var(--sub);font-size:17px}
 
-  @media (min-width:640px){
-    #directory{padding-top:72px;}
-    .header h1{font-size:26px;}
-    .app{border-radius:20px;}
+  .card{
+    background:var(--card);
+    border-radius:22px;
+    padding:22px 24px;
+    display:flex;align-items:center;gap:20px;
+    box-shadow:0 6px 20px rgba(120,100,70,.06);
+    margin-bottom:20px;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(120,100,70,.1)}
+
+  .icon{
+    width:64px;height:64px;border-radius:16px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .icon svg{width:30px;height:30px}
+  .c1 .icon{background:var(--ic1-bg);color:var(--ic1-tx)}
+  .c2 .icon{background:var(--ic2-bg);color:var(--ic2-tx)}
+  .c3 .icon{background:var(--ic3-bg);color:var(--ic3-tx)}
+
+  .info{flex:1;min-width:0}
+  .info h2{font-size:22px;color:var(--title);font-weight:700;margin-bottom:4px}
+  .info span{color:var(--sub);font-size:16px}
+
+  .actions{display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .divider{width:1px;height:44px;background:var(--line)}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    border-radius:12px;font-size:15px;font-weight:600;
+    padding:11px 18px;cursor:pointer;border:none;
+    text-decoration:none;transition:all .15s ease;white-space:nowrap;
+  }
+  .btn svg{width:18px;height:18px}
+  .btn-manual{background:transparent;border:1.5px solid var(--manual-bd);color:var(--manual-tx)}
+  .btn-manual:hover{background:#fbf1ea}
+  .btn-open{background:var(--open-bg);color:var(--open-tx)}
+  .btn-open:hover{background:#925635}
+  /* ซ่อนปุ่มแต่เว้นที่ไว้ (เปิดใช้ทีหลังได้เลย) */
+  .is-hidden{visibility:hidden}
+
+  .foot{text-align:center;color:var(--sub);font-size:15px;margin-top:26px}
+
+  @media(max-width:640px){
+    h1{font-size:28px}
+    .card{flex-wrap:wrap}
+    .actions{width:100%;justify-content:flex-end}
+    .divider{display:none}
   }
 </style>
 </head>
 <body>
-
-  <main id="directory">
-    <div class="header">
-      <p class="kicker">PQA System Directory</p>
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">PQA System Directory</div>
       <h1>เลือกระบบที่ต้องการใช้งาน</h1>
       <p>แตะที่รายการเพื่อเลือกวิธีเปิดใช้งานตามอุปกรณ์ของคุณ</p>
     </div>
 
-    <div class="app-list" id="appList"></div>
-
-    <p class="footer-note">หากเปิดผ่าน Chrome แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</p>
-  </main>
-
-  <div class="viewer" id="viewer" hidden>
-    <div class="viewer-bar">
-      <button class="back-btn" id="backBtn" onclick="closeViewer()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-        กลับไปที่ Directory
-      </button>
-      <span class="viewer-title" id="viewerTitle"></span>
+    <!-- Card 1 -->
+    <div class="card c1">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="info">
+        <h2>PQA Resource Management</h2>
+        <span>จัดการทรัพยากรและกำลังคนของทีม</span>
+      </div>
+      <div class="actions">
+        <a class="btn btn-manual" href="https://gibizkit.github.io/PQAResourceManagement/PQA-Resource-Management-Manual.html" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          คู่มือ
+        </a>
+        <div class="divider"></div>
+        <a class="btn btn-open" href="https://gibizkit.github.io/PQAResourceManagement/gantt.html">
+          Login
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>
     </div>
-    <iframe id="viewerFrame" src="about:blank" title="PQA App"></iframe>
+
+    <!-- Card 2 -->
+    <div class="card c2">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      </div>
+      <div class="info">
+        <h2>PQA Asset Update</h2>
+        <span>อัปเดตและติดตามสถานะทรัพย์สิน</span>
+      </div>
+      <div class="actions">
+        <!-- ยังไม่มีคู่มือ: ซ่อนไว้แต่เว้นที่ (ลบ is-hidden เมื่อพร้อมใช้ + ใส่ href) -->
+        <a class="btn btn-manual is-hidden" href="#" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          คู่มือ
+        </a>
+        <div class="divider is-hidden"></div>
+        <a class="btn btn-open" href="https://script.google.com/macros/s/AKfycbzPIplV1J5xUWsf3I1s7bOAqk1fPwhYgKYZrwPPYIXv0qYcLCoAP4LbulYUNTM8--w/exec">
+          Login
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Card 3 -->
+    <div class="card c3">
+      <div class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><polyline points="19 9 13 15 9 11 5 15"/></svg>
+      </div>
+      <div class="info">
+        <h2>Automation Result</h2>
+        <span>ดูผลการรัน Automation Test (Robot Dashboard)</span>
+      </div>
+      <div class="actions">
+        <!-- ยังไม่มีคู่มือ: ซ่อนไว้แต่เว้นที่ (ลบ is-hidden เมื่อพร้อมใช้ + ใส่ href) -->
+        <a class="btn btn-manual is-hidden" href="#" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          คู่มือ
+        </a>
+        <div class="divider is-hidden"></div>
+        <a class="btn btn-open" href="http://34.87.95.167/userContent/robot-dashboard/dashboard.html">
+          เปิดระบบ
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <div class="foot">หากเปิดผ่าน Chrome แล้วมีปัญหา ลองสลับไปใช้โหมดมือถือแทนได้ค่ะ</div>
   </div>
-
-<script>
-  // ================================================================
-  // แก้ URL / วิธีเปิดของแต่ละระบบที่จุดนี้จุดเดียวพอ
-  //
-  //   type: "menu"   -> กดแล้วขยายเมนู เลือกเปิดใน Chrome / มือถือ (ค่าเริ่มต้น)
-  //   type: "newtab" -> กดแล้วเปิดแท็บใหม่ทันที (เหมือน Automate)
-  // ================================================================
-  var APPS = [
-    {
-      id: "resource",
-      accent: "resource",
-      name: "PQA Resource Management",
-      desc: "จัดการทรัพยากรและกำลังคนของทีม",
-      type: "newtab",
-      url: "https://gibizkit.github.io/PQAResourceManagement/gantt.html",
-      icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
-    },
-    {
-      id: "asset",
-      accent: "asset",
-      name: "PQA Asset Update",
-      desc: "อัปเดตและติดตามสถานะทรัพย์สิน",
-      type: "menu",
-      url: "https://script.google.com/macros/s/AKfycbx_fAIfSy0O6QoG-XmNzPLEwijFhVwhJXV6SnDMpdMr8uzWpRbLRjrlKX1B27GdMNUK/exec",
-      icon: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/>'
-    },
-    {
-      id: "automation",
-      accent: "automation",
-      name: "Automation Result",
-      desc: "ดูผลการรัน Automation Test (Robot Dashboard)",
-      type: "newtab",
-      url: "http://34.87.95.167/userContent/robot-dashboard/dashboard.html",
-      icon: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>'
-    }
-  ];
-  // ================================================================
-
-  var ICON_MONITOR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>';
-  var ICON_PHONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>';
-  var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
-  var ICON_EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
-
-  var listEl = document.getElementById('appList');
-  var viewer = document.getElementById('viewer');
-  var viewerFrame = document.getElementById('viewerFrame');
-  var viewerTitle = document.getElementById('viewerTitle');
-  var backBtn = document.getElementById('backBtn');
-  var lastTrigger = null;
-
-  APPS.forEach(function(app){
-    var wrap = document.createElement('div');
-    wrap.className = 'app';
-    wrap.setAttribute('data-accent', app.accent);
-
-    if (app.type === 'newtab') {
-      // ---- โหมดเปิดแท็บใหม่ (เหมือน Automate) ----
-      wrap.innerHTML =
-        '<button class="app-trigger" type="button">' +
-          '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
-          '<span class="app-meta">' +
-            '<span class="app-name">' + app.name + '</span>' +
-            '<span class="app-desc">' + app.desc + '</span>' +
-          '</span>' +
-          '<span class="app-chevron">' + ICON_EXTERNAL + '</span>' +
-        '</button>';
-
-      wrap.querySelector('.app-trigger').addEventListener('click', function(){
-        window.open(app.url, '_blank', 'noopener');
-      });
-
-      listEl.appendChild(wrap);
-      return;
-    }
-
-    // ---- โหมดเมนู (ค่าเริ่มต้น) ----
-    wrap.innerHTML =
-      '<button class="app-trigger" aria-expanded="false" aria-controls="panel-' + app.id + '">' +
-        '<span class="app-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + app.icon + '</svg></span>' +
-        '<span class="app-meta">' +
-          '<span class="app-name">' + app.name + '</span>' +
-          '<span class="app-desc">' + app.desc + '</span>' +
-        '</span>' +
-        '<span class="app-chevron">' + ICON_CHEVRON + '</span>' +
-      '</button>' +
-      '<div class="app-panel" id="panel-' + app.id + '">' +
-        '<div class="app-panel-inner"><div class="app-panel-content">' +
-          '<button class="mode-btn" type="button" data-action="browser">' + ICON_MONITOR + ' เปิดใน Chrome</button>' +
-          '<button class="mode-btn" type="button" data-action="mobile">' + ICON_PHONE + ' เปิดด้วยมือถือ</button>' +
-          '<p class="fallback">หากปุ่มไม่ทำงาน <a href="' + app.url + '" target="_blank" rel="noopener">คลิกที่นี่</a></p>' +
-        '</div></div>' +
-      '</div>';
-
-    var trigger = wrap.querySelector('.app-trigger');
-    var panel = wrap.querySelector('.app-panel');
-    trigger.addEventListener('click', function(){
-      var isOpen = trigger.getAttribute('aria-expanded') === 'true';
-      trigger.setAttribute('aria-expanded', String(!isOpen));
-      panel.classList.toggle('open', !isOpen);
-    });
-
-    wrap.querySelector('[data-action="browser"]').addEventListener('click', function(){
-      openBrowser(app, trigger);
-    });
-    wrap.querySelector('[data-action="mobile"]').addEventListener('click', function(){
-      openMobile(app);
-    });
-
-    listEl.appendChild(wrap);
-  });
-
-  function openBrowser(app, trigger){
-    lastTrigger = trigger || null;
-    viewerFrame.src = app.url;
-    viewerTitle.textContent = app.name;
-    viewer.hidden = false;
-    document.body.style.overflow = 'hidden';
-    backBtn.focus();
-  }
-
-  function closeViewer(){
-    viewer.hidden = true;
-    viewerFrame.src = 'about:blank';
-    document.body.style.overflow = '';
-    if (lastTrigger) lastTrigger.focus();
-  }
-
-  function openMobile(app){
-    // Redirect ตรงไปยัง URL (ไม่ใช้ iframe) เพื่อให้เปิดจากมือถือได้ปกติ
-    window.location.href = app.url;
-  }
-
-  document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape' && !viewer.hidden) closeViewer();
-  });
-</script>
 </body>
 </html>
