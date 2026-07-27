@@ -539,6 +539,8 @@ async function showApp(session){
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
   const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+  // ซ่อนปุ่มเพิ่ม Project สำหรับคนที่เขียนไม่ได้ (viewer) ให้ตรงกับ RLS can_write() = admin/lead
+  const _addBtn = document.getElementById('addBtn'); if (_addBtn) _addBtn.style.display = canWrite() ? '' : 'none';
 
   S.filter.start = addDays(TODAY, -7);
   S.filter.end   = defaultFilterEndStr();
@@ -624,6 +626,8 @@ async function loadHolidaysSafe(){
 }
 
 function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='JUNIOR'?3 : 4; }
+// เขียนข้อมูลงานได้เฉพาะ admin/lead (ตรงกับ RLS pqa.can_write())
+function canWrite(){ return !!(S.user && (S.user.app_role === 'admin' || S.user.app_role === 'lead')); }
 
 /* ============ DEFAULT LEAD FILTER ============ */
 function applyDefaultLeadFilter(){
@@ -1084,7 +1088,10 @@ window.openProjEdit = async function(key){
   editingKey = key; existingPhases = {};
   const p = S.projects.find(x => x.project_key === key) || {};
   $('projModalTitle').textContent = 'แก้ไข Project — ' + esc(p.project_name || key);
+  // ปิดใช้งาน: ทุกคนที่ล็อกอินทำได้ (ผ่าน RPC fn_inactivate_project) → โชว์เสมอ
+  // บันทึก/แก้ไขฟิลด์อื่น: เฉพาะ admin/lead (ตรงกับ RLS can_write())
   $('projDeleteBtn').style.display = '';
+  $('projSaveBtn').style.display = canWrite() ? '' : 'none';
   fillAppOptions(p.app_code || '');
   $('fKey').value = key; $('fKey').disabled = true;
   $('fName').value = p.project_name || '';
@@ -1140,13 +1147,19 @@ window.saveProj = async function(){
     project_note:$('fNote').value.trim() || null,
   };
 
+  // .select() ให้ Supabase คืนแถวที่เขียนจริง — กันเคส RLS บล็อก (viewer)
+  // ที่ error=null แต่ data=[] แล้วขึ้น "สำเร็จ" ปลอม
   let res = editingKey
-    ? await supabase.from('project').update(payload).eq('project_key', editingKey)
-    : await supabase.from('project').insert(payload);
+    ? await supabase.from('project').update(payload).eq('project_key', editingKey).select('project_key')
+    : await supabase.from('project').insert(payload).select('project_key');
 
   if (res.error){
     btn.disabled=false; btn.textContent='บันทึก';
     err.textContent = 'บันทึก Project ไม่สำเร็จ: ' + res.error.message; return;
+  }
+  if (!res.data || !res.data.length){
+    btn.disabled=false; btn.textContent='บันทึก';
+    err.textContent = 'บันทึก Project ไม่สำเร็จ — คุณไม่มีสิทธิ์ (ต้องเป็น lead ขึ้นไป)'; return;
   }
 
   const phases = readPhaseInputs();
@@ -1172,8 +1185,10 @@ window.saveProj = async function(){
 window.deleteProj = async function(){
   if (!editingKey) return;
   if (!confirm(`ยืนยันปิดใช้งาน (soft delete) โปรเจกต์ ${editingKey}?\nBooking ทั้งหมดของโปรเจกต์นี้จะยังอยู่ในฐานข้อมูล`)) return;
-  const { error } = await supabase.from('project').update({ is_active:false }).eq('project_key', editingKey);
-  if (error){ toast('ลบไม่สำเร็จ: '+error.message, true); return; }
+  // เรียกผ่าน RPC (security definer) — เปิดให้ทุกคนที่ล็อกอิน (รวม viewer) ปิดได้
+  // และปิด booking ของโปรเจกต์ตามให้ด้วย (update ตรงเดิมไม่ได้ปิด booking)
+  const { error } = await supabase.rpc('fn_inactivate_project', { p_project_key: editingKey });
+  if (error){ toast('ปิดใช้งานไม่สำเร็จ: '+error.message, true); return; }
   window.closeProjModal();
   toast('ปิดใช้งานแล้ว ✓');
   await loadAll();
