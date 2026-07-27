@@ -1235,12 +1235,17 @@ window.lpSaveSkills = async function () {
 };
 
 async function lpLoad() {
-  const { data, error } = await supabase.from('leave_plan')
+  // แสดงเฉพาะวันลาที่ "คาบเกี่ยว" ช่วง filter (Start–End) เท่านั้น
+  // เงื่อนไข overlap: leave.start_date <= filter.End และ leave.end_date >= filter.Start
+  let q = supabase.from('leave_plan')
     .select('leave_id,resource_id,start_date,end_date,leave_slot,md,is_active,is_deleted,source_system')
     .eq('resource_id', LP_RESOURCE_ID)
     .eq('is_active', true)
-    .eq('is_deleted', false)
-    .order('start_date', { ascending: true });
+    .eq('is_deleted', false);
+  if (S.range.s && S.range.e) {
+    q = q.lte('start_date', S.range.e).gte('end_date', S.range.s);
+  }
+  const { data, error } = await q.order('start_date', { ascending: true });
   if (error) {
     toast('โหลด Leave Plan ไม่สำเร็จ: ' + error.message, true);
     LP_RECORDS = [];
