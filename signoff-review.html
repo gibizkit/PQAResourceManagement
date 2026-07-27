@@ -539,7 +539,7 @@ async function loadRoom(pk){
     // 3) reactions (counts + mine) for every comment id in this room + the card root
     const ids = (cmtRows || []).map(c => c.id);
     if (rootId) ids.push(rootId);
-    const counts = {}, mineSet = new Set();
+    const counts = {}, mineSet = new Set(), reactors = {};
     if (ids.length) {
       const [cntRes, mineRes] = await Promise.all([
         supabase.from('v_signoff_reaction_count').select('comment_id,emoji,cnt').in('comment_id', ids),
@@ -553,10 +553,13 @@ async function loadRoom(pk){
       });
       (mineRes.data || []).forEach(r => {
         if (r.user_email === S.me) mineSet.add(r.comment_id + '|' + r.emoji);
+        // เก็บรายชื่อคนกดต่อ comment+emoji ไว้โชว์ใน tooltip
+        (reactors[r.comment_id] = reactors[r.comment_id] || {});
+        (reactors[r.comment_id][r.emoji] = reactors[r.comment_id][r.emoji] || []).push(r.user_email);
       });
     }
 
-    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet };
+    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors };
     renderRoomFull(pk);
     ensureRealtimeSub(pk);
   } catch (err) {
@@ -569,16 +572,22 @@ async function loadRoom(pk){
 function reactionListFor(commentId){
   if (!S.room || commentId == null) return [];
   const counts = S.room.counts[commentId] || {};
+  const reactors = (S.room.reactors && S.room.reactors[commentId]) || {};
   return EMOJIS.filter(e => counts[e] > 0)
-    .map(e => ({ emoji:e, count:counts[e], mine:S.room.mineSet.has(commentId+'|'+e) }));
+    .map(e => ({
+      emoji:e, count:counts[e], mine:S.room.mineSet.has(commentId+'|'+e),
+      names:(reactors[e] || []).map(displayNameFor)
+    }));
 }
 function buildReactionsBlock(commentId, pickerKey){
   const list = reactionListFor(commentId);
   const cidAttr = commentId != null ? ` data-cid="${commentId}"` : '';
-  const pills = list.map(r => `
-    <button class="sr-react-pill ${r.mine?'mine':''}"${cidAttr} data-emoji="${esc(r.emoji)}">
+  const pills = list.map(r => {
+    const tip = r.names.length ? esc(r.names.join(', ')) : '';
+    return `
+    <button class="sr-react-pill ${r.mine?'mine':''}"${cidAttr} data-emoji="${esc(r.emoji)}"${tip?` title="${tip}"`:''}>
       <span>${r.emoji}</span>${r.count}
-    </button>`).join('');
+    </button>`; }).join('');
   const pickerOpen = S.pickerOpenKey === pickerKey;
   const picker = pickerOpen ? `
     <div class="sr-picker">
