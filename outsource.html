@@ -1240,7 +1240,7 @@ async function lpLoad() {
     .eq('resource_id', LP_RESOURCE_ID)
     .eq('is_active', true)
     .eq('is_deleted', false)
-    .order('start_date', { ascending: false });
+    .order('start_date', { ascending: true });
   if (error) {
     toast('โหลด Leave Plan ไม่สำเร็จ: ' + error.message, true);
     LP_RECORDS = [];
