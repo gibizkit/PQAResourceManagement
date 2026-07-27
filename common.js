@@ -16,6 +16,30 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'pqa' }
 });
 
+/* ============ LOGIN LOG ============ */
+export const APP_VERSION = '1.0.0';
+
+/**
+ * บันทึกการล็อกอินลง pqa.login_log — best-effort, ไม่ block การเข้าแอป
+ * ทำงานอัตโนมัติเมื่อ sign-in สำเร็จ (event 'SIGNED_IN') เท่านั้น
+ * การ restore session ตอนเปลี่ยนหน้าจะเป็น event 'INITIAL_SESSION' จึงไม่ถูกนับซ้ำ
+ */
+let _loginLogged = false;
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session?.user && !_loginLogged) {
+    _loginLogged = true;
+    supabase.from('login_log').insert({
+      user_id: session.user.id,
+      username: session.user.email,
+      auth_type: 'password',
+      app_version: APP_VERSION
+    }).then(({ error }) => {
+      if (error) console.warn('login_log insert failed:', error.message);
+    });
+  }
+  if (event === 'SIGNED_OUT') _loginLogged = false;
+});
+
 /* ============ DOM HELPERS ============ */
 
 /**
