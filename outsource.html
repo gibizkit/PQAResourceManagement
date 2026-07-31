@@ -185,6 +185,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Skills cell: แสดงได้ 2 บรรทัด (เกินนั้นตัดด้วย ... ) */
+  .os-table td.col-skills { white-space: normal; vertical-align: top; }
+  .col-skills .skills-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+    max-height: 2.6em;
+  }
+
+  /* เต็มจอ — ยกเลิก max-width 1400px ที่ theme.css กำหนดไว้ (เฉพาะหน้านี้) */
+  .main { max-width: none; }
 
   .th-day.wknd, .th-count.wknd, .td-day.wknd {
     background: var(--cell-wknd-hol) !important;
@@ -910,7 +923,7 @@ function buildRow(p, days, conflictMap) {
         </div>
       </div>
     </td>
-    <td class="col-skills" title="${esc(p.skills)}">${esc(truncate(p.skills, 42))}</td>
+    <td class="col-skills" title="${esc(p.skills)}"><div class="skills-clamp">${esc(p.skills)}</div></td>
     ${dayCells}
   </tr>`;
 }
