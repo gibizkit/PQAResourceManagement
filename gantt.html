@@ -15,6 +15,8 @@
     --ph-uat:     #74996a;   /* sage green  */
     --ph-reg:     #9d84bd;   /* muted violet*/
     --ph-support: #cdb590;   /* sand        */
+    --ph-other1:  #a9805f;   /* clay        */
+    --ph-other2:  #7f9b93;   /* muted teal  */
     --ph-extra:   #b79a78;
     --ph-summary: #c07f56;   /* soft terracotta — project span */
 
@@ -76,7 +78,7 @@
 
   /* ============ gantt table ============ */
   .gantt-scroll {
-    overflow:auto; max-height:calc(100vh - 258px);
+    overflow:auto; height:calc(100vh - 232px); min-height:340px;
     border:1px solid var(--dk-border); border-radius:14px; background:#fff;
     box-shadow:0 1px 3px rgba(34,28,21,.05);
     scrollbar-gutter: stable;
@@ -463,6 +465,8 @@ const PHASE_META = {
   UAT:     { name:'UAT',     color:'var(--ph-uat)',     order:30 },
   REG:     { name:'Reg',     color:'var(--ph-reg)',     order:40 },
   SUPPORT: { name:'Support', color:'var(--ph-support)', order:50 },
+  OTHER1:  { name:'Other 1', color:'var(--ph-other1)', order:60 },
+  OTHER2:  { name:'Other 2', color:'var(--ph-other2)', order:70 },
 };
 function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
 function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
@@ -471,6 +475,7 @@ function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
 const PHASES = [
   { code:'SIT', name:'SIT' }, { code:'TCPREP', name:'TC Prep' },
   { code:'UAT', name:'UAT' }, { code:'REG', name:'Reg' }, { code:'SUPPORT', name:'Support' },
+  { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
 const COL_W = { c0:230, c1:130, c2:104, day:28 };
@@ -539,8 +544,8 @@ async function showApp(session){
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
   const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
-  // ซ่อนปุ่มเพิ่ม Project สำหรับคนที่เขียนไม่ได้ (viewer) ให้ตรงกับ RLS can_write() = admin/lead
-  const _addBtn = document.getElementById('addBtn'); if (_addBtn) _addBtn.style.display = canWrite() ? '' : 'none';
+  // ทุกคนที่ล็อกอินแล้ว (รวม viewer) เพิ่ม/แก้ไข Project ได้ → โชว์ปุ่มเสมอ (RLS เปิดสิทธิ์แยกแล้ว)
+  const _addBtn = document.getElementById('addBtn'); if (_addBtn) _addBtn.style.display = '';
 
   S.filter.start = addDays(TODAY, -7);
   S.filter.end   = defaultFilterEndStr();
@@ -1087,11 +1092,11 @@ window.openProjAdd = function(){
 window.openProjEdit = async function(key){
   editingKey = key; existingPhases = {};
   const p = S.projects.find(x => x.project_key === key) || {};
-  $('projModalTitle').textContent = 'แก้ไข Project — ' + esc(p.project_name || key);
+  $('projModalTitle').textContent = 'แก้ไข Project — ' + (p.project_name || key);
   // ปิดใช้งาน: ทุกคนที่ล็อกอินทำได้ (ผ่าน RPC fn_inactivate_project) → โชว์เสมอ
-  // บันทึก/แก้ไขฟิลด์อื่น: เฉพาะ admin/lead (ตรงกับ RLS can_write())
+  // บันทึก/แก้ไขฟิลด์อื่น: ทุกคนที่ล็อกอินทำได้ (RLS project/project_phase เปิดเป็น is_authenticated แล้ว) → โชว์เสมอ
   $('projDeleteBtn').style.display = '';
-  $('projSaveBtn').style.display = canWrite() ? '' : 'none';
+  $('projSaveBtn').style.display = '';
   fillAppOptions(p.app_code || '');
   $('fKey').value = key; $('fKey').disabled = true;
   $('fName').value = p.project_name || '';
@@ -1159,7 +1164,7 @@ window.saveProj = async function(){
   }
   if (!res.data || !res.data.length){
     btn.disabled=false; btn.textContent='บันทึก';
-    err.textContent = 'บันทึก Project ไม่สำเร็จ — คุณไม่มีสิทธิ์ (ต้องเป็น lead ขึ้นไป)'; return;
+    err.textContent = 'บันทึก Project ไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์เขียน (ตรวจสอบสิทธิ์หรือลองล็อกอินใหม่)'; return;
   }
 
   const phases = readPhaseInputs();
