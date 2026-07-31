@@ -221,7 +221,7 @@
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html">Signoff Review</a>
-      <a href="admin.html" id="navAdmin">Admin</a>
+      <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -536,7 +536,7 @@ supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : 
 function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
 
 async function showApp(session){
-  $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('loginPage').classList.add('hidden');
   let who=session.user.email, role='';
   const { data:u } = await supabase.from('app_user')
     .select('display_name,app_role,pqa_emp_id').eq('email', session.user.email).maybeSingle();
@@ -544,6 +544,7 @@ async function showApp(session){
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
   const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+  $('app').classList.remove('hidden');
   // ทุกคนที่ล็อกอินแล้ว (รวม viewer) เพิ่ม/แก้ไข Project ได้ → โชว์ปุ่มเสมอ (RLS เปิดสิทธิ์แยกแล้ว)
   const _addBtn = document.getElementById('addBtn'); if (_addBtn) _addBtn.style.display = '';
 

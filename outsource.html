@@ -317,7 +317,7 @@
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html">Signoff Review</a>
-      <a href="admin.html" id="navAdmin">Admin</a>
+      <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -637,7 +637,6 @@ function showLogin() {
 
 async function showApp(session) {
   $('loginPage').classList.add('hidden');
-  $('app').classList.remove('hidden');
 
   let who = session.user.email;
   let role = '';
@@ -650,6 +649,7 @@ async function showApp(session) {
   $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
   const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
 
+  $('app').classList.remove('hidden');
   await loadAll();
 }
 
