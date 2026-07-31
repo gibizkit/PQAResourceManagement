@@ -826,6 +826,8 @@ function matchesFilters(p) {
   if (skillQ) {
     if (!(p.skills || '').toLowerCase().includes(skillQ)) return false;
   }
+  // ซ่อน OS ที่ลาออกไปแล้ว: last working day (end_date) < วันเริ่มของ filter
+  if (p.endDate && S.range.s && p.endDate < S.range.s) return false;
   return true;
 }
 
