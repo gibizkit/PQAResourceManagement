@@ -97,11 +97,9 @@
   }
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
   .c0  { min-width:330px; width:330px; left:0; }
-  .cst { min-width:46px;  width:46px;  left:330px; text-align:center; }
-  .c1  { min-width:100px; width:100px; left:376px; }
-  .c2  { min-width:60px;  width:60px;  left:476px; }
+  .c1  { min-width:105px; width:105px; left:330px; }
+  .c2  { min-width:90px;  width:90px;  left:435px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
-  td.cst, th.cst { padding:6px 4px; text-align:center; }
 
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
   .sticky-col { position:sticky; background:#fff; z-index:6; }
@@ -124,14 +122,17 @@
   /* project summary row */
   tr.prow-sum td { border-top:2px solid var(--dk-accent-d); background:#fffdfb; }
   tr.prow-sum:hover td.sticky-col { background:var(--dk-surface); }
+  /* ชื่อโปรเจกต์ + จุดสถานะนำหน้า (ไม่มีสถานะ = ไม่แสดงจุด ปล่อยว่าง) */
+  .p-name-row { display:flex; align-items:center; gap:7px; min-width:0; }
+  .p-name-row .status-dot { flex:0 0 auto; }
   .p-name { font-weight:700; color:var(--dk-text); font-size:13px; line-height:1.25;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .p-meta { font-size:11px; color:var(--dk-text3); margin-top:2px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
 
-  /* action icon buttons in the frozen Action column (.c2, 60px — 2 icons only, summary row) */
-  /* summary row = 2 ปุ่ม (edit + signoff) / phase & milestone row = ว่าง (Booked/Plan MD ย้ายไป .c0 แล้ว) */
+  /* action icon buttons in the frozen Action column (.c2, 90px) */
+  /* summary row = 2 ปุ่ม (edit + signoff) / phase row = ป้าย 👤 booked/required / milestone row = ว่าง */
   td.c2, th.c2 { padding:6px 2px; text-align:center; }
   .act { display:flex; align-items:center; justify-content:center; gap:2px; }
   .ico { border:1px solid transparent; background:none; font-size:12px; cursor:pointer;
@@ -154,7 +155,8 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ph-swatch { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
   /* Booked/Plan MD block in the Project column (.c0) for phase & milestone rows —
-     right-aligned so the numbers line up neatly down the column: badge first, then MD text. */
+     right-aligned so the numbers line up neatly down the column.
+     (ป้าย 👤 booked/required ย้ายไปคอลัมน์ Action .c2 แล้ว) */
   .c0-md { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
   /* Booked MD / Plan MD text (used inside .c0-md) */
   .md-cell { font-size:11.5px; font-weight:700; color:var(--dk-text2); white-space:nowrap; }
@@ -515,11 +517,10 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
-const COL_W = { c0:330, cst:46, c1:100, c2:60, day:28 };
+const COL_W = { c0:330, c1:105, c2:90, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
-    `<col style="width:${COL_W.cst}px">` +
     `<col style="width:${COL_W.c1}px">` +
     `<col style="width:${COL_W.c2}px">` +
     new Array(dayCount).fill(`<col style="width:${COL_W.day}px">`).join('') +
@@ -959,7 +960,6 @@ function renderGantt(){
 
   let head = '<thead><tr>' +
     '<th class="sticky-col c0" rowspan="2">Project</th>' +
-    '<th class="sticky-col cst" rowspan="2" title="Project Status">Status</th>' +
     '<th class="sticky-col c1" rowspan="2">Phase</th>' +
     '<th class="sticky-col c2" rowspan="2" style="text-align:center">Action</th>' +
     months.map(mo => `<th class="th-month" colspan="${mo.count}">${monthLabel(mo.ym)}</th>`).join('') +
@@ -1013,10 +1013,9 @@ function summaryRow(p, days){
 
   return `<tr class="prow-sum">
     <td class="sticky-col c0" title="${esc(p.project_name)}">
-      <div class="p-name">${esc(p.project_name)}</div>
+      <div class="p-name-row">${p.status ? statusDot(p.status) : ''}<div class="p-name">${esc(p.project_name)}</div></div>
       <div class="p-meta">${meta}</div>
     </td>
-    <td class="sticky-col cst">${statusDot(p.status)}</td>
     <td class="sticky-col c1">${c1inner}</td>
     <td class="sticky-col c2">
       <div class="act">${editBtn}${soBtn}</div>
@@ -1047,7 +1046,7 @@ function phaseRow(p, ph, days){
   const bookBadge = ph.phase_code === 'SIT' ? '' :
     `<span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>`;
 
-  // Project column (.c0) ของแถว phase = Booked MD / Plan MD (ต่อจาก bookBadge) — SIT ไม่มี booking/plan md เลย → "–"
+  // Project column (.c0) ของแถว phase = Booked MD / Plan MD — SIT ไม่มี booking/plan md เลย → "–"
   const mdCell = ph.phase_code === 'SIT'
     ? `<span class="md-cell" title="SIT ไม่มี Booking MD">–</span>`
     : (() => {
@@ -1058,12 +1057,11 @@ function phaseRow(p, ph, days){
       })();
 
   return `<tr>
-    <td class="sticky-col c0"><div class="c0-md">${bookBadge}${mdCell}</div></td>
-    <td class="sticky-col cst"></td>
+    <td class="sticky-col c0"><div class="c0-md">${mdCell}</div></td>
     <td class="sticky-col c1">
       <span class="ph-label" title="${lbl}"><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
     </td>
-    <td class="sticky-col c2"></td>
+    <td class="sticky-col c2"><div class="act">${bookBadge}</div></td>
     ${cells}
   </tr>`;
 }
@@ -1081,7 +1079,6 @@ function milestoneRow(p, days){
   const totalCell = `<span class="md-cell" title="Total Booked MD / Total Plan MD">${fmtMD(totals.booked)}/${totalPlanDisp}</span>`;
   return `<tr>
     <td class="sticky-col c0"><div class="c0-md">${totalCell}</div></td>
-    <td class="sticky-col cst"></td>
     <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
     <td class="sticky-col c2"></td>
     ${cells}
