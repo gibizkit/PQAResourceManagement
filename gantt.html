@@ -292,25 +292,19 @@
       <button class="x" onclick="closeProjModal()">×</button>
     </div>
     <div class="modal-body">
-      <div class="grid2">
-        <div class="field">
-          <label>Project Key</label>
-          <input id="fKey" placeholder="P2026070001">
-          <span class="hint">รูปแบบ P/U + ปีเดือน + running 4 หลัก</span>
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <!-- option เติมจาก master pqa.project_status ตอน init (fillStatusSelect) -->
-          <select id="fStatus"><option value="">—</option></select>
-        </div>
-      </div>
+      <input type="hidden" id="fKey">
       <div class="field">
         <label>Project Name *</label>
         <input id="fName" placeholder="ชื่อโปรเจกต์">
       </div>
+      <div class="field">
+        <label>Project Status</label>
+        <!-- option เติมจาก master pqa.project_status ตอน init (fillStatusSelect) -->
+        <select id="fStatus"><option value="">—</option></select>
+      </div>
       <div class="grid2">
         <div class="field">
-          <label>App</label>
+          <label>App *</label>
           <select id="fApp"><option value="">— เลือก App —</option></select>
         </div>
         <div class="field">
@@ -318,6 +312,26 @@
           <input id="fOtherApp" placeholder="ชื่อ App ที่ยังไม่มีใน master">
         </div>
       </div>
+
+      <div class="section-title">Lead</div>
+      <div class="field">
+        <label>Main Lead</label>
+        <select id="fMainLead"><option value="">— เลือก Lead —</option></select>
+        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้</span>
+      </div>
+      <div class="field">
+        <label>Sub Lead (เพิ่มได้หลายคน)</label>
+        <div id="fSubLeadRows"></div>
+        <button type="button" class="btn" id="fAddSubLeadBtn" onclick="addSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
+      </div>
+
+      <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
+      <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
+        <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Resource</div><div>Total WD</div>
+      </div>
+      <div id="phaseRows"></div>
+
+      <div class="section-title">Signoff & Deploy</div>
       <div class="grid2">
         <div class="field">
           <label>Signoff Date</label>
@@ -336,24 +350,6 @@
         <label>Note</label>
         <textarea id="fNote" rows="2"></textarea>
       </div>
-
-      <div class="section-title">Lead</div>
-      <div class="field">
-        <label>Main Lead</label>
-        <select id="fMainLead"><option value="">— เลือก Lead —</option></select>
-        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้</span>
-      </div>
-      <div class="field">
-        <label>Sub Lead (เพิ่มได้หลายคน)</label>
-        <div id="fSubLeadRows"></div>
-        <button type="button" class="btn" id="fAddSubLeadBtn" onclick="addSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
-      </div>
-
-      <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
-      <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
-        <div>Phase</div><div>Start</div><div>End</div><div>MD</div><div>Resource</div>
-      </div>
-      <div id="phaseRows"></div>
     </div>
     <div class="modal-foot">
       <div class="form-err" id="projFormErr"></div>
@@ -1077,17 +1073,40 @@ function fillAppOptions(selected){
 function fillStatusSelect(selected){
   $('fStatus').innerHTML = statusOptionsHTML(selected || '', '—');
 }
+// WD = จำนวนวันทำงาน (จ-ศ ไม่รวมวันหยุดนักขัตฤกษ์) ระหว่าง Start–End ของเฟส — คำนวณอัตโนมัติ ไม่ให้กรอกเอง
+function calcWD(startStr, endStr){
+  if (!startStr || !endStr) return 0;
+  const s = new Date(startStr+'T00:00:00'), e = new Date(endStr+'T00:00:00');
+  if (isNaN(s) || isNaN(e) || s > e) return 0;
+  return eachDay(startStr, endStr).filter(ds => !isWkndStr(ds)).length;
+}
 function buildPhaseRows(data){
   $('phaseRows').innerHTML = PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
+    const wd = calcWD(d.start_date, d.end_date);
+    const res = d.resource_count ?? '';
+    const totalWd = (wd && res !== '') ? wd * Number(res) : 0;
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
-      <input type="number" step="0.5" min="0" class="ph-md" placeholder="MD" value="${d.md ?? ''}">
-      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${d.resource_count ?? ''}">
+      <div class="ph-wd ph-calc">${wd || ''}</div>
+      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">
+      <div class="ph-totalwd ph-calc">${totalWd || ''}</div>
     </div>`;
   }).join('');
+  document.querySelectorAll('#phaseRows .phase-row').forEach(row => {
+    const recalc = () => {
+      const wd = calcWD(row.querySelector('.ph-start').value, row.querySelector('.ph-end').value);
+      row.querySelector('.ph-wd').textContent = wd || '';
+      const resVal = row.querySelector('.ph-res').value;
+      const resNum = resVal === '' ? 0 : Number(resVal);
+      row.querySelector('.ph-totalwd').textContent = (wd && resNum) ? wd * resNum : '';
+    };
+    row.querySelector('.ph-start').addEventListener('change', recalc);
+    row.querySelector('.ph-end').addEventListener('change', recalc);
+    row.querySelector('.ph-res').addEventListener('input', recalc);
+  });
 }
 /* ---- Lead pickers ในโมดัล Project (S.leads = pqa_lead ที่ active) ---- */
 function fillMainLeadOptions(selected){
@@ -1134,10 +1153,11 @@ function suggestKey(){
 
 window.openProjAdd = function(){
   editingKey = null; existingPhases = {};
-  $('projModalTitle').textContent = 'เพิ่ม Project';
+  const key = suggestKey();
+  $('projModalTitle').textContent = 'New Project : ' + key;
   $('projDeleteBtn').style.display = 'none';
   fillAppOptions('');
-  $('fKey').value = suggestKey(); $('fKey').disabled = false;
+  $('fKey').value = key; $('fKey').disabled = false;
   $('fName').value=''; $('fOtherApp').value=''; fillStatusSelect('');
   $('fSignoff').value=''; $('fDeploy').value=''; $('fSignoffUrl').value=''; $('fNote').value='';
   // default Main Lead = ตัวผู้ใช้ที่ล็อกอิน ถ้าอยู่ใน pqa_lead (เลือกใหม่ได้)
@@ -1152,7 +1172,7 @@ window.openProjAdd = function(){
 window.openProjEdit = async function(key){
   editingKey = key; existingPhases = {};
   const p = S.projects.find(x => x.project_key === key) || {};
-  $('projModalTitle').textContent = 'แก้ไข Project — ' + (p.project_name || key);
+  $('projModalTitle').textContent = 'Edit Project : ' + key;
   // ปิดใช้งาน: ทุกคนที่ล็อกอินทำได้ (ผ่าน RPC fn_inactivate_project) → โชว์เสมอ
   // บันทึก/แก้ไขฟิลด์อื่น: ทุกคนที่ล็อกอินทำได้ (RLS project/project_phase เปิดเป็น is_authenticated แล้ว) → โชว์เสมอ
   $('projDeleteBtn').style.display = '';
@@ -1185,13 +1205,16 @@ window.openProjEdit = async function(key){
 window.closeProjModal = function(){ $('projOverlay').classList.add('hidden'); };
 
 function readPhaseInputs(){
-  return [...document.querySelectorAll('#phaseRows .phase-row')].map(r => ({
-    phase_code: r.dataset.phase,
-    start_date: r.querySelector('.ph-start').value || null,
-    end_date:   r.querySelector('.ph-end').value || null,
-    md:         r.querySelector('.ph-md').value === '' ? null : Number(r.querySelector('.ph-md').value),
-    resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
-  }));
+  return [...document.querySelectorAll('#phaseRows .phase-row')].map(r => {
+    const wdText = r.querySelector('.ph-wd').textContent.trim();
+    return {
+      phase_code: r.dataset.phase,
+      start_date: r.querySelector('.ph-start').value || null,
+      end_date:   r.querySelector('.ph-end').value || null,
+      md:         wdText === '' ? null : Number(wdText),   // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง)
+      resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+    };
+  });
 }
 
 window.saveProj = async function(){
