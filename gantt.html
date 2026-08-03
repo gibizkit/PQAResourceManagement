@@ -268,9 +268,8 @@
       <div class="fld">
         <label>Order</label>
         <select id="fOrder">
-          <option value="">Default (App · Lead · Date)</option>
+          <option value="">Default (App · Project · Lead · Date)</option>
           <option value="timeline">Timeline</option>
-          <option value="app">App</option>
           <option value="lead">UAT Lead</option>
         </select>
       </div>
@@ -627,7 +626,7 @@ async function loadAll(){
     S.leads    = leadRes.data || [];
     S.apps     = appRes.error ? [] : (appRes.data || []);
     S.appOrder = {};
-    S.apps.forEach((a, i) => { S.appOrder[a.app_code] = i; }); // app already sorted by sort_order
+    S.apps.forEach((a, i) => { S.appOrder[a.app_code] = i; }); // เก็บไว้ใช้กับ dropdown filter (การเรียงแถวใช้ appSortKey A–Z)
 
     S.resourceMap = {};
     S.outsourceList = [];
@@ -828,8 +827,10 @@ function projLeadName(pk){
   const m = arr.find(l => l.is_main) || arr[0];
   return m ? String(m.short_name) : '￿';   // no lead → sort last
 }
-function appIdx(p){
-  return (p.app_code != null && p.app_code in S.appOrder) ? S.appOrder[p.app_code] : 9999;
+// เรียง App แบบ A–Z ตามชื่อที่แสดงจริง (app_code เช่น 294_PaoTang) เหมือน ORDER BY ใน SQL
+// — ไม่ใช้ sort_order ของตาราง app แล้ว (เดิมทำให้ 376_… มาก่อน 294_…)
+function appSortKey(p){
+  return String(p.app_code || p.other_app || '￿');   // ไม่มี app → ท้ายสุด
 }
 
 function filteredProjects(){
@@ -866,18 +867,16 @@ function sortProjects(list){
     // min start_date across ALL phases (incl. SIT)
     arr.sort((a,b) => { const sa=minStart(a,false), sb=minStart(b,false);
       return sa<sb?-1 : sa>sb?1 : byName(a,b); });
-  } else if (order === 'app'){
-    arr.sort((a,b) => (appIdx(a)-appIdx(b)) || byName(a,b));
   } else if (order === 'lead'){
     arr.sort((a,b) => projLeadName(a.project_key).localeCompare(projLeadName(b.project_key)) || byName(a,b));
   } else {
-    // req 10 default: App → Lead → Project Date (min start EXCLUDING SIT) → Project Name
+    // default: App (A–Z) → Project Name (A–Z) → Lead → Project Date (min start EXCLUDING SIT)
     arr.sort((a,b) => {
-      const ai = appIdx(a)-appIdx(b); if (ai) return ai;
+      const ai = appSortKey(a).localeCompare(appSortKey(b)); if (ai) return ai;
+      const na = byName(a,b); if (na) return na;
       const la = projLeadName(a.project_key).localeCompare(projLeadName(b.project_key)); if (la) return la;
       const da = minStart(a,true), db = minStart(b,true);
-      if (da<db) return -1; if (da>db) return 1;
-      return byName(a,b);
+      return da<db ? -1 : da>db ? 1 : 0;
     });
   }
   return arr;
