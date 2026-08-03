@@ -302,7 +302,7 @@
     <div class="dash-content is-loading" id="dashContent">
       <div class="dash-loading-overlay" id="dashLoadingOverlay"><span class="dash-spinner"></span>กำลังโหลดข้อมูล...</div>
 
-      <!-- ===== KPI (computed over the selected Period range, hidden on By Lead) ===== -->
+      <!-- ===== KPI (computed over the selected Period range, hidden on By Lead + Signoff) ===== -->
       <div class="kpi-grid" id="kpiGrid">
         <div class="kpi-card kc-teal">
           <div class="kpi-label">Total MD (Period)</div>
@@ -380,11 +380,14 @@ function cssVar(nameWithVar){
   const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
   return v || '#999';
 }
+/* Effective MD ผ่านการคูณสัดส่วน (computeAgg pass 2) จึงมี float noise ได้
+   เช่น 12 → 11.999999999999998 ถ้าเช็ค isInteger ตรงๆ จะโชว์ "12.0" → ปัดทศนิยม 1 ตำแหน่งก่อนเสมอ */
 function fmtMD(v){
   if (v == null || v === '') return '0';
   const n = Number(v);
   if (isNaN(n)) return '0';
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 /* Cap a (long) project name at 100 chars with an ellipsis; CSS .proj-name clamps it to 2 lines. */
 function truncName(s, max=100){
@@ -609,17 +612,23 @@ async function loadPeriod(force){
  *      ต่ำกว่าจริงเท่ากับจำนวนวันทำงาน — แก้ที่ sql/patch_2026-08-03_booking_md_per_day.sql
  *
  * NOTE on MD calculation (per task spec):
- *  - byAppPhase / phaseTotals / byProject / byProjectPhase / byOsApp all use RAW
- *    booked MD (sum of md_per_day from v_booking_daily) — this feeds the charts,
- *    the By Project table, and the By OS pivot cells.
- *  - kpiEffectiveMD (used ONLY for the "Total MD" KPI card) nets out leave: for
- *    every resource+day that has a booking, effective MD =
- *    max(0, sum(booked md_per_day that day) - leave_md that day), then summed
- *    across the period. Days with leave but no booking don't count.
+ *  - ทุกตัวเลขในหน้านี้เป็น **Effective MD (Booked − Leave)** เหมือนกันหมด — KPI card,
+ *    chart, ตาราง By Project / By OS / By Lead → ผลรวมท้ายตารางต้องเท่ากับ KPI เสมอ
+ *    (ก่อน 2026-08-04 มีแต่ KPI ที่หัก leave ตารางใช้ booked ดิบ → ต่างกันเมื่อมีวันลา
+ *     ทับวันที่ถูกจอง เช่น KPI 339 vs ตาราง 340)
+ *  - วิธีหัก: ทำเป็น 2 pass ต่อ resource+วัน
+ *      pass 1 — รวม booked md ของ resource นั้นในวันนั้น (ทุก project/phase)
+ *      pass 2 — factor = max(0, booked − leave) / booked แล้วคูณ md ของทุกแถวในวันนั้น
+ *    ⇒ วันลาถูก **ปันส่วนตามสัดส่วน** ให้ทุก project/phase ที่จองคนคนนั้นในวันเดียวกัน
+ *      (ลาครึ่งวัน + จอง 2 project วันเดียวกัน → หักคนละครึ่งของครึ่งวัน ไม่ใช่หัก project แรกหมด)
+ *    ⇒ sum ของทุกตารางย่อย = kpiEffectiveMD โดยนิยาม
+ *  - วันที่มี leave แต่ไม่มี booking ไม่นับ (ไม่มีแถวใน bookingRows ให้หัก)
  *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped.
- *    The dashboard always calls this with `restrict:false` (every booking counts,
- *    including historical/completed projects) — `projMap` is only used to resolve
- *    an App label. The flag is kept for flexibility but is currently always off.
+ *    เรียก 2 ชุด: `S.periodAgg` ใช้ `restrict:false` (ทุก booking นับหมด รวมโปรเจกต์เก่า/ปิดแล้ว
+ *    — `projMap` ใช้แค่ resolve ชื่อ App) และ `S.periodAggActiveOnly` ใช้ `restrict:true`
+ *    สำหรับแท็บ By OS (นับเฉพาะ booking ของโปรเจกต์ที่ยัง is_active)
+ *    ⚠️ factor คำนวณจากแถวที่ "ผ่าน restrict แล้ว" เท่านั้น (เหมือนพฤติกรรมเดิมของ
+ *       kpiEffectiveMD) — ชุด restricted จึงหัก leave ตามสัดส่วนของ booking ที่นับอยู่
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
@@ -630,12 +639,34 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   const byOsApp = {};          // resource_id -> app -> md
   const byOsTotal = {};        // resource_id -> md
   const bookedOsSet = new Set();
-  const dailyBookedByResDay = {}; // 'resId|date' -> md sum
+  const dailyBookedByResDay = {}; // 'resId|date' -> md sum (raw booked, ก่อนหัก leave)
 
-  bookingRows.forEach(row => {
+  // ---- pass 1: รวม booked md ต่อ resource+วัน (เฉพาะแถวที่จะถูกนับจริง) ----
+  const rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
+  rows.forEach(row => {
+    const dayKey = row.resource_id + '|' + row.work_date;
+    dailyBookedByResDay[dayKey] = (dailyBookedByResDay[dayKey] || 0) + (Number(row.md_per_day) || 0);
+  });
+
+  // leave map (unrestricted by project — leave is per-person, not per-project)
+  const leaveByResDay = {};
+  leaveRows.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
+
+  // factor ต่อ resource+วัน = สัดส่วน MD ที่เหลือหลังหักวันลา (0..1)
+  const effFactorByResDay = {};
+  let kpiEffectiveMD = 0;
+  Object.keys(dailyBookedByResDay).forEach(k => {
+    const booked = dailyBookedByResDay[k];
+    const eff = Math.max(0, booked - (leaveByResDay[k] || 0));
+    effFactorByResDay[k] = booked > 0 ? eff / booked : 0;
+    kpiEffectiveMD += eff;
+  });
+
+  // ---- pass 2: กระจาย MD (หัก leave ตามสัดส่วนแล้ว) ลงทุกมิติ ----
+  rows.forEach(row => {
     const proj = projMap[row.project_key];
-    if (restrict && !proj) return; // skip bookings whose project isn't in the restricted set
-    const md = Number(row.md_per_day) || 0;
+    const factor = effFactorByResDay[row.resource_id + '|' + row.work_date];
+    const md = (Number(row.md_per_day) || 0) * (factor === undefined ? 1 : factor);
     const app = proj ? (proj.app || proj.other_app || '— ไม่มี App —') : '— ไม่ทราบ App —';
 
     byAppPhase[app] = byAppPhase[app] || {};
@@ -651,22 +682,9 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
       byOsApp[row.resource_id] = byOsApp[row.resource_id] || {};
       byOsApp[row.resource_id][app] = (byOsApp[row.resource_id][app] || 0) + md;
       byOsTotal[row.resource_id] = (byOsTotal[row.resource_id] || 0) + md;
+      // นับหัวคนที่ "ถูกจอง" จาก booking จริง ไม่เกี่ยวกับวันลา — ลาเต็มช่วงก็ยังถือว่าถูกจอง
       bookedOsSet.add(row.resource_id);
     }
-
-    const dayKey = row.resource_id + '|' + row.work_date;
-    dailyBookedByResDay[dayKey] = (dailyBookedByResDay[dayKey] || 0) + md;
-  });
-
-  // leave map (unrestricted by project — leave is per-person, not per-project)
-  const leaveByResDay = {};
-  leaveRows.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
-
-  let kpiEffectiveMD = 0;
-  Object.keys(dailyBookedByResDay).forEach(k => {
-    const booked = dailyBookedByResDay[k];
-    const leave = leaveByResDay[k] || 0;
-    kpiEffectiveMD += Math.max(0, booked - leave);
   });
 
   return { byAppPhase, phaseTotals, byProject, byProjectPhase, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
@@ -709,7 +727,7 @@ function renderSummaryToggle(){
    ===================================================================== */
 function renderKPI(){
   const collapsedHere = (S.dashView === 'project' || S.dashView === 'os') && S.chartCollapsed;
-  const hide = S.dashView === 'lead' || collapsedHere;
+  const hide = S.dashView === 'lead' || S.dashView === 'signoff' || collapsedHere;
   $('kpiGrid').classList.toggle('hidden', hide);
   if (hide) return;
   const agg = S.periodAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
