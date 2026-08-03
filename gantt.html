@@ -96,10 +96,10 @@
     padding:0; box-sizing:border-box;
   }
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
-  .c0  { min-width:230px; width:230px; left:0; }
-  .cst { min-width:46px;  width:46px;  left:230px; text-align:center; }
-  .c1  { min-width:130px; width:130px; left:276px; }
-  .c2  { min-width:66px;  width:66px;  left:406px; }
+  .c0  { min-width:240px; width:240px; left:0; }
+  .cst { min-width:46px;  width:46px;  left:240px; text-align:center; }
+  .c1  { min-width:130px; width:130px; left:286px; }
+  .c2  { min-width:90px;  width:90px;  left:416px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
   td.cst, th.cst { padding:6px 4px; text-align:center; }
 
@@ -131,7 +131,7 @@
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
 
   /* action icon buttons in the frozen Action column */
-  /* Action = 2 ปุ่มพอดี → บีบคอลัมน์ให้แคบ ไม่เหลือที่ว่างเยอะ */
+  /* summary row = 2 ปุ่ม (edit + signoff) / phase & milestone row = ข้อความ Booked MD / Plan MD */
   td.c2, th.c2 { padding:6px 4px; text-align:center; }
   .act { display:flex; align-items:center; justify-content:center; gap:3px; }
   .ico { border:1px solid transparent; background:none; font-size:13px; cursor:pointer;
@@ -153,6 +153,8 @@
   .ph-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--dk-text2);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ph-swatch { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+  /* Booked MD / Plan MD text in the Action column (.c2) for phase & milestone rows */
+  .md-cell { font-size:11.5px; font-weight:700; color:var(--dk-text2); white-space:nowrap; }
   .bk { display:inline-flex; align-items:center; gap:3px; flex:0 0 auto; font-size:11px; font-weight:700; color:var(--dk-text);
     cursor:pointer; padding:2px 8px; border-radius:20px; background:var(--dk-surface); white-space:nowrap; }
   .bk:hover { background:var(--dk-hover); }
@@ -381,7 +383,7 @@
         </div>
         <table class="bk-table">
           <thead><tr>
-            <th>Booking Start</th><th>Booking End</th><th>OS Name</th><th>MD</th><th style="text-align:center">Action</th>
+            <th>Booking Start</th><th>Booking End</th><th>OS Name</th><th>Booking</th><th>MD</th><th style="text-align:center">Action</th>
           </tr></thead>
           <tbody id="bkRows"></tbody>
         </table>
@@ -418,7 +420,7 @@
         <div class="sub-head">⚠️ Co-Edit — ปรับ Start/End/MD ให้ MD รวมไม่เกิน 1.0 ต่อวัน</div>
         <table class="bk-table">
           <thead><tr>
-            <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>MD</th>
+            <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>Booking</th>
           </tr></thead>
           <tbody id="bkCoRows"></tbody>
         </table>
@@ -510,7 +512,7 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
-const COL_W = { c0:230, cst:46, c1:130, c2:66, day:28 };
+const COL_W = { c0:240, cst:46, c1:130, c2:90, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
@@ -955,7 +957,7 @@ function renderGantt(){
   let head = '<thead><tr>' +
     '<th class="sticky-col c0" rowspan="2">Project</th>' +
     '<th class="sticky-col cst" rowspan="2" title="Project Status">Status</th>' +
-    '<th class="sticky-col c1" rowspan="2">Phase / Booked</th>' +
+    '<th class="sticky-col c1" rowspan="2">Phase</th>' +
     '<th class="sticky-col c2" rowspan="2" style="text-align:center">Action</th>' +
     months.map(mo => `<th class="th-month" colspan="${mo.count}">${monthLabel(mo.ym)}</th>`).join('') +
     '</tr><tr>' +
@@ -972,7 +974,8 @@ function renderGantt(){
     body += summaryRow(p, days);
     if (!S.collapsed[pk]) {
       (S.phasesByProject[pk]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
-      if (p.signoff_date || p.deploy_date) body += milestoneRow(p, days);
+      // req 3: แถว Milestones ขึ้นเสมอตอน expand (ไว้โชว์ Total Booked MD / Total Plan MD ของโปรเจกต์)
+      body += milestoneRow(p, days);
     }
   });
   body += '</tbody>';
@@ -1041,6 +1044,17 @@ function phaseRow(p, ph, days){
   // req 3: SIT ไม่ต้อง Book Manday — ไม่โชว์ป้ายจำนวนคน/ปุ่ม booking ที่แถว SIT
   const bookBadge = ph.phase_code === 'SIT' ? '' :
     `<span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>`;
+
+  // Action column (.c2) ของแถว phase = Booked MD / Plan MD — SIT ไม่มี booking/plan md เลย → "–"
+  const mdCell = ph.phase_code === 'SIT'
+    ? `<span class="md-cell" title="SIT ไม่มี Booking MD">–</span>`
+    : (() => {
+        const planMD = phasePlanMD(ph);
+        const bookedMD = phaseBookedMD(pk, ph.phase_code);
+        const planDisp = planMD == null ? '–' : fmtMD(planMD);
+        return `<span class="md-cell" title="Booked MD / Plan MD">${fmtMD(bookedMD)}/${planDisp}</span>`;
+      })();
+
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col cst"></td>
@@ -1050,7 +1064,7 @@ function phaseRow(p, ph, days){
         ${bookBadge}
       </div>
     </td>
-    <td class="sticky-col c2"></td>
+    <td class="sticky-col c2">${mdCell}</td>
     ${cells}
   </tr>`;
 }
@@ -1062,19 +1076,53 @@ function milestoneRow(p, days){
     else if (ds===p.deploy_date) inner = `<span class="diamond" style="background:var(--ph-deploy)" title="Deploy ${dDisp(ds)}"></span>`;
     return `<td class="${cls}" style="text-align:center">${inner}</td>`;
   }).join('');
-  const so = p.signoff_date
-    ? `<button class="ico" title="Review Signoff" onclick="window.srOpenFromKey('${esc(p.project_key)}')">🔎</button>`
-    : '';
+  // req 3: Action column ของแถว Milestones = ผลรวม Total Booked MD / Total Plan MD ทั้งโปรเจกต์ (ไม่รวม SIT)
+  const totals = projectTotalMD(p.project_key);
+  const totalPlanDisp = totals.plan == null ? '–' : fmtMD(totals.plan);
+  const totalCell = `<span class="md-cell" title="Total Booked MD / Total Plan MD">${fmtMD(totals.booked)}/${totalPlanDisp}</span>`;
   return `<tr>
     <td class="sticky-col c0"></td>
     <td class="sticky-col cst"></td>
     <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
-    <td class="sticky-col c2"><div class="act">${so}</div></td>
+    <td class="sticky-col c2">${totalCell}</td>
     ${cells}
   </tr>`;
 }
 
 function fmtNum(n){ return Number.isInteger(n) ? String(n) : String(n); }
+
+/* ============ MD CALC (Booked / Plan) — Action column (.c2) ของแถว phase/milestone ============ */
+// Plan MD ของเฟส = project_phase.md (WD คำนวณอัตโนมัติ) × resource_count — ค่าใดว่าง = ไม่มีข้อมูล (null → แสดง –)
+function phasePlanMD(ph){
+  if (!ph || ph.md == null || ph.resource_count == null) return null;
+  return Number(ph.md) * Number(ph.resource_count);
+}
+// Booked MD ของเฟส = sum ทุก booking ใน project+phase นั้นของ (จำนวนวันทำงานเต็มช่วง booking) × booking.md
+// ใช้ช่วงเต็มของ booking เอง ไม่ตัดตาม filter Start–End ของหน้าจอ (S.bookings โหลดมาทั้งหมดอยู่แล้ว, ไม่ผ่าน filter)
+function phaseBookedMD(pk, phaseCode){
+  let total = 0;
+  S.bookings.forEach(b => {
+    if (b.project_key===pk && b.phase_code===phaseCode) total += calcWD(b.start_date, b.end_date) * Number(b.md);
+  });
+  return total;
+}
+// ผลรวมทั้งโปรเจกต์ (ไม่รวม SIT) — ใช้ในแถว Milestones
+function projectTotalMD(pk){
+  let booked = 0, plan = 0, planHasData = false;
+  (S.phasesByProject[pk]||[]).forEach(ph => {
+    if (ph.phase_code === 'SIT') return;
+    booked += phaseBookedMD(pk, ph.phase_code);
+    const pm = phasePlanMD(ph);
+    if (pm != null){ plan += pm; planHasData = true; }
+  });
+  return { booked, plan: planHasData ? plan : null };
+}
+// format ตัวเลข MD: ทศนิยมไม่เกิน 1 ตำแหน่ง ตัด .0 ทิ้ง เช่น 12 / 12.3 — null/NaN → '–'
+function fmtMD(n){
+  if (n == null || !isFinite(n)) return '–';
+  const s = (Math.round(n*10)/10).toFixed(1);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
 
 /* ============ TOOLBAR ============ */
 window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderGantt(); };
@@ -1112,20 +1160,25 @@ function calcWD(startStr, endStr){
 function buildPhaseRows(data){
   $('phaseRows').innerHTML = PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
-    const wd = calcWD(d.start_date, d.end_date);
+    const isSit = ph.code === 'SIT';
+    // req 6: เฟส SIT ไม่ต้องมี MD — WD / Total WD เว้นว่างเสมอ (resource_count ยังกรอกได้ปกติ)
+    const wd = isSit ? 0 : calcWD(d.start_date, d.end_date);
     const res = d.resource_count ?? '';
-    const totalWd = (wd && res !== '') ? wd * Number(res) : 0;
+    const totalWd = (!isSit && wd && res !== '') ? wd * Number(res) : 0;
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
-      <div class="ph-wd ph-calc">${wd || ''}</div>
+      <div class="ph-wd ph-calc">${isSit ? '' : (wd || '')}</div>
       <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">
-      <div class="ph-totalwd ph-calc">${totalWd || ''}</div>
+      <div class="ph-totalwd ph-calc">${isSit ? '' : (totalWd || '')}</div>
     </div>`;
   }).join('');
   document.querySelectorAll('#phaseRows .phase-row').forEach(row => {
+    const isSit = row.dataset.phase === 'SIT';
     const recalc = () => {
+      // req 6: SIT ไม่คำนวณ WD/Total WD — ปล่อยว่างเสมอ
+      if (isSit) { row.querySelector('.ph-wd').textContent=''; row.querySelector('.ph-totalwd').textContent=''; return; }
       const wd = calcWD(row.querySelector('.ph-start').value, row.querySelector('.ph-end').value);
       row.querySelector('.ph-wd').textContent = wd || '';
       const resVal = row.querySelector('.ph-res').value;
@@ -1240,12 +1293,14 @@ window.closeProjModal = function(){ $('projOverlay').classList.add('hidden'); };
 
 function readPhaseInputs(){
   return [...document.querySelectorAll('#phaseRows .phase-row')].map(r => {
+    const isSit = r.dataset.phase === 'SIT';
     const wdText = r.querySelector('.ph-wd').textContent.trim();
     return {
       phase_code: r.dataset.phase,
       start_date: r.querySelector('.ph-start').value || null,
       end_date:   r.querySelector('.ph-end').value || null,
-      md:         wdText === '' ? null : Number(wdText),   // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง)
+      // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง) — req 6: SIT ไม่มี MD เลย ส่ง null เสมอ
+      md:         isSit ? null : (wdText === '' ? null : Number(wdText)),
       resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
     };
   });
@@ -1436,16 +1491,21 @@ function resName(rid){ const r=S.resourceMap[rid]; return r ? (fmtResName(r.nick
 
 function renderBkRows(){
   const rows = bookingsOfPhase();
-  $('bkRows').innerHTML = rows.length ? rows.map(b => `<tr>
+  // req 7: เพิ่มคอลัมน์ MD = จำนวนวันทำงานเต็มช่วง booking แถวนั้น × Booking (MD ต่อวัน 1/0.5)
+  $('bkRows').innerHTML = rows.length ? rows.map(b => {
+    const totalMd = calcWD(b.start_date, b.end_date) * Number(b.md);
+    return `<tr>
     <td>${dDisp(b.start_date)}</td>
     <td>${dDisp(b.end_date)}</td>
     <td>${esc(resName(b.resource_id))}</td>
     <td>${fmtNum(Number(b.md))}</td>
+    <td>${fmtMD(totalMd)}</td>
     <td style="text-align:center">
       <button class="btn sm" onclick="bkEdit('${esc(b.booking_id)}')">✏️</button>
       <button class="btn sm danger" onclick="bkDelete('${esc(b.booking_id)}')">🗑️</button>
     </td>
-  </tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--dk-text3);padding:16px">ยังไม่มี Booking</td></tr>';
+  </tr>`;
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--dk-text3);padding:16px">ยังไม่มี Booking</td></tr>';
 }
 
 window.bkStartAdd = function(){

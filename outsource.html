@@ -387,10 +387,10 @@
         <thead>
           <tr>
             <th>Project</th><th>Phase</th><th>PQA Lead</th>
-            <th>Start</th><th>End</th><th>MD</th><th class="center">Action</th>
+            <th>Start</th><th>End</th><th>Booking</th><th>MD</th><th class="center">Action</th>
           </tr>
         </thead>
-        <tbody id="mbRows"><tr><td colspan="7" class="loading">กำลังโหลด...</td></tr></tbody>
+        <tbody id="mbRows"><tr><td colspan="8" class="loading">กำลังโหลด...</td></tr></tbody>
       </table>
 
       <div id="mbMdSummary" class="md-summary"></div>
@@ -414,7 +414,7 @@
             <input id="mbEnd" placeholder="dd/mm/yyyy" maxlength="10">
           </div>
           <div class="field">
-            <label>MD</label>
+            <label>Booking</label>
             <select id="mbMd">
               <option value="1">1 (เต็มวัน)</option>
               <option value="0.5">0.5 (ครึ่งวัน)</option>
@@ -549,6 +549,24 @@ function fmtMD(v) {
   const n = Number(v);
   if (isNaN(n)) return '0';
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// จำนวนวันทำงาน (จ-ศ ไม่รวมวันหยุดนักขัตฤกษ์) ระหว่าง startStr–endStr (yyyy-MM-dd)
+function workingDaysBetween(startStr, endStr) {
+  if (!startStr || !endStr) return 0;
+  const s = new Date(startStr + 'T00:00:00');
+  const e = new Date(endStr + 'T00:00:00');
+  if (isNaN(s) || isNaN(e) || s > e) return 0;
+  let count = 0;
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    if (!isWknd(d, S.holidays)) count++;
+  }
+  return count;
+}
+
+// Total MD ของ booking แถวเดียว = WD (Start–End) × Booking (MD ต่อวัน)
+function bookingTotalMD(b) {
+  return workingDaysBetween(b.start_date, b.end_date) * Number(b.md || 0);
 }
 
 function truncate(str, n) {
@@ -1032,7 +1050,7 @@ function mbRenderTable() {
     ((S.projMap[a.project_key] || {}).name || '').localeCompare((S.projMap[b.project_key] || {}).name || '')
   );
   if (!rows.length) {
-    $('mbRows').innerHTML = '<tr><td colspan="7" class="loading">ไม่มี Booking ในวันนี้</td></tr>';
+    $('mbRows').innerHTML = '<tr><td colspan="8" class="loading">ไม่มี Booking ในวันนี้</td></tr>';
     return;
   }
   $('mbRows').innerHTML = rows.map(b => {
@@ -1045,6 +1063,7 @@ function mbRenderTable() {
       <td>${dDisp(b.start_date)}</td>
       <td>${dDisp(b.end_date)}</td>
       <td>${fmtMD(b.md)}</td>
+      <td>${fmtMD(bookingTotalMD(b))}</td>
       <td class="center">
         <button class="btn sm" onclick="mbEditInline('${b.booking_id}')">✏️</button>
         <button class="btn sm danger" onclick="mbDeleteBooking('${b.booking_id}')">🗑️</button>

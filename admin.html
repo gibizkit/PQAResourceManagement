@@ -639,9 +639,9 @@ function calcWD(startStr, endStr) {
 function buildProjectPhaseRows(data) {
   $('pfPhaseRows').innerHTML = PROJECT_PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
-    const wd = calcWD(d.start_date, d.end_date);
+    const wd = ph.code === 'SIT' ? '' : calcWD(d.start_date, d.end_date);
     const res = d.resource_count ?? '';
-    const totalWd = (wd && res !== '') ? wd * Number(res) : 0;
+    const totalWd = ph.code === 'SIT' ? '' : ((wd && res !== '') ? wd * Number(res) : 0);
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
@@ -652,7 +652,9 @@ function buildProjectPhaseRows(data) {
     </div>`;
   }).join('');
   document.querySelectorAll('#pfPhaseRows .phase-row').forEach(row => {
+    const isSIT = row.dataset.phase === 'SIT';
     const recalc = () => {
+      if (isSIT) return;  // SIT ไม่ต้องคำนวณ WD/Total WD
       const wd = calcWD(row.querySelector('.ph-start').value, row.querySelector('.ph-end').value);
       row.querySelector('.ph-wd').textContent = wd || '';
       const resVal = row.querySelector('.ph-res').value;
@@ -833,11 +835,12 @@ window.closeProjectModal = function() {
 function readProjectPhases() {
   return [...document.querySelectorAll('#pfPhaseRows .phase-row')].map(r => {
     const wdText = r.querySelector('.ph-wd').textContent.trim();
+    const phaseCode = r.dataset.phase;
     return {
-      phase_code: r.dataset.phase,
+      phase_code: phaseCode,
       start_date: r.querySelector('.ph-start').value || null,
       end_date: r.querySelector('.ph-end').value || null,
-      md: wdText === '' ? null : Number(wdText),   // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง)
+      md: phaseCode === 'SIT' ? null : (wdText === '' ? null : Number(wdText)),   // SIT ต้องส่ง md=null เสมอ ไม่มี WD
       resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
     };
   });

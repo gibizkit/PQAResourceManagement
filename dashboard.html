@@ -161,31 +161,34 @@
   }
   .td-md-cell { text-align:right; }
 
-  /* ---- By Project view: widened + frozen first 3 columns (App / Project Name / Lead) ----
-     Fixed widths (not just min-width) keep the `left` offsets below deterministic:
-     left(Project Name)=160 (App's width), left(Lead)=400 (160+240). Scoped with #projectTable
-     so the Signoff table (which reuses .col-app/.proj-name for its own App/Project Name
-     columns) is unaffected — it just gets the wider max-width from the shared rule above. */
+  /* ---- By Project view: widened + frozen first 2 columns (App / Project Name only) ----
+     Lead used to be frozen too (left:400) — no longer; it now scrolls with the rest of
+     the table like every other column. Fixed widths (not just min-width) keep the `left`
+     offset of Project Name deterministic: left(Project Name)=160 (App's width). Project
+     Name is now +15px wider (240 → 255). Scoped with #projectTable so the Signoff table
+     (which reuses .col-app/.proj-name for its own App/Project Name columns) is unaffected
+     — it just gets the wider max-width from the shared rule above. */
   #projectTable { border-collapse:separate; border-spacing:0; }
   #projectTable th.col-app,   #projectTable td.col-app   { width:160px; min-width:160px; max-width:160px; }
-  #projectTable th.proj-name, #projectTable td.proj-name { width:240px; min-width:240px; max-width:240px; }
+  #projectTable th.proj-name, #projectTable td.proj-name { width:255px; min-width:255px; max-width:255px; }
   #projectTable th.col-lead,  #projectTable td.col-lead  { width:110px; min-width:110px; max-width:110px; }
 
   #projectTable th.col-app,   #projectTable td.col-app,
   #projectTable th.proj-name, #projectTable td.proj-name,
-  #projectTable th.col-lead,  #projectTable td.col-lead,
   #projectTable td.total-label-frozen {
     position:sticky; background:var(--dk-card); z-index:5;
   }
   #projectTable th.col-app,  #projectTable td.col-app,  #projectTable td.total-label-frozen { left:0; }
   #projectTable th.proj-name, #projectTable td.proj-name { left:160px; }
-  #projectTable th.col-lead,  #projectTable td.col-lead,  #projectTable td.total-label-frozen {
+  /* boundary shadow now sits on Project Name (the last frozen column) + its footer
+     equivalent, instead of on Lead which is no longer frozen */
+  #projectTable th.proj-name, #projectTable td.proj-name,
+  #projectTable td.total-label-frozen {
     box-shadow:2px 0 4px rgba(34,28,21,.08);
   }
-  #projectTable th.col-lead, #projectTable td.col-lead { left:400px; }
 
   /* header freeze cells: above both the scrolling header cells and the frozen body cells */
-  #projectTable thead th.col-app, #projectTable thead th.proj-name, #projectTable thead th.col-lead {
+  #projectTable thead th.col-app, #projectTable thead th.proj-name {
     z-index:16; background:var(--dk-surface);
   }
   #projectTable tfoot td.total-label-frozen,
@@ -194,6 +197,27 @@
   }
 
   .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
+
+  /* ---- loading wrapper: KPI grid + chart-row + viewContainer (task 1) ----
+     visibility:hidden (NOT display:none) on the real content while loading — this keeps
+     the element's normal box/layout size so Chart.js still measures a real canvas width
+     when a chart is (re)built underneath the overlay. display:none would collapse the
+     canvas to 0×0 and produce a mis-sized/invisible chart once revealed. The overlay sits
+     on top via position:absolute so nothing is ever visibly "stale" mid-fetch, and nothing
+     stacks/duplicates because charts.bar/charts.donut are still destroy()'d before every
+     recreate (unchanged, see renderCharts). */
+  .dash-content { position:relative; min-height:80px; }
+  .dash-content.is-loading > *:not(.dash-loading-overlay) { visibility:hidden; }
+  .dash-loading-overlay {
+    display:none; position:absolute; inset:0; align-items:center; justify-content:center;
+    gap:8px; color:var(--dk-text3); font-size:13px; font-weight:600;
+  }
+  .dash-content.is-loading .dash-loading-overlay { display:flex; }
+  .dash-spinner {
+    width:15px; height:15px; border-radius:50%; border:2px solid var(--dk-border-s);
+    border-top-color:var(--dk-accent); animation:dash-spin .7s linear infinite;
+  }
+  @keyframes dash-spin { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -260,47 +284,58 @@
       <button class="btn sm" id="summaryToggleBtn">Hide chart</button>
     </div>
 
-    <!-- ===== KPI (computed over the selected Period range, hidden on By Lead) ===== -->
-    <div class="kpi-grid" id="kpiGrid">
-      <div class="kpi-card kc-teal">
-        <div class="kpi-label">Total MD (Period)</div>
-        <div class="kpi-value" id="kpiTotalMD">0</div>
-        <div class="kpi-sub">Effective MD = Booked − Leave</div>
-      </div>
-      <div class="kpi-card kc-purple">
-        <div class="kpi-label">Total Booked OS</div>
-        <div class="kpi-value" id="kpiBookedOs">0</div>
-        <div class="kpi-sub">คนที่ถูกจองในช่วง Period นี้</div>
-      </div>
-      <div class="kpi-card kc-blue">
-        <div class="kpi-label">Active Projects</div>
-        <div class="kpi-value" id="kpiActiveProj">0</div>
-        <div class="kpi-sub">Project ที่ยัง Active</div>
-      </div>
-      <div class="kpi-card kc-green">
-        <div class="kpi-label">Working Days</div>
-        <div class="kpi-value" id="kpiWorkDays">0</div>
-        <div class="kpi-sub">ไม่รวมเสาร์-อาทิตย์ + วันหยุด</div>
-      </div>
-    </div>
+    <!-- ===== Loading wrapper: KPI + charts + view table ============================
+         Starts with "is-loading" already in the markup so the very first paint (before
+         any data/JS has run) shows the overlay, not a flash of empty/zero content. JS
+         toggles this class off only once a period's data has been fetched AND fully
+         rendered (see showDashLoading/hideDashLoading). Uses visibility:hidden (not
+         display:none) on the real content so Chart.js still sees a real canvas size
+         while charts are (re)built underneath the overlay — see CSS comment. ===== -->
+    <div class="dash-content is-loading" id="dashContent">
+      <div class="dash-loading-overlay" id="dashLoadingOverlay"><span class="dash-spinner"></span>กำลังโหลดข้อมูล...</div>
 
-    <!-- ===== Charts: By Project / By OS ===== -->
-    <div class="chart-row hidden" id="chartRow">
-      <div class="chart-card">
-        <div class="chart-card-title">MD by App (แยกตาม Phase)</div>
-        <canvas id="dashBarChart" height="90"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">Phase Breakdown</div>
-        <div class="donut-row">
-          <div class="donut-canvas-wrap"><canvas id="dashDonutChart" width="170" height="170"></canvas></div>
-          <div class="donut-legend" id="donutLegend"></div>
+      <!-- ===== KPI (computed over the selected Period range, hidden on By Lead) ===== -->
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card kc-teal">
+          <div class="kpi-label">Total MD (Period)</div>
+          <div class="kpi-value" id="kpiTotalMD">0</div>
+          <div class="kpi-sub">Effective MD = Booked − Leave</div>
+        </div>
+        <div class="kpi-card kc-purple">
+          <div class="kpi-label">Total Booked OS</div>
+          <div class="kpi-value" id="kpiBookedOs">0</div>
+          <div class="kpi-sub">คนที่ถูกจองในช่วง Period นี้</div>
+        </div>
+        <div class="kpi-card kc-blue">
+          <div class="kpi-label">Active Projects</div>
+          <div class="kpi-value" id="kpiActiveProj">0</div>
+          <div class="kpi-sub">Project ที่ยัง Active</div>
+        </div>
+        <div class="kpi-card kc-green">
+          <div class="kpi-label">Working Days</div>
+          <div class="kpi-value" id="kpiWorkDays">0</div>
+          <div class="kpi-sub">ไม่รวมเสาร์-อาทิตย์ + วันหยุด</div>
         </div>
       </div>
-    </div>
 
-    <!-- ===== View content (shared — monthly & overall) ===== -->
-    <div id="viewContainer"></div>
+      <!-- ===== Charts: By Project / By OS ===== -->
+      <div class="chart-row hidden" id="chartRow">
+        <div class="chart-card">
+          <div class="chart-card-title">MD by App (แยกตาม Phase)</div>
+          <canvas id="dashBarChart" height="90"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Phase Breakdown</div>
+          <div class="donut-row">
+            <div class="donut-canvas-wrap"><canvas id="dashDonutChart" width="170" height="170"></canvas></div>
+            <div class="donut-legend" id="donutLegend"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== View content (shared — monthly & overall) ===== -->
+      <div id="viewContainer"></div>
+    </div>
 
   </div>
 </div>
@@ -445,6 +480,9 @@ async function showApp(session){
   if (sessionBooted) return;
   sessionBooted = true;
 
+  // re-arm the loading overlay in case a previous session already revealed the content
+  // (logout → login again re-runs this full boot sequence).
+  showDashLoading();
   wireToolbar();
   await loadMasterData();
   await ensureOverallRangeDefaults();
@@ -521,7 +559,7 @@ async function loadPeriod(force){
   const key = `${first}|${last}`;
   if (!force && S.periodCacheKey === key) { renderAll(); return; }
 
-  setViewLoading();
+  showDashLoading();
   try {
     const [bkRes, lvRes] = await Promise.all([
       supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
@@ -539,10 +577,14 @@ async function loadPeriod(force){
     S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: false });
     // By OS view (§6): count MD only on bookings whose project is_active = true.
     S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, S.activeProjMap, { restrict: true });
+    // render FIRST (while still hidden behind the overlay — charts get a real canvas
+    // size because the content uses visibility:hidden, not display:none), THEN reveal.
     renderAll();
+    hideDashLoading();
   } catch (err) {
     console.error(err);
     $('viewContainer').innerHTML = `<div class="empty-state" style="color:var(--danger)">โหลดข้อมูลไม่สำเร็จ: ${esc(err.message||String(err))}</div>`;
+    hideDashLoading();
   }
 }
 
@@ -632,8 +674,16 @@ function renderAll(){
   renderView();
 }
 
-function setViewLoading(){
-  $('viewContainer').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+/* Show/hide the loading overlay that covers KPI grid + chart row + view table (task 1).
+   visibility:hidden keeps real box sizes so Chart.js sizes canvases correctly even while
+   hidden — see the .dash-content CSS comment above. */
+function showDashLoading(){
+  const el = $('dashContent');
+  if (el) el.classList.add('is-loading');
+}
+function hideDashLoading(){
+  const el = $('dashContent');
+  if (el) el.classList.remove('is-loading');
 }
 
 /* =====================================================================
@@ -847,7 +897,7 @@ function renderProjectView(container){
           ${thSort('App','app',S.projectSort,'col-app')}
           <th class="proj-name">Project Name</th>
           ${thSort('Lead','lead',S.projectSort,'col-lead')}
-          ${thSort('UAT period','uatPeriod',S.projectSort)}
+          ${thSort('Project Period','uatPeriod',S.projectSort)}
           ${thSort('Total MD','totalMD',S.projectSort,'right')}
           ${thSort('TC Prep (MD)','tcprep',S.projectSort,'right')}
           ${thSort('UAT (MD)','uat',S.projectSort,'right')}
@@ -858,7 +908,8 @@ function renderProjectView(container){
         </tr></thead>
         <tbody>${bodyRows}</tbody>
         <tfoot class="dash-total"><tr>
-          <td class="total-label-frozen" colspan="3">รวมทั้งหมด (${rows.length} projects)</td>
+          <td class="total-label-frozen" colspan="2">รวมทั้งหมด (${rows.length} projects)</td>
+          <td></td>
           <td></td>
           <td class="right">${fmtMD(gTotal)}</td>
           <td class="right">${fmtMD(gTcprep)}</td>
@@ -940,16 +991,28 @@ function roleLabelFor(code){
    mode) — NOT time/day-bound (it's a coverage matrix, not an MD report), matching
    the simpler of the two allowed paths in the task spec.
    Each cell = COUNT of distinct projects that Lead owns under that App (not just
-   a 0/1 coverage flag) — a Lead with 2 projects under the same App shows "2". */
+   a 0/1 coverage flag) — a Lead with 2 projects under the same App shows "2".
+
+   Total MD column (task 3): sum of MD for every project where this lead is the
+   MAIN lead (project_lead.is_main = true). Reuses S.periodAgg.byProject — the exact
+   same "Booked MD" aggregate (sum of v_booking_daily.md_per_day over the selected
+   Period range) that the By Project tab's "Total MD" column already uses, so the
+   number is consistent with the rest of the page. Projects with no main lead simply
+   never get added to any lead's total (no double counting, no orphan bucket). */
 function renderLeadView(container){
   const projByKey = currentProjMap();
-  const leadCoverage = {}; // emp_id -> { app -> Set(project_key) }
+  const agg = S.periodAgg || { byProject:{} };
+  const leadCoverage = {};     // emp_id -> { app -> Set(project_key) }
+  const leadMainProjects = {}; // emp_id -> Set(project_key) where this lead is_main = true
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
     const app = proj.app || proj.other_app || '— ไม่มี App —';
     const byApp = (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || {});
     (byApp[app] = byApp[app] || new Set()).add(pl.project_key);
+    if (pl.is_main) {
+      (leadMainProjects[pl.pqa_emp_id] = leadMainProjects[pl.pqa_emp_id] || new Set()).add(pl.project_key);
+    }
   });
 
   const appSet = new Set();
@@ -963,30 +1026,35 @@ function renderLeadView(container){
 
   const colCount = {}; apps.forEach(a => colCount[a] = 0);
   let grandTotal = 0;
+  let grandTotalMD = 0;
   const bodyRows = S.leadsAll.map(l => {
     const byApp = leadCoverage[l.emp_id] || {};
     const allProjects = new Set();
     Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
     if (!allProjects.size) return ''; // lead with no project in the current set — skip row (keeps matrix relevant)
+    const mainProjects = leadMainProjects[l.emp_id] || new Set();
+    let totalMD = 0;
+    mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
     const cells = apps.map(a => {
       const n = byApp[a] ? byApp[a].size : 0;
       if (n) colCount[a] += n;
       return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
     }).join('');
     grandTotal += allProjects.size;
-    return `<tr><td>${esc(l.short_name)}</td><td class="right">${allProjects.size}</td>${cells}</tr>`;
+    grandTotalMD += totalMD;
+    return `<tr><td>${esc(l.short_name)}</td><td class="right">${fmtMD(totalMD)}</td><td class="right">${allProjects.size}</td>${cells}</tr>`;
   }).filter(Boolean);
 
   const totalRow = `<tr class="dash-total-row">
-    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${grandTotal}</td>
+    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${fmtMD(grandTotalMD)}</td><td class="right">${grandTotal}</td>
     ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
   </tr>`;
 
   container.innerHTML = `
     <div class="dash-table-wrap">
       <table class="dash-table">
-        <thead><tr><th>UAT Lead</th><th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
-        <tbody>${bodyRows.join('') || `<tr><td colspan="${2+apps.length}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
+        <thead><tr><th>UAT Lead</th><th class="right">Total MD</th><th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
+        <tbody>${bodyRows.join('') || `<tr><td colspan="${3+apps.length}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
         <tfoot>${totalRow}</tfoot>
       </table>
     </div>`;
@@ -1076,7 +1144,9 @@ function wireToolbar(){
   });
   $('summaryToggleBtn').addEventListener('click', () => {
     S.chartCollapsed = !S.chartCollapsed;
+    showDashLoading();
     renderAll();
+    hideDashLoading();
   });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
@@ -1091,7 +1161,12 @@ function switchDashView(view){
   if (S.dashView === view) return;
   S.dashView = view;
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
+  // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
+  // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
+  // same "hidden while (re)building, revealed only after" contract as loadPeriod).
+  showDashLoading();
   renderAll();
+  hideDashLoading();
 }
 </script>
 </body>
