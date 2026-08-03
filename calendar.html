@@ -421,7 +421,7 @@ function buildDayCell(ds, inMonth, monthData) {
   }
 
   const entries = monthData.byDate[ds] || [];
-  // บรรทัดที่ 2 = "Project : N | Resource booked/required"
+  // บรรทัดที่ 2 = "Prj : N | OS booked/required" (ย่อให้ไม่ล้นความกว้างช่อง)
   // Booked/Required numbers only make sense on normal working days —
   // weekends (no holiday entry) stay blank, and holidays show the holiday
   // name instead (rendered above via cal-holiday-tag).
@@ -430,7 +430,7 @@ function buildDayCell(ds, inMonth, monthData) {
     const bookedCnt = new Set(entries.map(e => e.resource_id)).size;
     const reqCnt = requiredForDate(ds);
     if (projCnt > 0 || bookedCnt > 0 || reqCnt > 0) {
-      inner += `<div class="cal-meta">Project : ${projCnt} <span class="cal-meta-sep">|</span> Resource ${bookedCnt}/${fmtNum(reqCnt)}</div>`;
+      inner += `<div class="cal-meta">Prj : ${projCnt} <span class="cal-meta-sep">|</span> OS ${bookedCnt}/${fmtNum(reqCnt)}</div>`;
     }
   }
 
