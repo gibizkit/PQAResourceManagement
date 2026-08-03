@@ -549,6 +549,15 @@ async function loadPeriod(force){
 /**
  * Aggregate a set of booking/leave rows over an arbitrary period.
  *
+ * นิยาม MD (ยืนยัน 2026-08-03): MD = WD × Booking MD ของพนักงานทุกคน
+ *   — WD = จำนวนวันทำงาน (จ-ศ ไม่รวมวันหยุด) ที่ booking คาบเกี่ยวช่วง Period
+ *   — Booking MD = booking.md ซึ่งเป็น "MD ต่อวัน" (1.0 เต็มวัน / 0.5 ครึ่งวัน)
+ *   — รวมทุก booking ที่ทำงานให้ project phase นั้น
+ *   v_booking_daily กาง booking เป็นรายวันทำงานให้แล้ว (md_per_day = booking.md)
+ *   ดังนั้น "sum(md_per_day) ของแถวในช่วง" = WD × MD ต่อวัน = ตรงนิยามพอดี
+ *   ⚠️ ก่อน 2026-08-03 view หาร md ด้วยจำนวนวันทำงานอีกชั้น ทำให้ทุกตัวเลขในหน้านี้
+ *      ต่ำกว่าจริงเท่ากับจำนวนวันทำงาน — แก้ที่ sql/patch_2026-08-03_booking_md_per_day.sql
+ *
  * NOTE on MD calculation (per task spec):
  *  - byAppPhase / phaseTotals / byProject / byProjectPhase / byOsApp all use RAW
  *    booked MD (sum of md_per_day from v_booking_daily) — this feeds the charts,
