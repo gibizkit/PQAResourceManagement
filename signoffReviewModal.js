@@ -49,6 +49,9 @@ const _lookup = { app: null, meLoaded: false, me: '' };
 let _lastLoad = null; // { pk, rootRow, topLevel, byParent, projRow }
 let _urlEditing = false;       // Signoff URL inline edit box open?
 let _editingCommentId = null;  // id of the comment/reply currently in edit mode (or null)
+// root Signoff Review card: edit box is CLOSED by default and only opens via the ✏️ button
+// (shown to the card's own author) or the "เพิ่ม Signoff Review" button when no root exists.
+let _rootEditing = false;
 
 async function ensureLookups() {
   const tasks = [];
@@ -84,6 +87,8 @@ function ensureModal() {
     #signoffReviewOverlay .modal { width:820px; }
     #signoffReviewOverlay .modal-body { max-height:78vh; overflow:auto; }
     .sr-modal-card { background:var(--dk-surface); border:1px solid var(--dk-border); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+    .sr-modal-card-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .sr-modal-card-head .sr-modal-card-meta { margin-bottom:0; flex:1; min-width:0; }
     .sr-modal-card-meta { font-size:11px; color:var(--dk-text3); margin-bottom:6px; }
     .sr-modal-card-body { font-size:13.5px; color:var(--dk-text); line-height:1.55; white-space:pre-wrap; }
     .sr-modal-thread-title { font-weight:700; font-size:13px; color:var(--dk-text); margin:14px 0 6px; }
@@ -152,6 +157,7 @@ function ensureModal() {
     if (!ov || ov.classList.contains('hidden')) return;
     if (_editingCommentId != null) { _editingCommentId = null; renderSignoffReviewModal(); return; }
     if (_urlEditing) { _urlEditing = false; renderSignoffReviewModal(); return; }
+    if (_rootEditing) { _rootEditing = false; renderSignoffReviewModal(); return; }
     window.closeSignoffReviewModal();
   });
 
@@ -172,6 +178,7 @@ window.openSignoffReviewModal = async function (pk, projectName) {
   if (projectName) _projectNameByKey[pk] = projectName;
   _urlEditing = false;
   _editingCommentId = null;
+  _rootEditing = false;
   _lastLoad = null;
   $('signoffReviewFullLink').href = 'signoff-review.html?project=' + encodeURIComponent(pk);
   $('signoffReviewOverlay').classList.remove('hidden');
@@ -182,6 +189,7 @@ window.closeSignoffReviewModal = function () {
   if (ov) ov.classList.add('hidden');
   _urlEditing = false;
   _editingCommentId = null;
+  _rootEditing = false;
 };
 
 /* ============ LOAD ============ */
@@ -335,12 +343,7 @@ function renderSignoffReviewModal() {
 
   const summaryHtml = buildSummaryCardHTML(pk, projectName, projRow);
 
-  const cardHtml = rootRow
-    ? `<div class="sr-modal-card">
-        <div class="sr-modal-card-meta">โดย ${esc(shortEmail(rootRow.author_email))} · ${rootRow.created_at ? dDisp(rootRow.created_at.slice(0, 10)) : ''}${rootRow.edited_at ? ' (แก้ไขแล้ว)' : ''}</div>
-        <div class="sr-modal-card-body">${esc(rootRow.body || '')}</div>
-      </div>`
-    : `<div class="muted" style="margin-bottom:10px">ยังไม่มี Signoff Review สำหรับโปรเจกต์นี้ — เพิ่มได้ด้านล่าง</div>`;
+  const rootHtml = buildRootCardHTML(pk, rootRow);
 
   const threadHtml = topLevel.length
     ? topLevel.map(c => buildCommentGroupHTML(c, byParent)).join('')
@@ -348,18 +351,54 @@ function renderSignoffReviewModal() {
 
   $('signoffReviewBody').innerHTML = `
     ${summaryHtml}
-    ${cardHtml}
-    <div class="field" style="margin-top:6px">
-      <label>${rootRow ? 'แก้ไข Signoff Review' : 'เพิ่ม Signoff Review'}</label>
-      <textarea id="signoffReviewText" rows="4">${esc(rootRow ? (rootRow.body || '') : '')}</textarea>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <div class="form-err" id="signoffReviewErr" style="margin-right:auto"></div>
-      <button class="btn accent sm" onclick="saveSignoffReviewModal('${esc(pk)}')">บันทึก</button>
-    </div>
+    ${rootHtml}
     <div class="sr-modal-thread-title">ความคิดเห็นในห้อง (${topLevel.length + (rootRow ? 1 : 0)})</div>
     ${threadHtml}
   `;
+}
+
+/**
+ * Root "Signoff Review" card.
+ * - view mode (default): read-only body + ✏️ button, shown ONLY to the card's own author
+ *   (same rule as comments/replies: author_email === current session email).
+ * - edit mode: textarea + บันทึก/ยกเลิก — opened by ✏️, or by "เพิ่ม Signoff Review"
+ *   when the project has no root card yet (anyone logged in may create the first one;
+ *   the RPC fn_upsert_signoff_review still enforces can_write()).
+ */
+function buildRootCardHTML(pk, rootRow) {
+  if (_rootEditing) {
+    return `
+      <div class="field" style="margin-top:6px">
+        <label>${rootRow ? 'แก้ไข Signoff Review' : 'เพิ่ม Signoff Review'}</label>
+        <textarea id="signoffReviewText" rows="6">${esc(rootRow ? (rootRow.body || '') : '')}</textarea>
+      </div>
+      <div class="sr-modal-edit-actions" style="margin-bottom:6px">
+        <div class="form-err" id="signoffReviewErr" style="margin-right:auto"></div>
+        <button class="btn accent sm" data-action="root-save" data-pk="${esc(pk)}">บันทึก</button>
+        <button class="btn sm" data-action="root-cancel">ยกเลิก</button>
+      </div>`;
+  }
+
+  if (!rootRow) {
+    return `
+      <div class="muted" style="margin-bottom:6px">ยังไม่มี Signoff Review สำหรับโปรเจกต์นี้</div>
+      <div style="margin-bottom:10px">
+        <button class="btn sm accent" data-action="root-add">＋ เพิ่ม Signoff Review</button>
+      </div>`;
+  }
+
+  const mine = _lookup.me && rootRow.author_email === _lookup.me;
+  const editBtn = mine
+    ? `<button class="srm-icon-btn" data-action="root-edit" title="แก้ไข Signoff Review">✏️</button>`
+    : '';
+  return `
+    <div class="sr-modal-card">
+      <div class="sr-modal-card-head">
+        <div class="sr-modal-card-meta">โดย ${esc(shortEmail(rootRow.author_email))} · ${rootRow.created_at ? dDisp(rootRow.created_at.slice(0, 10)) : ''}${rootRow.edited_at ? ' (แก้ไขแล้ว)' : ''}</div>
+        ${editBtn}
+      </div>
+      <div class="sr-modal-card-body">${esc(rootRow.body || '')}</div>
+    </div>`;
 }
 
 /* ============ ACTIONS — Signoff URL edit / comment edit (delegated clicks) ============ */
@@ -371,6 +410,10 @@ async function onSignoffReviewBodyClick(e) {
   if (action === 'url-edit') { _urlEditing = true; renderSignoffReviewModal(); return; }
   if (action === 'url-cancel') { _urlEditing = false; renderSignoffReviewModal(); return; }
   if (action === 'url-save') { await saveSignoffUrl(btn.dataset.pk); return; }
+
+  if (action === 'root-edit' || action === 'root-add') { _rootEditing = true; renderSignoffReviewModal(); return; }
+  if (action === 'root-cancel') { _rootEditing = false; renderSignoffReviewModal(); return; }
+  if (action === 'root-save') { await window.saveSignoffReviewModal(btn.dataset.pk); return; }
 
   if (action === 'comment-edit') { _editingCommentId = Number(btn.dataset.cid); renderSignoffReviewModal(); return; }
   if (action === 'comment-cancel') { _editingCommentId = null; renderSignoffReviewModal(); return; }
@@ -438,6 +481,7 @@ window.saveSignoffReviewModal = async function (pk) {
     const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: pk, p_body: body });
     if (error) throw error;
     toast('บันทึก Signoff Review แล้ว ✓');
+    _rootEditing = false;   // กลับไปโหมดอ่านอย่างเดียว (ช่องแก้ไม่ค้างเปิด)
     await loadSignoffReviewModal(pk);
   } catch (e) {
     if (err) err.textContent = 'บันทึกไม่สำเร็จ: ' + (e.message || String(e));

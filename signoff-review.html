@@ -69,6 +69,18 @@
   .sr-room-snippet { display:block; font-size:11.5px; color:var(--dk-text2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .sr-room-meta { display:flex; align-items:center; gap:6px; margin-top:6px; }
 
+  /* สถานะแบบ "จุดสี + ข้อความสถานะ + เฟสปัจจุบัน" (แทน pill แถบสี) */
+  .sr-status { display:inline-flex; align-items:center; gap:6px; min-width:0; }
+  .sr-status-text { font-size:11.5px; font-weight:700; color:var(--dk-text2); white-space:nowrap; }
+  .sr-status-sep { color:var(--dk-text3); font-size:11px; }
+  .sr-phase { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700;
+              color:var(--dk-text2); white-space:nowrap; }
+  .sr-phase .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  .sr-phase.upcoming { color:var(--dk-text3); font-weight:600; }
+  .sr-phase.done { color:#2e7d32; }
+  .sr-room-header-actions .sr-status-text { font-size:12px; }
+  .sr-room-header-actions .sr-phase { font-size:12px; }
+
   /* ---- right pane ---- */
   .sr-conv { flex:1; display:flex; flex-direction:column; min-width:0; background:var(--dk-bg); }
   .sr-room-header { display:flex; align-items:center; gap:12px; padding:13px 20px; border-bottom:1px solid var(--dk-border); background:#fff; flex:0 0 auto; }
@@ -258,7 +270,7 @@
 
 <script type="module">
 import {
-  supabase, $, toast, esc, dDisp, monthLabel, loadProjectStatuses, statusPill
+  supabase, $, toast, esc, dDisp, monthLabel, loadProjectStatuses, statusDot, d2s
 } from './common.js';
 
 /* =====================================================================
@@ -266,6 +278,28 @@ import {
    ===================================================================== */
 const EMOJIS = ['👍','❤️','🎉','👀','✅','🚀'];
 const JIRA_RE = /[A-Z][A-Z0-9]+-\d+/g;
+const TODAY = d2s(new Date());
+
+// เฟส — ต้องตรงกับ PHASE_META ใน gantt.html (ชื่อ/สี/ลำดับ)
+const PHASE_META = {
+  SIT:     { name:'SIT',     color:'var(--ph-sit)',     order:10 },
+  TCPREP:  { name:'TC Prep', color:'var(--ph-tcprep)',  order:20 },
+  UAT:     { name:'UAT',     color:'var(--ph-uat)',     order:30 },
+  REG:     { name:'Reg',     color:'var(--ph-reg)',     order:40 },
+  SUPPORT: { name:'Support', color:'var(--ph-support)', order:50 },
+  OTHER1:  { name:'Other 1', color:'var(--ph-other1)',  order:60 },
+  OTHER2:  { name:'Other 2', color:'var(--ph-other2)',  order:70 },
+};
+const PHASE_CODE_BY_NAME = Object.fromEntries(
+  Object.entries(PHASE_META).map(([code, m]) => [m.name.toLowerCase(), code])
+);
+function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
+function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
+// ข้อมูลเก่าจากชีตเก็บ Other 1/2 เป็น SUPPORT + phase_label (ดู CLAUDE.md §5.7)
+function effPhaseCode(ph){
+  const lbl = String(ph.phase_label || '').trim().toLowerCase();
+  return (lbl && PHASE_CODE_BY_NAME[lbl]) || ph.phase_code;
+}
 
 /* =====================================================================
    STATE
@@ -276,6 +310,7 @@ const S = {
   appMap: {},              // app_code -> app_name
   projects: [],            // v_project_wide rows that have a signoff_date
   projMap: {},              // project_key -> row
+  phasesByProject: {},      // project_key -> project_phase rows (ใช้หา "เฟสปัจจุบัน")
   lastCommentMap: {},      // project_key -> {author_email, body, created_at} (most recent, non-root)
 
   mode: 'monthly',          // 'monthly' | 'all'
@@ -336,9 +371,36 @@ function inMonth(dateStr, y, m){
   const [dy, dm] = dateStr.split('-').map(Number);
   return dy === y && dm === m;
 }
-// สี/รายการสถานะมาจาก master pqa.project_status (ผ่าน statusPill ใน common.js)
-function statusPillHTML(status){
-  return statusPill(status);
+/* สถานะ = จุดสี + ข้อความ Status Code + เฟสปัจจุบัน (ไม่ใช้แถบ pill สีแล้ว)
+   สีจุดมาจาก master pqa.project_status (statusDot ใน common.js) */
+function currentPhaseInfo(pk){
+  // ไม่รวม SIT — ตรงกับหน้า Gantt
+  const phs = (S.phasesByProject[pk] || [])
+    .filter(ph => ph.start_date && ph.end_date && ph.phase_code !== 'SIT');
+  if (!phs.length) return null;
+  const cur = phs.find(ph => TODAY >= ph.start_date && TODAY <= ph.end_date);
+  if (cur) return { code:effPhaseCode(cur), label:phaseName(effPhaseCode(cur)), state:'active' };
+  const future = phs.filter(ph => ph.start_date > TODAY)
+                    .sort((a,b) => a.start_date < b.start_date ? -1 : 1);
+  if (future.length) return { code:effPhaseCode(future[0]), label:phaseName(effPhaseCode(future[0])), state:'upcoming' };
+  return { code:null, label:'เสร็จสิ้น', state:'done' };
+}
+function phaseChipHTML(pk){
+  const info = currentPhaseInfo(pk);
+  if (!info) return '';
+  if (info.state === 'done') return '<span class="sr-phase done" title="Phase ปัจจุบัน">✓ เสร็จสิ้น</span>';
+  const pre = info.state === 'upcoming' ? 'จะเริ่ม · ' : '';
+  const cls = 'sr-phase' + (info.state === 'upcoming' ? ' upcoming' : '');
+  return `<span class="${cls}" title="Phase ปัจจุบัน">`
+       + `<span class="dot" style="background:${phaseColor(info.code)}"></span>${pre}${esc(info.label)}</span>`;
+}
+function statusHTML(p){
+  const parts = [];
+  if (p.status) parts.push(`${statusDot(p.status)}<span class="sr-status-text">${esc(p.status)}</span>`);
+  const chip = phaseChipHTML(p.project_key);
+  if (chip) parts.push(chip);
+  if (!parts.length) return '';
+  return `<span class="sr-status">${parts.join('<span class="sr-status-sep">·</span>')}</span>`;
 }
 
 /* =====================================================================
@@ -403,7 +465,7 @@ async function showApp(session){
    MASTER DATA
    ===================================================================== */
 async function loadMasterData(){
-  const [, projRes, appRes, userRes, lastCmtRes, roomKeysRes] = await Promise.all([
+  const [, projRes, appRes, userRes, lastCmtRes, roomKeysRes, phaseRes] = await Promise.all([
     loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
     supabase.from('v_project_wide')
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,deploy_date,signoff_url,project_note,is_active')
@@ -418,9 +480,11 @@ async function loadMasterData(){
     // req 7: only show projects that already have a "room" — i.e. any signoff_comment row
     // (the root card is created from the Gantt modal via fn_upsert_signoff_review)
     supabase.from('signoff_comment').select('project_key'),
+    // เฟส — ใช้คำนวณ "เฟสปัจจุบัน" ที่แสดงข้างสถานะ
+    supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date'),
   ]);
 
-  for (const r of [projRes, appRes, userRes, lastCmtRes, roomKeysRes]) {
+  for (const r of [projRes, appRes, userRes, lastCmtRes, roomKeysRes, phaseRes]) {
     if (r.error) console.warn('signoff-review master data error', r.error);
   }
   if (projRes.error || appRes.error) toast('โหลดข้อมูลโปรเจกต์ไม่สำเร็จ', true);
@@ -429,6 +493,11 @@ async function loadMasterData(){
   S.projects = (projRes.data || []).filter(p => roomKeys.has(p.project_key));
   S.projMap = {};
   S.projects.forEach(p => { S.projMap[p.project_key] = p; });
+
+  S.phasesByProject = {};
+  (phaseRes.data || []).forEach(ph => {
+    (S.phasesByProject[ph.project_key] = S.phasesByProject[ph.project_key] || []).push(ph);
+  });
 
   S.appMap = {};
   (appRes.data || []).forEach(a => { S.appMap[a.app_code] = a.app_name; });
@@ -488,7 +557,7 @@ function buildRoomItemHTML(p){
           <span class="sr-room-time">${esc(timeTxt)}</span>
         </span>
         <span class="sr-room-snippet">${esc(snippet)}</span>
-        <span class="sr-room-meta">${statusPillHTML(p.status)}</span>
+        <span class="sr-room-meta">${statusHTML(p)}</span>
       </span>
     </button>`;
 }
@@ -626,7 +695,7 @@ function buildRoomHeaderHTML(proj){
         <div class="sr-room-header-sub">${esc(appName)} · UAT Lead: ${esc(proj.uat_lead||'—')}</div>
       </div>
       <div class="sr-room-header-actions">
-        ${statusPillHTML(proj.status)}
+        ${statusHTML(proj)}
         ${docBtn}
       </div>
     </div>`;
