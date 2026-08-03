@@ -356,6 +356,30 @@ export function statusPill(status) {
   return `<span class="status-pill ${LEGACY_STATUS_CLASS[status] || ''}">${esc(status)}</span>`;
 }
 
+// สีจุดสำรอง (ใช้สีตัวอักษรของ pill เดิม) เผื่อ master ยังโหลดไม่เสร็จ/ยังไม่ได้รัน patch
+const LEGACY_STATUS_DOT = {
+  'Need Attention': '#c0392b',
+  'Ready to Start': '#2563A6',
+  'In Progress': '#a15c12',
+  'Completed': '#2e7d32'
+};
+
+/**
+ * Render status เป็นวงกลมเล็กๆ (hover แล้วขึ้น tooltip เป็นข้อความสถานะ)
+ * ใช้ในคอลัมน์แคบๆ ที่ไม่มีที่พอสำหรับ pill เต็มๆ เช่น Gantt
+ * @param {string} status
+ * @returns {string} HTML
+ */
+export function statusDot(status) {
+  if (!status) return '<span class="status-dot status-dot-none" title="— ไม่ระบุสถานะ —"></span>';
+
+  const s  = STATUS_CACHE.find(x => x.status_code === status);
+  const fg = safeColor(s && s.pill_fg) || LEGACY_STATUS_DOT[status] || '#9a8f80';
+  const bg = safeColor(s && s.pill_bg) || '#ffffff';
+  return `<span class="status-dot" style="background:${fg};box-shadow:0 0 0 2.5px ${bg}"`
+       + ` title="${esc(status)}" aria-label="${esc(status)}"></span>`;
+}
+
 /**
  * Format date for display (fallback to '—' if empty)
  * @param {string} d — 'yyyy-MM-dd' or empty

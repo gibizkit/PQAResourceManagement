@@ -96,10 +96,12 @@
     padding:0; box-sizing:border-box;
   }
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
-  .c0 { min-width:230px; width:230px; left:0; }
-  .c1 { min-width:130px; width:130px; left:230px; }
-  .c2 { min-width:104px; width:104px; left:360px; }
+  .c0  { min-width:230px; width:230px; left:0; }
+  .cst { min-width:46px;  width:46px;  left:230px; text-align:center; }
+  .c1  { min-width:130px; width:130px; left:276px; }
+  .c2  { min-width:66px;  width:66px;  left:406px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
+  td.cst, th.cst { padding:6px 4px; text-align:center; }
 
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
   .sticky-col { position:sticky; background:#fff; z-index:6; }
@@ -129,7 +131,9 @@
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
 
   /* action icon buttons in the frozen Action column */
-  .act { display:flex; align-items:center; gap:3px; }
+  /* Action = 2 ปุ่มพอดี → บีบคอลัมน์ให้แคบ ไม่เหลือที่ว่างเยอะ */
+  td.c2, th.c2 { padding:6px 4px; text-align:center; }
+  .act { display:flex; align-items:center; justify-content:center; gap:3px; }
   .ico { border:1px solid transparent; background:none; font-size:13px; cursor:pointer;
     width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;
     color:var(--dk-text2); line-height:1; padding:0; }
@@ -463,7 +467,7 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 
 <script type="module">
-import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr,
+import { supabase, $, toast, esc, dDisp, d2s, statusPill, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads,
          loadProjectStatuses, statusOptionsHTML } from './common.js';
 
@@ -478,6 +482,25 @@ const PHASE_META = {
   OTHER2:  { name:'Other 2', color:'var(--ph-other2)', order:70 },
 };
 function phaseName(code){ return (PHASE_META[code] || {}).name || code; }
+// ชื่อเฟส → code (ใช้แก้ข้อมูลเก่าที่ Other 1/Other 2 ถูกยัดเป็น SUPPORT + phase_label)
+const PHASE_CODE_BY_NAME = Object.fromEntries(
+  Object.entries(PHASE_META).map(([code, m]) => [m.name.toLowerCase(), code])
+);
+/**
+ * code ที่ใช้แสดงผลจริงของแถวเฟส — ถ้า phase_label ตรงกับชื่อเฟสที่มีอยู่แล้ว
+ * (ข้อมูลเก่าจากชีต: SUPPORT + label 'Other 2') ให้ถือว่าเป็นเฟสนั้นไปเลย
+ */
+function effPhaseCode(ph){
+  const lbl = String(ph.phase_label || '').trim().toLowerCase();
+  return (lbl && PHASE_CODE_BY_NAME[lbl]) || ph.phase_code;
+}
+// ป้ายชื่อที่โชว์ในคอลัมน์ Phase — ไม่ต่อท้าย label ถ้า label ซ้ำกับชื่อเฟสอยู่แล้ว
+function phaseRowLabel(ph){
+  const code = effPhaseCode(ph);
+  const name = phaseName(code);
+  const lbl  = String(ph.phase_label || '').trim();
+  return (!lbl || lbl.toLowerCase() === name.toLowerCase()) ? esc(name) : esc(name) + ' • ' + esc(lbl);
+}
 function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
 function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
 
@@ -487,10 +510,11 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
-const COL_W = { c0:230, c1:130, c2:104, day:28 };
+const COL_W = { c0:230, cst:46, c1:130, c2:66, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
+    `<col style="width:${COL_W.cst}px">` +
     `<col style="width:${COL_W.c1}px">` +
     `<col style="width:${COL_W.c2}px">` +
     new Array(dayCount).fill(`<col style="width:${COL_W.day}px">`).join('') +
@@ -612,6 +636,8 @@ async function loadAll(){
     S.phasesByProject = {};
     (phaseRes.data || []).forEach(ph => { (S.phasesByProject[ph.project_key] ||= []).push(ph); });
     Object.values(S.phasesByProject).forEach(arr => arr.sort((a,b) =>
+      // ข้อมูลเก่า Other1/Other2 = SUPPORT + label → เรียงตามเฟสที่แสดงจริง (effPhaseCode)
+      (phaseOrder(effPhaseCode(a)) - phaseOrder(effPhaseCode(b))) ||
       ((a.sort_order ?? phaseOrder(a.phase_code)) - (b.sort_order ?? phaseOrder(b.phase_code))) ||
       String(a.phase_label||'').localeCompare(String(b.phase_label||''))));
 
@@ -811,7 +837,7 @@ function filteredProjects(){
     // Phase filter: keep projects where TODAY falls within a selected phase's date range
     if (S.filter.phases.size) {
       const inPhase = (S.phasesByProject[p.project_key]||[]).some(ph =>
-        S.filter.phases.has(ph.phase_code) && ph.start_date && ph.end_date &&
+        S.filter.phases.has(effPhaseCode(ph)) && ph.start_date && ph.end_date &&
         TODAY >= ph.start_date && TODAY <= ph.end_date);
       if (!inPhase) return false;
     }
@@ -857,9 +883,9 @@ function currentPhaseInfo(pk){
   const phs = (S.phasesByProject[pk]||[]).filter(ph => ph.start_date && ph.end_date && ph.phase_code !== 'SIT');
   if (!phs.length) return null;
   const cur = phs.find(ph => TODAY >= ph.start_date && TODAY <= ph.end_date);
-  if (cur) return { code:cur.phase_code, label:phaseName(cur.phase_code), state:'active' };
+  if (cur) return { code:effPhaseCode(cur), label:phaseName(effPhaseCode(cur)), state:'active' };
   const future = phs.filter(ph => ph.start_date > TODAY).sort((a,b) => a.start_date < b.start_date ? -1 : 1);
-  if (future.length) return { code:future[0].phase_code, label:phaseName(future[0].phase_code), state:'upcoming' };
+  if (future.length) return { code:effPhaseCode(future[0]), label:phaseName(effPhaseCode(future[0])), state:'upcoming' };
   return { code:null, label:'เสร็จสิ้น', state:'done' };
 }
 function phaseChipHtml(info){
@@ -928,6 +954,7 @@ function renderGantt(){
 
   let head = '<thead><tr>' +
     '<th class="sticky-col c0" rowspan="2">Project</th>' +
+    '<th class="sticky-col cst" rowspan="2" title="Project Status">Status</th>' +
     '<th class="sticky-col c1" rowspan="2">Phase / Booked</th>' +
     '<th class="sticky-col c2" rowspan="2" style="text-align:center">Action</th>' +
     months.map(mo => `<th class="th-month" colspan="${mo.count}">${monthLabel(mo.ym)}</th>`).join('') +
@@ -984,6 +1011,7 @@ function summaryRow(p, days){
       <div class="p-name">${esc(p.project_name)}</div>
       <div class="p-meta">${meta}</div>
     </td>
+    <td class="sticky-col cst">${statusDot(p.status)}</td>
     <td class="sticky-col c1">${c1inner}</td>
     <td class="sticky-col c2">
       <div class="act">${editBtn}${soBtn}</div>
@@ -1003,18 +1031,19 @@ function phaseRow(p, ph, days){
   const ok  = req != null && bkCnt === req && req > 0;
 
   const idx = S.renderedPhases.length;
-  S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseName(ph.phase_code), start:ph.start_date, end:ph.end_date });
+  S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseName(effPhaseCode(ph)), start:ph.start_date, end:ph.end_date });
 
-  const color = phaseColor(ph.phase_code);
+  const color = phaseColor(effPhaseCode(ph));
   const cells = phaseCells(pk, ph.phase_code, days, ph.start_date, ph.end_date, color);
 
-  const lbl = phaseName(ph.phase_code) + (ph.phase_label ? ' • '+esc(ph.phase_label) : '');
+  const lbl = phaseRowLabel(ph);
   const bkCls = 'bk' + (bad?' bad':ok?' ok':'');
   // req 3: SIT ไม่ต้อง Book Manday — ไม่โชว์ป้ายจำนวนคน/ปุ่ม booking ที่แถว SIT
   const bookBadge = ph.phase_code === 'SIT' ? '' :
     `<span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>`;
   return `<tr>
     <td class="sticky-col c0"></td>
+    <td class="sticky-col cst"></td>
     <td class="sticky-col c1">
       <div class="ph-row">
         <span class="ph-label" title="${lbl}"><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
@@ -1038,6 +1067,7 @@ function milestoneRow(p, days){
     : '';
   return `<tr>
     <td class="sticky-col c0"></td>
+    <td class="sticky-col cst"></td>
     <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
     <td class="sticky-col c2"><div class="act">${so}</div></td>
     ${cells}
@@ -1194,10 +1224,15 @@ window.openProjEdit = async function(key){
   if (editingKey === key) buildLeadPicker(pl.main, pl.subs);   // กันเคสผู้ใช้เปิดโปรเจกต์อื่นทับ
 
   const { data: phs } = await supabase.from('project_phase')
-    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
+    .select('project_phase_id,phase_code,phase_label,start_date,end_date,md,resource_count')
     .eq('project_key', key);
   const map = {};
-  (phs || []).forEach(ph => { map[ph.phase_code]=ph; existingPhases[ph.phase_code]=ph.project_phase_id; });
+  // ข้อมูลเก่า Other1/Other2 เก็บเป็น SUPPORT + phase_label → จับเข้าแถวเฟสจริงในฟอร์ม
+  // (เซฟทับแล้วจะกลายเป็น phase_code OTHER1/OTHER2 เอง ไม่ทับแถว Support)
+  (phs || []).forEach(ph => {
+    const code = effPhaseCode(ph);
+    map[code] = ph; existingPhases[code] = ph.project_phase_id;
+  });
   buildPhaseRows(map);
 };
 

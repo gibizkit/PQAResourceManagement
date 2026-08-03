@@ -348,6 +348,21 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/* จุดสถานะแบบย่อ (ใช้ในคอลัมน์ Status ของ Gantt) — hover แล้วขึ้น tooltip */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.status-dot-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #cfc3b4;
+}
+
 .st-need {
   background: #fdecea;
   color: #c0392b;
