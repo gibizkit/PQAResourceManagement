@@ -312,7 +312,7 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, defaultFilterEndStr
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName
 } from './common.js';
 
 /* =====================================================================
@@ -373,7 +373,7 @@ const S = {
   // shared period state — dashboard always runs in "overall" custom Start–End range mode
   dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
-  chartCollapsed: false,        // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only)
+  chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
   overallRange: { s:'', e:'' }, // selected Start/End
   periodCacheKey: '',           // identifies the currently-loaded period (start|end range), '' = not loaded
   bookingDaily: [],             // v_booking_daily rows for the current period
@@ -929,19 +929,22 @@ function roleLabelFor(code){
    Source of truth: project_lead + pqa_lead (both main & additional leads), scoped
    to the current project set (active only in monthly mode; all projects in overall
    mode) — NOT time/day-bound (it's a coverage matrix, not an MD report), matching
-   the simpler of the two allowed paths in the task spec. */
+   the simpler of the two allowed paths in the task spec.
+   Each cell = COUNT of distinct projects that Lead owns under that App (not just
+   a 0/1 coverage flag) — a Lead with 2 projects under the same App shows "2". */
 function renderLeadView(container){
   const projByKey = currentProjMap();
-  const leadCoverage = {}; // emp_id -> Set(app)
+  const leadCoverage = {}; // emp_id -> { app -> Set(project_key) }
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
     const app = proj.app || proj.other_app || '— ไม่มี App —';
-    (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || new Set()).add(app);
+    const byApp = (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || {});
+    (byApp[app] = byApp[app] || new Set()).add(pl.project_key);
   });
 
   const appSet = new Set();
-  Object.values(leadCoverage).forEach(s => s.forEach(a => appSet.add(a)));
+  Object.values(leadCoverage).forEach(byApp => Object.keys(byApp).forEach(a => appSet.add(a)));
   const apps = sortedApps([...appSet]);
 
   if (!apps.length) {
@@ -950,27 +953,30 @@ function renderLeadView(container){
   }
 
   const colCount = {}; apps.forEach(a => colCount[a] = 0);
-  let grandCells = 0;
+  let grandTotal = 0;
   const bodyRows = S.leadsAll.map(l => {
-    const cov = leadCoverage[l.emp_id] || new Set();
-    if (!cov.size) return ''; // lead with no project in the current set — skip row (keeps matrix relevant)
+    const byApp = leadCoverage[l.emp_id] || {};
+    const allProjects = new Set();
+    Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
+    if (!allProjects.size) return ''; // lead with no project in the current set — skip row (keeps matrix relevant)
     const cells = apps.map(a => {
-      const has = cov.has(a);
-      if (has) { colCount[a]++; grandCells++; }
-      return `<td class="center">${has ? '1' : '<span class="muted">—</span>'}</td>`;
+      const n = byApp[a] ? byApp[a].size : 0;
+      if (n) colCount[a] += n;
+      return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
     }).join('');
-    return `<tr><td>${esc(l.short_name)}</td><td class="right">${cov.size}</td>${cells}</tr>`;
+    grandTotal += allProjects.size;
+    return `<tr><td>${esc(l.short_name)}</td><td class="right">${allProjects.size}</td>${cells}</tr>`;
   }).filter(Boolean);
 
   const totalRow = `<tr class="dash-total-row">
-    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${grandCells}</td>
+    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${grandTotal}</td>
     ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
   </tr>`;
 
   container.innerHTML = `
     <div class="dash-table-wrap">
       <table class="dash-table">
-        <thead><tr><th>UAT Lead</th><th class="right">Total App</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
+        <thead><tr><th>UAT Lead</th><th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
         <tbody>${bodyRows.join('') || `<tr><td colspan="${2+apps.length}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
         <tfoot>${totalRow}</tfoot>
       </table>
@@ -1037,23 +1043,15 @@ function renderSignoffView(container){
 /* =====================================================================
    PERIOD DEFAULTS (Start–End range)
    ===================================================================== */
-async function getOverallMinDate(){
-  const { data, error } = await supabase.from('project_phase')
-    .select('start_date')
-    .in('phase_code', ['TCPREP','UAT','SIT','REG'])
-    .not('start_date', 'is', null)
-    .order('start_date', { ascending: true })
-    .limit(1);
-  if (error || !data || !data.length) return d2s(new Date(new Date().getFullYear(), 0, 1)); // fallback: Jan 1 this year
-  return data[0].start_date;
-}
-
-/** Populate S.overallRange with sane defaults on first load (Start = earliest known phase
- *  start date; End = §4.2 standard, last day of the month 3 months ahead). */
+/** Populate S.overallRange with sane defaults on first load.
+ *  Dashboard-specific default (differs from the §4.2 gantt/outsource standard):
+ *  Start = first day of this month, End = last day of this month. */
 async function ensureOverallRangeDefaults(){
   if (S.overallRange.s && S.overallRange.e) return;
-  const minDate = await getOverallMinDate();
-  S.overallRange = { s: minDate, e: defaultFilterEndStr() }; // §4.2 standard: End = last day of month +3 ahead
+  const now = new Date();
+  const monthStart = d2s(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = d2s(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  S.overallRange = { s: monthStart, e: monthEnd };
   $('ovStart').value = S.overallRange.s;
   $('ovEnd').value = S.overallRange.e;
 }
