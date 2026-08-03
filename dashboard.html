@@ -173,6 +173,14 @@
   #projectTable th.proj-name, #projectTable td.proj-name { width:255px; min-width:255px; max-width:255px; }
   #projectTable th.col-lead,  #projectTable td.col-lead  { width:110px; min-width:110px; max-width:110px; }
 
+  /* Lead cell = Main Lead (normal) + Sub Lead(s) on their own grey lines below.
+     Cells align to the top so a 3-line Lead cell doesn't push the MD numbers down. */
+  #projectTable td.col-lead, #signoffTable td.col-lead { vertical-align:top; }
+  .lead-sub {
+    display:block; font-size:11px; line-height:1.35; color:var(--dk-text3);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
   #projectTable th.col-app,   #projectTable td.col-app,
   #projectTable th.proj-name, #projectTable td.proj-name,
   #projectTable td.total-label-frozen {
@@ -818,9 +826,35 @@ function wireSortHeader(theadEl, sortState, onChange){
    first column per spec; "Project Name" is kept as an extra identifying
    column right after it (a bare App column with no project name would make
    rows impossible to tell apart). */
+/* Sub Lead names per project (project_lead.is_main = false).
+   v_project_wide.uat_lead resolves the MAIN lead only, so sub leads have to come from
+   project_lead + pqa_lead — the same pair the By Lead matrix uses. pqa_lead is loaded
+   with is_active = true, so a sub lead that was deactivated falls back to its emp_id
+   rather than disappearing from the row. */
+function subLeadMap(){
+  const nameOf = {};
+  S.leadsAll.forEach(l => { nameOf[l.emp_id] = l.short_name || l.nickname || l.emp_id; });
+  const map = {};
+  S.projectLeadRows.forEach(pl => {
+    if (pl.is_main) return;
+    (map[pl.project_key] = map[pl.project_key] || []).push(nameOf[pl.pqa_emp_id] || pl.pqa_emp_id);
+  });
+  Object.values(map).forEach(a => a.sort((x,y)=>String(x).localeCompare(String(y))));
+  return map;
+}
+/** Lead cell HTML: main lead + one grey line per sub lead (or — when there is no lead at all). */
+function leadCellHTML(mainLead, subLeads){
+  const subs = subLeads || [];
+  const main = mainLead ? esc(mainLead) : (subs.length ? '<span class="muted">—</span>' : '');
+  const subHtml = subs.map(n => `<span class="lead-sub">${esc(n)}</span>`).join('');
+  if (!main && !subHtml) return '<span class="muted">—</span>';
+  return `${main}${subHtml}`;
+}
+
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
+  const subLeads = subLeadMap();
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
   // already server-filtered via .eq('is_active', true) in loadMasterData().
   return S.activeProjects.map(p => {
@@ -853,6 +887,7 @@ function buildProjectRows(){
       app: p.app || p.other_app || '— ไม่มี App —',
       projectName: p.project_name || '',
       lead: p.uat_lead || '',
+      subLeads: subLeads[pk] || [],
       uatPeriodDisp, uatPeriodSortKey: periodStart || '',
       totalMD, tcprep: pAgg.TCPREP || 0, uat: pAgg.UAT || 0, reg: pAgg.REG || 0,
       other1, other2, support: pAgg.SUPPORT || 0,
@@ -878,7 +913,7 @@ function renderProjectView(container){
     return `<tr>
       <td class="col-app" title="${esc(r.app)}">${esc(r.app)}</td>
       <td class="proj-name" title="${esc(r.projectName)}">${esc(truncName(r.projectName))}</td>
-      <td class="col-lead">${esc(r.lead) || '<span class="muted">—</span>'}</td>
+      <td class="col-lead" title="${esc([r.lead, ...r.subLeads].filter(Boolean).join(' / '))}">${leadCellHTML(r.lead, r.subLeads)}</td>
       <td>${esc(r.uatPeriodDisp)}</td>
       <td class="right">${fmtMD(r.totalMD)}</td>
       <td class="right">${fmtMD(r.tcprep)}</td>
@@ -1066,12 +1101,14 @@ const SIGNOFF_KEYFNS = {
 };
 function renderSignoffView(container){
   const { first, last } = currentRange();
+  const subLeads = subLeadMap();
   const rows = currentProjectsList()
     .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
     .map(p => ({
       project_key: p.project_key,
       app: p.app || p.other_app || '',
       lead: p.uat_lead || '',
+      subLeads: subLeads[p.project_key] || [],
       signoff_date: p.signoff_date,
       projectName: p.project_name,
       signoff_url: p.signoff_url || '',
@@ -1091,7 +1128,7 @@ function renderSignoffView(container){
       : `<button class="ico-btn" title="ไม่มีเอกสาร Signoff" disabled>📄</button>`;
     return `<tr>
       <td class="col-app" title="${esc(p.app)}">${esc(p.app)}</td>
-      <td>${esc(p.lead) || '<span class="muted">—</span>'}</td>
+      <td class="col-lead" title="${esc([p.lead, ...p.subLeads].filter(Boolean).join(' / '))}">${leadCellHTML(p.lead, p.subLeads)}</td>
       <td>${dDisp(p.signoff_date)}</td>
       <td class="proj-name" title="${esc(p.projectName)}">${esc(truncName(p.projectName))}</td>
       <td class="center">${signoffBtn}</td>

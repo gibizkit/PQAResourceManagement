@@ -737,7 +737,13 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
   search.onclick = (e) => e.stopPropagation();
   searchX.onclick = (e) => { e.stopPropagation(); search.value=''; applySearch(); search.focus(); };
 
-  btn.onclick = (e) => { e.stopPropagation(); panel.classList.toggle('hidden'); };
+  // เปิด dropdown ตัวไหน → หุบตัวอื่นทั้งหมดก่อน (เปิดได้ทีละอันเท่านั้น)
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = panel.classList.contains('hidden');
+    closeAllMsPanels();
+    if (willOpen) { panel.classList.remove('hidden'); search.focus(); }
+  };
   panel.onclick = (e) => { e.stopPropagation(); };
   list.onchange = () => {
     selectedSet.clear();
@@ -790,9 +796,17 @@ function syncMultiSelect(hostId, selectedSet){
   }
   btn.innerHTML = `${esc(String(label))} <span class="ms-count">▾</span>`;
 }
-document.addEventListener('click', () => {
+function closeAllMsPanels(){
   document.querySelectorAll('.ms-panel').forEach(p => p.classList.add('hidden'));
-});
+}
+document.addEventListener('click', closeAllMsPanels);
+// ESC ก็หุบ dropdown ที่เปิดอยู่ (ก่อนไปถึง handler ปิด modal)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.querySelector('.ms-panel:not(.hidden)')) {
+    closeAllMsPanels();
+    e.stopPropagation();
+  }
+}, true);
 
 function buildFilters(){
   makeMultiSelect('msProject',
