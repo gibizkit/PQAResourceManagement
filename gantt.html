@@ -975,10 +975,9 @@ function summaryRow(p, days){
   const toggleBtn = `<button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>`;
   const c1inner = `<div class="ph-row" style="justify-content:flex-start;gap:2px">${toggleBtn}${phaseChipHtml(currentPhaseInfo(pk))}</div>`;
 
-  // req 15: Action column = pencil (edit) + signoff icon + doc icon
+  // req 15: Action column = pencil (edit) + signoff icon
   const editBtn = `<button class="ico" onclick="openProjEdit('${esc(pk)}')" title="แก้ไข Project detail">✏️</button>`;
   const soBtn   = `<button class="ico" onclick="window.srOpenFromKey('${esc(pk)}')" title="Review Signoff">🔎</button>`;
-  const docBtn  = `<button class="ico" onclick="openSignoffDoc('${esc(pk)}')" title="เปิดเอกสาร Signoff">📄</button>`;
 
   return `<tr class="prow-sum">
     <td class="sticky-col c0" title="${esc(p.project_name)}">
@@ -987,7 +986,7 @@ function summaryRow(p, days){
     </td>
     <td class="sticky-col c1">${c1inner}</td>
     <td class="sticky-col c2">
-      <div class="act">${editBtn}${soBtn}${docBtn}</div>
+      <div class="act">${editBtn}${soBtn}</div>
     </td>
     ${cells}
   </tr>`;
@@ -1292,13 +1291,6 @@ window.deleteProj = async function(){
   window.closeProjModal();
   toast('ปิดใช้งานแล้ว ✓');
   await loadAll();
-};
-
-/* ============ SIGNOFF DOCUMENT (req 5) ============ */
-window.openSignoffDoc = function(pk){
-  const p = S.projects.find(x => x.project_key === pk);
-  if (!p || !p.signoff_url){ toast('ไม่มีลิงก์เอกสาร Signoff', true); return; }
-  window.open(p.signoff_url, '_blank', 'noopener');
 };
 
 /* ============ SIGNOFF REVIEW (modal is injected by shared signoffReviewModal.js —

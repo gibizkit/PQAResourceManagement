@@ -138,11 +138,25 @@
   .sr-reply-top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .sr-reply-author { font-weight:700; font-size:12.5px; color:var(--dk-text); }
   .sr-reply-text { font-size:13px; color:var(--dk-text); line-height:1.5; margin-top:2px; white-space:pre-wrap; }
+  .sr-reply-actions { margin-top:4px; }
   .sr-reply-form { margin:9px 0 4px; display:flex; gap:8px; align-items:center; }
   .sr-reply-form input { flex:1; border:1px solid var(--dk-border-s); background:#fff; border-radius:10px; padding:8px 11px; font-size:13px; color:var(--dk-text); outline:none; }
   .sr-reply-form input:focus { border-color:var(--dk-accent); }
   .sr-send-sm { border:none; background:var(--dk-accent); color:#fff; border-radius:10px; padding:8px 15px; font-size:12.5px; font-weight:700; cursor:pointer; }
   .sr-send-sm:hover { filter:brightness(1.05); }
+
+  /* ---- inline edit form (comment / reply / root) ---- */
+  .sr-edit-form { margin-top:5px; }
+  .sr-edit-textarea {
+    width:100%; box-sizing:border-box; border:1px solid var(--dk-border-s); background:#fff;
+    border-radius:10px; padding:8px 11px; font-size:13.5px; color:var(--dk-text); outline:none;
+    resize:vertical; font-family:inherit; line-height:1.5;
+  }
+  .sr-edit-textarea:focus { border-color:var(--dk-accent); }
+  .sr-edit-err { color:var(--danger); font-size:12px; min-height:15px; margin-top:3px; }
+  .sr-edit-actions { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .sr-edit-cancel { border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); border-radius:10px; padding:8px 15px; font-size:12.5px; font-weight:700; cursor:pointer; }
+  .sr-edit-cancel:hover { background:var(--dk-hover); }
 
   /* ---- composer ---- */
   .sr-composer { padding:12px 20px 16px; background:#fff; border-top:1px solid var(--dk-border); flex:0 0 auto; }
@@ -272,6 +286,7 @@ const S = {
   room: null,                // loaded room detail (see loadRoom)
   pickerOpenKey: null,       // emoji-picker open for 'card' or String(commentId)
   replyOpenKey: null,        // reply box open for a comment id (number)
+  editOpenKey: null,         // inline edit box open for a comment/reply/root id (number) — only one at a time
 };
 
 let realtimeChannel = null;
@@ -509,6 +524,7 @@ function selectRoom(pk){
   S.selectedKey = pk;
   S.pickerOpenKey = null;
   S.replyOpenKey = null;
+  S.editOpenKey = null;
   renderRail();
   loadRoom(pk);
 }
@@ -669,6 +685,8 @@ function buildRootCommentHTML(proj){
     : esc(bodyRaw);
   const replies = S.room.byParent[rootId] || [];
   const replyOpen = S.replyOpenKey === rootId;
+  const isMine = rootId != null && authorEmail === S.me;
+  const editOpen = rootId != null && S.editOpenKey === rootId;
   return `
     <div class="sr-comment sr-comment-root">
       <span class="sr-avatar sm ${hashClr(authorDisplay)}">${esc(initialsFor(authorDisplay))}</span>
@@ -679,11 +697,13 @@ function buildRootCommentHTML(proj){
           <span class="sr-pin-tag">📌 SIGNOFF REVIEW</span>
           ${postedTime ? `<span class="sr-time">${esc(postedTime)}${edited}</span>` : ''}
         </div>
+        ${editOpen ? buildEditFormHTML(rootId, bodyRaw) : `
         <div class="sr-comment-text">${bodyHtml}</div>
         <div class="sr-comment-actions">
           ${buildReactionsBlock(rootId, String(rootId))}
           <button class="sr-reply-btn" data-cid="${rootId}">↩ ตอบกลับ</button>
-        </div>
+          ${isMine ? `<button class="sr-reply-btn sr-edit-btn" data-cid="${rootId}">✏️ แก้ไข</button>` : ''}
+        </div>`}
         ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
         ${replyOpen ? `
           <div class="sr-reply-form">
@@ -694,17 +714,36 @@ function buildRootCommentHTML(proj){
     </div>`;
 }
 
+/* กล่องแก้ไขความคิดเห็น/reply/root แบบ inline — สลับที่ text + action row เดิม
+   ใช้ร่วมกันทั้ง 3 ที่ (buildRootCommentHTML / buildCommentHTML / buildReplyHTML) */
+function buildEditFormHTML(id, body){
+  return `
+    <div class="sr-edit-form">
+      <textarea class="sr-edit-textarea" data-cid="${id}" rows="3">${esc(body || '')}</textarea>
+      <div class="sr-edit-err" data-cid="${id}"></div>
+      <div class="sr-edit-actions">
+        <button class="sr-send-sm sr-edit-save" data-cid="${id}">บันทึก</button>
+        <button class="sr-edit-cancel" data-cid="${id}">ยกเลิก</button>
+      </div>
+    </div>`;
+}
+
 function buildReplyHTML(rp){
   const dispName = displayNameFor(rp.author_email);
+  const isMine = rp.author_email === S.me;
+  const editOpen = S.editOpenKey === rp.id;
+  const edited = rp.edited_at ? ' (แก้ไขแล้ว)' : '';
   return `
     <div class="sr-reply">
       <span class="sr-avatar xs ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
       <div>
         <div class="sr-reply-top">
           <span class="sr-reply-author">${esc(dispName)}</span>
-          <span class="sr-time">${esc(commentTimeFull(rp.created_at))}</span>
+          <span class="sr-time">${esc(commentTimeFull(rp.created_at))}${edited}</span>
         </div>
+        ${editOpen ? buildEditFormHTML(rp.id, rp.body) : `
         <div class="sr-reply-text">${esc(rp.body)}</div>
+        ${isMine ? `<div class="sr-reply-actions"><button class="sr-reply-btn sr-edit-btn" data-cid="${rp.id}">✏️ แก้ไข</button></div>` : ''}`}
       </div>
     </div>`;
 }
@@ -713,6 +752,8 @@ function buildCommentHTML(c){
   const isMine = c.author_email === S.me;
   const replies = S.room.byParent[c.id] || [];
   const replyOpen = S.replyOpenKey === c.id;
+  const editOpen = S.editOpenKey === c.id;
+  const edited = c.edited_at ? ' (แก้ไขแล้ว)' : '';
   return `
     <div class="sr-comment">
       <span class="sr-avatar sm ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
@@ -720,13 +761,15 @@ function buildCommentHTML(c){
         <div class="sr-comment-top">
           <span class="sr-comment-author">${esc(dispName)}</span>
           ${isMine ? '<span class="sr-role-tag">ฉัน</span>' : ''}
-          <span class="sr-time">${esc(commentTimeFull(c.created_at))}</span>
+          <span class="sr-time">${esc(commentTimeFull(c.created_at))}${edited}</span>
         </div>
+        ${editOpen ? buildEditFormHTML(c.id, c.body) : `
         <div class="sr-comment-text">${esc(c.body)}</div>
         <div class="sr-comment-actions">
           ${buildReactionsBlock(c.id, String(c.id))}
           <button class="sr-reply-btn" data-cid="${c.id}">↩ ตอบกลับ</button>
-        </div>
+          ${isMine ? `<button class="sr-reply-btn sr-edit-btn" data-cid="${c.id}">✏️ แก้ไข</button>` : ''}
+        </div>`}
         ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
         ${replyOpen ? `
           <div class="sr-reply-form">
@@ -855,6 +898,46 @@ async function sendReply(parentId){
     toast('ส่งข้อความไม่สำเร็จ', true);
   }
 }
+/** แก้ไขความคิดเห็นของตัวเอง (root ใช้ RPC fn_upsert_signoff_review เหมือน Gantt modal,
+ *  comment/reply ธรรมดา update ตรงตาราง — RLS `signoff_comment_update` อนุญาตเฉพาะแถวของตัวเอง
+ *  ถ้าโดนบล็อกจะได้ 0 แถวกลับมาแบบเงียบๆ (ไม่ error) เลยต้องเช็ค .select() ที่ได้คืนมาเอง */
+async function saveCommentEdit(id){
+  if (!S.room || id == null) return;
+  const ta = document.querySelector(`.sr-edit-textarea[data-cid="${id}"]`);
+  const errBox = document.querySelector(`.sr-edit-err[data-cid="${id}"]`);
+  const v = (ta && ta.value || '').trim();
+  if (errBox) errBox.textContent = '';
+  if (!v) { if (errBox) errBox.textContent = 'กรุณากรอกข้อความ ห้ามเว้นว่าง'; return; }
+
+  const isRoot = S.room.rootId != null && id === S.room.rootId;
+  const saveBtn = document.querySelector(`.sr-edit-save[data-cid="${id}"]`);
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    if (isRoot) {
+      const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: S.room.pk, p_body: v });
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase.from('signoff_comment')
+        .update({ body: v, edited_at: new Date().toISOString() })
+        .eq('id', id).select();
+      if (error) throw error;
+      if (!data || !data.length) {
+        // RLS signoff_comment_update บล็อกแบบเงียบๆ (0 แถว, ไม่ error) — เจอ pattern นี้มาก่อนแล้วใน saveProjectLeads (common.js)
+        toast('แก้ไขไม่สำเร็จ: ไม่มีสิทธิ์แก้ไขความคิดเห็นนี้', true);
+        return;
+      }
+    }
+    S.editOpenKey = null;
+    toast('แก้ไขความคิดเห็นแล้ว ✓');
+    await loadRoom(S.room.pk);
+    await refreshRailSnippet(S.room.pk);
+  } catch (err) {
+    console.warn('saveCommentEdit error', err);
+    toast('แก้ไขไม่สำเร็จ: ' + (err.message || ''), true);
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
 async function refreshRailSnippet(pk){
   const { data, error } = await supabase.from('signoff_comment')
     .select('project_key,author_email,body,created_at')
@@ -934,6 +1017,23 @@ function wireStaticControls(){
       rerenderRoomKeepData();
       return;
     }
+    // ✏️ แก้ไข — เช็คก่อน .sr-reply-btn เสมอ (ปุ่มแก้ไขมีคลาส sr-reply-btn ติดมาด้วยเพื่อ reuse สไตล์)
+    const editBtn = e.target.closest('.sr-edit-btn');
+    if (editBtn) {
+      const cid = Number(editBtn.dataset.cid);
+      S.editOpenKey = (S.editOpenKey === cid) ? null : cid;
+      rerenderRoomKeepData();
+      return;
+    }
+    const editCancelBtn = e.target.closest('.sr-edit-cancel');
+    if (editCancelBtn) {
+      S.editOpenKey = null;
+      rerenderRoomKeepData();
+      return;
+    }
+    const editSaveBtn = e.target.closest('.sr-edit-save');
+    if (editSaveBtn) { await saveCommentEdit(Number(editSaveBtn.dataset.cid)); return; }
+
     const replyBtn = e.target.closest('.sr-reply-btn');
     if (replyBtn) {
       const cid = Number(replyBtn.dataset.cid);
@@ -954,6 +1054,11 @@ function wireStaticControls(){
     }
     if (e.target.matches('.sr-reply-input') && e.key === 'Enter') {
       e.preventDefault(); sendReply(Number(e.target.dataset.cid));
+    }
+    if (e.target.matches('.sr-edit-textarea') && e.key === 'Escape') {
+      e.preventDefault();
+      S.editOpenKey = null;
+      rerenderRoomKeepData();
     }
   });
 }
