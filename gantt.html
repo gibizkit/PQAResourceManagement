@@ -98,7 +98,7 @@
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below */
   .c0  { min-width:330px; width:330px; left:0; }
   .c1  { min-width:105px; width:105px; left:330px; }
-  .c2  { min-width:90px;  width:90px;  left:435px; }
+  .c2  { min-width:72px;  width:72px;  left:435px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
 
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
@@ -131,7 +131,7 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
 
-  /* action icon buttons in the frozen Action column (.c2, 90px) */
+  /* action icon buttons in the frozen Action column (.c2, 72px) */
   /* summary row = 2 ปุ่ม (edit + signoff) / phase row = ป้าย 👤 booked/required / milestone row = ว่าง */
   td.c2, th.c2 { padding:6px 2px; text-align:center; }
   .act { display:flex; align-items:center; justify-content:center; gap:2px; }
@@ -142,10 +142,9 @@
   .ico.toggle { font-size:11px; color:var(--dk-text2); width:18px; }
 
   /* current-phase chip (collapsed rows) */
-  .cur-chip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700;
-    padding:3px 9px 3px 8px; border-radius:20px; background:var(--dk-surface); color:var(--dk-text);
+  .cur-chip { display:inline-flex; align-items:center; font-size:11.5px; font-weight:700;
+    padding:3px 9px; border-radius:20px; background:var(--dk-surface); color:var(--dk-text);
     white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
-  .cur-chip .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
   .cur-chip.done { background:#e8f2e6; color:#2e7d32; }
   .cur-chip.upcoming { color:var(--dk-text2); }
 
@@ -157,11 +156,11 @@
   /* Booked/Plan MD block in the Project column (.c0) for phase & milestone rows —
      right-aligned so the numbers line up neatly down the column.
      (ป้าย 👤 booked/required ย้ายไปคอลัมน์ Action .c2 แล้ว) */
-  .c0-md { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+  .c0-md { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:8px; }
   /* Booked MD / Plan MD text (used inside .c0-md) */
   .md-cell { font-size:11.5px; font-weight:700; color:var(--dk-text2); white-space:nowrap; }
   .bk { display:inline-flex; align-items:center; gap:3px; flex:0 0 auto; font-size:11px; font-weight:700; color:var(--dk-text);
-    cursor:pointer; padding:2px 8px; border-radius:20px; background:var(--dk-surface); white-space:nowrap; }
+    cursor:pointer; padding:2px 6px; border-radius:20px; background:var(--dk-surface); white-space:nowrap; }
   .bk:hover { background:var(--dk-hover); }
   .bk.bad { color:#fff; background:var(--conflict); }
   .bk.ok  { color:#2e7d32; background:#e8f2e6; }
@@ -516,7 +515,7 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
-const COL_W = { c0:330, c1:105, c2:90, day:28 };
+const COL_W = { c0:330, c1:105, c2:72, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
@@ -896,10 +895,12 @@ function currentPhaseInfo(pk){
 function phaseChipHtml(info){
   if (!info) return '<span class="muted" style="font-size:11px">— ยังไม่มีเฟส —</span>';
   if (info.state==='done') return '<span class="cur-chip done">✓ เสร็จสิ้น</span>';
+  // req: ไม่แสดงวงกลมสีของเฟสแล้ว — โชว์เป็นข้อความอย่างเดียว (ใช้สีเฟสเป็นสีตัวอักษรแทน)
   const c = phaseColor(info.code);
-  const pre = info.state==='upcoming' ? 'จะเริ่ม · ' : '';
+  const pre = info.state==='upcoming' ? 'To · ' : '';
   const cls = 'cur-chip' + (info.state==='upcoming' ? ' upcoming' : '');
-  return `<span class="${cls}" title="Phase ปัจจุบัน"><span class="dot" style="background:${c}"></span>${pre}${esc(info.label)}</span>`;
+  const style = info.state==='upcoming' ? '' : ` style="color:${c}"`;
+  return `<span class="${cls}"${style} title="Phase ปัจจุบัน">${pre}${esc(info.label)}</span>`;
 }
 
 /* ============ CELL / BAR RENDERING ============ */

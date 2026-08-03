@@ -76,7 +76,8 @@
   .cal-cell.holiday .cal-holiday-tag { color:rgba(255,255,255,.92); }
   .cal-cell.today { outline:2px solid var(--today); outline-offset:-2px; }
   .cal-daynum { font-weight:700; font-size:13px; color:var(--dk-text); }
-  .cal-meta { font-size:11px; font-weight:700; color:var(--dk-text2); }
+  .cal-meta { font-size:11px; font-weight:700; color:var(--dk-text2); white-space:nowrap; }
+  .cal-meta-sep { color:var(--dk-text3); font-weight:400; margin:0 1px; }
   .cal-holiday-tag {
     font-size:10.5px; color:var(--dk-text2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
@@ -205,6 +206,7 @@ const S = {
   phaseMap: {},           // phase_code -> { name, sort }
   resourceMap: {},        // resource_id -> { full_name_en, nickname, role_code, resource_type }
   projectMap: {},         // project_key -> project_name
+  leadMap: {},            // project_key -> short_name ของ Main Lead (uat_lead จาก v_project_wide)
   phasesByProject: {},    // project_key -> [{ phase_code, start_date, end_date, resource_count }] (active only)
   monthCache: {},         // 'yyyy-MM' -> { days:[...], byDate:{ds:[entries]} }
   y: 0,                   // ปีที่แสดง (1-based month คู่กับ m)
@@ -286,7 +288,7 @@ async function loadMaster() {
       loadHolidays(),
       supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
       supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
-      supabase.from('v_project_wide').select('project_key,project_name,app,other_app').eq('is_active', true),
+      supabase.from('v_project_wide').select('project_key,project_name,app,other_app,uat_lead').eq('is_active', true),
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type'),
       supabase.from('project_phase').select('project_key,phase_code,start_date,end_date,resource_count')
     ]);
@@ -302,7 +304,12 @@ async function loadMaster() {
     if (!Object.keys(S.phaseMap).length) S.phaseMap = DEFAULT_PHASE_MAP;
 
     S.projectMap = {};
-    (projRows.data || []).forEach(p => { S.projectMap[p.project_key] = p.project_name; });
+    S.leadMap = {};
+    (projRows.data || []).forEach(p => {
+      S.projectMap[p.project_key] = p.project_name;
+      // uat_lead = short_name ของ Main Lead (resolve มาแล้วใน v_project_wide) — ไม่มี = เว้นว่าง
+      if (p.uat_lead) S.leadMap[p.project_key] = p.uat_lead;
+    });
 
     S.resourceMap = {};
     (resRows.data || []).forEach(r => { S.resourceMap[r.resource_id] = r; });
@@ -414,14 +421,16 @@ function buildDayCell(ds, inMonth, monthData) {
   }
 
   const entries = monthData.byDate[ds] || [];
+  // บรรทัดที่ 2 = "Project : N | Resource booked/required"
   // Booked/Required numbers only make sense on normal working days —
   // weekends (no holiday entry) stay blank, and holidays show the holiday
   // name instead (rendered above via cal-holiday-tag).
   if (!holidayDesc && !isWeekendDay) {
+    const projCnt = new Set(entries.map(e => e.project_key)).size;
     const bookedCnt = new Set(entries.map(e => e.resource_id)).size;
     const reqCnt = requiredForDate(ds);
-    if (bookedCnt > 0 || reqCnt > 0) {
-      inner += `<div class="cal-meta">${bookedCnt}/${fmtNum(reqCnt)}</div>`;
+    if (projCnt > 0 || bookedCnt > 0 || reqCnt > 0) {
+      inner += `<div class="cal-meta">Project : ${projCnt} <span class="cal-meta-sep">|</span> Resource ${bookedCnt}/${fmtNum(reqCnt)}</div>`;
     }
   }
 
@@ -540,7 +549,10 @@ function buildDayDetailHtml(ds) {
 
   return groupList.map(g => {
     const projName = S.projectMap[g.project_key] || g.project_key;
-    const phRow = (S.phasesByProject[g.project_key] || []).find(ph => ph.phase_code === g.phase_code);
+    // ชื่อ PQA Main Lead ต่อท้ายชื่อโปรเจกต์ — ไม่มี Lead = ไม่โชว์อะไรเลย
+    const leadNm = S.leadMap[g.project_key];
+    const leadTxt = leadNm ? ` · ${esc(leadNm)}` : '';
+    const phRow =(S.phasesByProject[g.project_key] || []).find(ph => ph.phase_code === g.phase_code);
     const rangeTxt = (phRow && phRow.start_date && phRow.end_date)
       ? ` <span class="rng">(${dDispShort(phRow.start_date)} - ${dDispShort(phRow.end_date)})</span>` : '';
 
@@ -550,7 +562,7 @@ function buildDayDetailHtml(ds) {
     }).sort((a, b) => (roleRank(a.role) - roleRank(b.role)) || String(a.name).localeCompare(String(b.name)));
 
     return `<div class="cal-group">
-      <div class="cal-group-head">${esc(projName)} · ${esc(phaseLabel(g.phase_code))}${rangeTxt}</div>
+      <div class="cal-group-head">${esc(projName)}${leadTxt} · ${esc(phaseLabel(g.phase_code))}${rangeTxt}</div>
       <table class="mini-table">
         <thead><tr><th>Outsource / Resource Name</th><th>Role</th></tr></thead>
         <tbody>${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${esc(roleLabel(r.role))}</td></tr>`).join('')}</tbody>
