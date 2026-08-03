@@ -178,6 +178,7 @@
       <button class="tab-btn" onclick="switchTab('holiday')">Holiday</button>
       <button class="tab-btn" onclick="switchTab('app')">App</button>
       <button class="tab-btn" onclick="switchTab('phase')">Phase</button>
+      <button class="tab-btn" onclick="switchTab('project_status')">Project Status</button>
       <button class="tab-btn" onclick="switchTab('tester_role')">Tester Role</button>
       <button class="tab-btn" onclick="switchTab('app_user')">User</button>
     </div>
@@ -271,6 +272,29 @@
       </div>
     </div>
 
+    <!-- ============ PROJECT STATUS TAB ============ -->
+    <!-- เดิมเป็น enum ใน DB เพิ่มสถานะต้องรัน ALTER TYPE — ตอนนี้เพิ่มจากหน้านี้ได้เลย -->
+    <div id="tab-project_status" class="tab-content">
+      <div class="toolbar">
+        <button class="btn accent" id="addProjectStatusBtn" onclick="openAddModal('project_status')">+ เพิ่ม Status</button>
+        <button class="btn" id="refreshProjectStatusBtn" onclick="loadData('project_status')">🔄 Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>ตัวอย่าง</th>
+              <th>Sort Order</th>
+              <th>Active</th>
+              <th class="center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows-project_status"><tr><td colspan="5" class="loading">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ============ TESTER ROLE TAB ============ -->
     <div id="tab-tester_role" class="tab-content">
       <div class="toolbar">
@@ -353,13 +377,8 @@
         </div>
         <div class="field">
           <label>Status</label>
-          <select id="pfStatus">
-            <option value="">—</option>
-            <option>Need Attention</option>
-            <option>Ready to Start</option>
-            <option>In Progress</option>
-            <option>Completed</option>
-          </select>
+          <!-- option เติมจาก master pqa.project_status ตอนเปิดโมดัล (fillStatusSelect) -->
+          <select id="pfStatus"><option value="">—</option></select>
         </div>
       </div>
       <div class="field">
@@ -429,7 +448,8 @@
 
 <script type="module">
 import { supabase, $, toast, esc, dDisp, parseInputDate, statusPill, fmtDate,
-         leadOptionsHTML, loadProjectLeads, saveProjectLeads } from './common.js';
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads,
+         loadProjectStatuses, statusOptionsHTML } from './common.js';
 
 /* ============ STATE ============ */
 window.STATE = {
@@ -445,7 +465,8 @@ window.STATE = {
   phases: [],
   testerRoles: [],
   appUsers: [],
-  pqaLeads: []
+  pqaLeads: [],
+  projectStatuses: []
 };
 
 /* ============ PROJECT TAB STATE (ported from pqaResourceManagement.html) ============ */
@@ -535,9 +556,15 @@ async function showApp(session) {
   updateAdminUI();
 
   // Load initial data — Projects is the default active tab
+  await loadProjectStatuses({ includeInactive: true });   // master สถานะ + สี pill
   await loadProjectApps();
   await loadProjects();
   await loadPqaLeads();
+}
+
+// สถานะมาจาก master pqa.project_status (แท็บ Project Status) ไม่ hardcode แล้ว
+function fillStatusSelect(selected) {
+  $('pfStatus').innerHTML = statusOptionsHTML(selected || '', '—');
 }
 
 async function loadPqaLeads() {
@@ -720,7 +747,7 @@ window.openAddProject = function() {
   $('pfName').value = '';
   $('pfApp').value = '';
   $('pfOtherApp').value = '';
-  $('pfStatus').value = '';
+  fillStatusSelect('');
   $('pfSignoff').value = '';
   $('pfDeploy').value = '';
   $('pfSignoffUrl').value = '';
@@ -742,7 +769,7 @@ window.openEditProject = async function(key) {
   $('pfName').value = p.project_name || '';
   $('pfApp').value = p.app || '';
   $('pfOtherApp').value = p.other_app || '';
-  $('pfStatus').value = p.status || '';
+  fillStatusSelect(p.status || '');
   $('pfSignoff').value = p.signoff_date || '';
   $('pfDeploy').value = p.deploy_date || '';
   $('pfSignoffUrl').value = p.signoff_url || '';
@@ -886,6 +913,8 @@ async function loadData(table) {
     // holiday ไม่มีคอลัมน์ sort_order — เรียงตามวันที่แทน, app_user ไม่มี sort_order — เรียงตามชื่อแทน, ตารางอื่นเรียง sort_order
     const orderCol = table === 'holiday' ? 'holiday_date' : (table === 'app_user' ? 'display_name' : 'sort_order');
     const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending: true });
+    // sync cache สถานะใน common.js ด้วย (pill ในแท็บ Projects จะได้ใช้สีล่าสุด)
+    if (table === 'project_status') await loadProjectStatuses({ includeInactive: true });
 
     if (error) throw error;
 
@@ -893,6 +922,7 @@ async function loadData(table) {
     if (table === 'holiday') STATE.holidays = data || [];
     else if (table === 'app') STATE.apps = data || [];
     else if (table === 'phase') STATE.phases = data || [];
+    else if (table === 'project_status') STATE.projectStatuses = data || [];
     else if (table === 'tester_role') STATE.testerRoles = data || [];
     else if (table === 'app_user') STATE.appUsers = data || [];
 
@@ -948,6 +978,19 @@ function renderRows(table, data) {
         <td class="center">
           <button class="btn sm" onclick="openEditModal('phase', '${esc(p.phase_code)}')">✏️</button>
           <button class="btn sm danger" onclick="deleteRecord('phase', '${esc(p.phase_code)}')">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  } else if (table === 'project_status') {
+    html = data.map(s => `
+      <tr>
+        <td><b>${esc(s.status_code)}</b></td>
+        <td><span class="status-pill" style="background:${esc(s.pill_bg)};color:${esc(s.pill_fg)}">${esc(s.status_code)}</span></td>
+        <td>${s.sort_order ?? '—'}</td>
+        <td><span class="is-active-pill ${s.is_active ? 'yes' : 'no'}">${s.is_active ? 'Y' : 'N'}</span></td>
+        <td class="center">
+          <button class="btn sm" onclick="openEditModal('project_status', '${esc(s.status_code)}')">✏️</button>
+          <button class="btn sm danger" onclick="deleteRecord('project_status', '${esc(s.status_code)}')">🗑️</button>
         </td>
       </tr>
     `).join('');
@@ -1028,6 +1071,7 @@ function getTableLabel(table) {
     holiday: 'Holiday',
     app: 'App',
     phase: 'Phase',
+    project_status: 'Project Status',
     tester_role: 'Tester Role',
     app_user: 'User'
   };
@@ -1039,6 +1083,7 @@ function getPKField(table) {
     holiday: 'holiday_date',
     app: 'app_code',
     phase: 'phase_code',
+    project_status: 'status_code',
     tester_role: 'role_code',
     app_user: 'user_id'
   };
@@ -1098,6 +1143,34 @@ function renderForm(table, data) {
       <div class="field checkbox">
         <input type="checkbox" id="f-is_billable" ${STATE.editingMode && data && data.is_billable ? 'checked' : ''}>
         <label for="f-is_billable">Billable</label>
+      </div>
+      ${STATE.editingMode ? `
+        <div class="field checkbox">
+          <input type="checkbox" id="f-is_active" ${data && data.is_active ? 'checked' : ''}>
+          <label for="f-is_active">Active</label>
+        </div>
+      ` : ''}
+    `;
+  } else if (table === 'project_status') {
+    const bg = STATE.editingMode && data ? (data.pill_bg || '#f0efe9') : '#f0efe9';
+    const fg = STATE.editingMode && data ? (data.pill_fg || '#5a5a5a') : '#5a5a5a';
+    html = `
+      <div class="field">
+        <label>Status *</label>
+        <input type="text" id="f-status_code" placeholder="e.g. On Hold" value="${STATE.editingMode && data ? esc(data.status_code) : ''}" ${STATE.editingMode ? 'disabled' : ''}>
+        <span class="hint">ข้อความนี้คือค่าที่เก็บในโปรเจกต์ + ที่แสดงบนหน้าจอ (แก้ทีหลังไม่ได้ ถ้าจะเปลี่ยนชื่อให้เพิ่มใหม่แล้วปิดตัวเก่า)</span>
+      </div>
+      <div class="field">
+        <label>Sort Order *</label>
+        <input type="number" id="f-sort_order" placeholder="0" value="${STATE.editingMode && data ? data.sort_order : ''}" required>
+      </div>
+      <div class="field">
+        <label>สีพื้น (pill)</label>
+        <input type="color" id="f-pill_bg" value="${esc(bg)}">
+      </div>
+      <div class="field">
+        <label>สีตัวอักษร (pill)</label>
+        <input type="color" id="f-pill_fg" value="${esc(fg)}">
       </div>
       ${STATE.editingMode ? `
         <div class="field checkbox">
@@ -1223,6 +1296,13 @@ function readFormData(table) {
     payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : 0;
     payload.is_billable = $('f-is_billable') ? $('f-is_billable').checked : false;
     payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
+  } else if (table === 'project_status') {
+    payload.status_code = $('f-status_code').value.trim();
+    payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : 0;
+    payload.pill_bg = $('f-pill_bg').value;
+    payload.pill_fg = $('f-pill_fg').value;
+    payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
+    if (STATE.editingMode) delete payload.status_code;   // PK แก้ไม่ได้
   } else if (table === 'tester_role') {
     payload.role_code = $('f-role_code').value.trim();
     payload.role_name = $('f-role_name').value.trim();
@@ -1248,6 +1328,9 @@ function validateRecord(table, payload) {
     if (!payload.phase_code) return { ok: false, err: 'กรุณาระบุ Phase Code' };
     if (!payload.phase_name) return { ok: false, err: 'กรุณาระบุชื่อ Phase' };
     if (isNaN(payload.sort_order)) return { ok: false, err: 'Sort Order ต้องเป็นตัวเลข' };
+  } else if (table === 'project_status') {
+    if (!STATE.editingMode && !payload.status_code) return { ok: false, err: 'กรุณาระบุชื่อ Status' };
+    if (isNaN(payload.sort_order)) return { ok: false, err: 'Sort Order ต้องเป็นตัวเลข' };
   } else if (table === 'tester_role') {
     if (!payload.role_code) return { ok: false, err: 'กรุณาระบุ Role Code' };
     if (!payload.role_name) return { ok: false, err: 'กรุณาระบุชื่อ Role' };
@@ -1267,7 +1350,8 @@ window.deleteRecord = async function(table, pk) {
   }
 
   const tableLabel = getTableLabel(table);
-  const isSoftDelete = (table === 'app' || table === 'phase');
+  // project_status: ปิดใช้งานแทนลบเสมอ — โปรเจกต์เก่าที่ใช้สถานะนี้อยู่จะได้ไม่ FK error
+  const isSoftDelete = (table === 'app' || table === 'phase' || table === 'project_status');
   const msg = isSoftDelete
     ? `ยืนยันปิดใช้งาน ${tableLabel} ${pk}?`
     : `ยืนยันลบ ${tableLabel} ${pk}? (ไม่สามารถกู้คืนได้)`;

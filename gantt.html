@@ -300,13 +300,8 @@
         </div>
         <div class="field">
           <label>Status</label>
-          <select id="fStatus">
-            <option value="">—</option>
-            <option>Need Attention</option>
-            <option>Ready to Start</option>
-            <option>In Progress</option>
-            <option>Completed</option>
-          </select>
+          <!-- option เติมจาก master pqa.project_status ตอน init (fillStatusSelect) -->
+          <select id="fStatus"><option value="">—</option></select>
         </div>
       </div>
       <div class="field">
@@ -473,7 +468,8 @@
 
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr,
-         leadOptionsHTML, loadProjectLeads, saveProjectLeads } from './common.js';
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads,
+         loadProjectStatuses, statusOptionsHTML } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -520,6 +516,7 @@ const S = {
   collapsed: {},
   appOrder: {},
   filter: { projects:new Set(), leads:new Set(), apps:new Set(), phases:new Set(), start:'', end:'', order:'' },
+  leadFilterApplied: false,  // กันไม่ให้ default-lead-filter ทับ filter ที่ผู้ใช้เคลียร์เอง ตอน loadAll() ถูกเรียกซ้ำ (save/delete project)
   renderedPhases: [],
   noteMap: {},   // `${project_key}|${phase_code||''}|${date}` -> project_comment row
 };
@@ -577,8 +574,9 @@ async function showApp(session){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes] = await Promise.all([
+    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes] = await Promise.all([
       loadHolidaysSafe(),
+      loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
       supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
       supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
@@ -633,7 +631,15 @@ async function loadAll(){
     S.projects.forEach(p => { if (!(p.project_key in S.collapsed)) S.collapsed[p.project_key]=true; });
 
     buildFilters();
-    applyDefaultLeadFilter();
+    // ตั้ง default Lead filter แค่ครั้งแรกหลัง login เท่านั้น — ไม่งั้นทุกครั้งที่ loadAll()
+    // ถูกเรียกซ้ำ (หลังบันทึก/ลบ project) จะทับ filter ที่ผู้ใช้เคลียร์เองไปแล้ว กลายเป็นบั๊ก
+    // "เคลียร์ filter แล้วยังไม่เห็น project ทั้งหมด"
+    if (!S.leadFilterApplied) {
+      applyDefaultLeadFilter();
+      S.leadFilterApplied = true;
+    } else {
+      syncMultiSelect('msLead', S.filter.leads);
+    }
     renderGantt();
   } catch (err) {
     console.error(err);
@@ -1067,6 +1073,10 @@ function fillAppOptions(selected){
   $('fApp').innerHTML = '<option value="">— เลือก App —</option>' +
     S.apps.map(a => `<option value="${esc(a.app_code)}"${a.app_code===selected?' selected':''}>${esc(a.app_code)}</option>`).join('');
 }
+// สถานะมาจาก master pqa.project_status (แก้ได้จากหน้า Admin) ไม่ hardcode แล้ว
+function fillStatusSelect(selected){
+  $('fStatus').innerHTML = statusOptionsHTML(selected || '', '—');
+}
 function buildPhaseRows(data){
   $('phaseRows').innerHTML = PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
@@ -1128,7 +1138,7 @@ window.openProjAdd = function(){
   $('projDeleteBtn').style.display = 'none';
   fillAppOptions('');
   $('fKey').value = suggestKey(); $('fKey').disabled = false;
-  $('fName').value=''; $('fOtherApp').value=''; $('fStatus').value='';
+  $('fName').value=''; $('fOtherApp').value=''; fillStatusSelect('');
   $('fSignoff').value=''; $('fDeploy').value=''; $('fSignoffUrl').value=''; $('fNote').value='';
   // default Main Lead = ตัวผู้ใช้ที่ล็อกอิน ถ้าอยู่ใน pqa_lead (เลือกใหม่ได้)
   const me = S.user && S.user.pqa_emp_id;
@@ -1151,7 +1161,7 @@ window.openProjEdit = async function(key){
   $('fKey').value = key; $('fKey').disabled = true;
   $('fName').value = p.project_name || '';
   $('fOtherApp').value = p.other_app || '';
-  $('fStatus').value = p.status || '';
+  fillStatusSelect(p.status || '');
   $('fSignoff').value = p.signoff_date || '';
   $('fDeploy').value = p.deploy_date || '';
   $('fSignoffUrl').value = p.signoff_url || '';

@@ -373,7 +373,7 @@ const S = {
   // shared period state — dashboard always runs in "overall" custom Start–End range mode
   dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
-  chartCollapsed: false,        // chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only)
+  chartCollapsed: false,        // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only)
   overallRange: { s:'', e:'' }, // selected Start/End
   periodCacheKey: '',           // identifies the currently-loaded period (start|end range), '' = not loaded
   bookingDaily: [],             // v_booking_daily rows for the current period
@@ -628,7 +628,7 @@ function setViewLoading(){
 }
 
 /* =====================================================================
-   CHART-ROW COLLAPSE TOGGLE — By Project / By OS only (KPI cards stay visible)
+   CHART-ROW COLLAPSE TOGGLE — By Project / By OS only (hides KPI cards + charts)
    ===================================================================== */
 function renderSummaryToggle(){
   const relevant = S.dashView === 'project' || S.dashView === 'os';
@@ -641,7 +641,8 @@ function renderSummaryToggle(){
    KPI
    ===================================================================== */
 function renderKPI(){
-  const hide = S.dashView === 'lead';
+  const collapsedHere = (S.dashView === 'project' || S.dashView === 'os') && S.chartCollapsed;
+  const hide = S.dashView === 'lead' || collapsedHere;
   $('kpiGrid').classList.toggle('hidden', hide);
   if (hide) return;
   const agg = S.periodAgg || { kpiEffectiveMD:0, bookedOsCount:0 };

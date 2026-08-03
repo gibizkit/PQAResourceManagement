@@ -244,7 +244,7 @@
 
 <script type="module">
 import {
-  supabase, $, toast, esc, dDisp, monthLabel
+  supabase, $, toast, esc, dDisp, monthLabel, loadProjectStatuses, statusPill
 } from './common.js';
 
 /* =====================================================================
@@ -321,10 +321,9 @@ function inMonth(dateStr, y, m){
   const [dy, dm] = dateStr.split('-').map(Number);
   return dy === y && dm === m;
 }
+// สี/รายการสถานะมาจาก master pqa.project_status (ผ่าน statusPill ใน common.js)
 function statusPillHTML(status){
-  const map = { 'Need Attention':'st-need', 'Ready to Start':'st-ready', 'In Progress':'st-prog', 'Completed':'st-done' };
-  if (!status) return '<span class="muted">—</span>';
-  return `<span class="status-pill ${map[status]||''}">${esc(status)}</span>`;
+  return statusPill(status);
 }
 
 /* =====================================================================
@@ -389,7 +388,8 @@ async function showApp(session){
    MASTER DATA
    ===================================================================== */
 async function loadMasterData(){
-  const [projRes, appRes, userRes, lastCmtRes, roomKeysRes] = await Promise.all([
+  const [, projRes, appRes, userRes, lastCmtRes, roomKeysRes] = await Promise.all([
+    loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
     supabase.from('v_project_wide')
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,deploy_date,signoff_url,project_note,is_active')
       .not('signoff_date', 'is', null)

@@ -262,20 +262,98 @@ export async function signOut() {
 
 /* ============ UI HELPERS ============ */
 
+/* ============ PROJECT STATUS (pqa.project_status) ============ */
+/*
+ * status เคยเป็น enum + สี hardcode เป็น class ใน theme.css
+ * ตอนนี้เป็นตาราง master — ทั้งรายการและสีมาจาก DB ทุกหน้าจึงตรงกันเสมอ
+ * โหลดครั้งเดียวเก็บใน cache เพราะ statusPill() ถูกเรียกใน loop ตอน render (sync)
+ */
+
+let STATUS_CACHE = [];   // [{ status_code, sort_order, pill_bg, pill_fg, is_active }]
+
+// สีสำรอง เผื่อ patch ยังไม่ได้รันบน DB / โหลดไม่ทัน — จะได้ไม่โล้นทั้งหน้า
+const LEGACY_STATUS_CLASS = {
+  'Need Attention': 'st-need',
+  'Ready to Start': 'st-ready',
+  'In Progress': 'st-prog',
+  'Completed': 'st-done'
+};
+
+// กัน CSS injection: ยอมเฉพาะ hex สี (#abc / #aabbcc)
+function safeColor(c) {
+  return /^#[0-9a-fA-F]{3,8}$/.test(String(c || '')) ? c : null;
+}
+
 /**
- * Render status pill HTML
+ * โหลดสถานะโปรเจกต์จาก master (เรียกครั้งเดียวตอน init ของแต่ละหน้า)
+ * @param {Object} [opt]
+ * @param {boolean} [opt.includeInactive=false] — เอาสถานะที่ปิดใช้งานมาด้วย (หน้า Admin)
+ * @returns {Promise<Array>} รายการสถานะเรียงตาม sort_order
+ */
+export async function loadProjectStatuses({ includeInactive = false } = {}) {
+  let q = supabase.from('project_status')
+    .select('status_code,sort_order,pill_bg,pill_fg,is_active')
+    .order('sort_order', { ascending: true });
+  if (!includeInactive) q = q.eq('is_active', true);
+
+  const { data, error } = await q;
+  if (error) {
+    console.warn('loadProjectStatuses:', error.message);
+    return STATUS_CACHE;
+  }
+
+  // เก็บทุกแถวที่เคยเห็นไว้ใน cache (รวมตัวที่ปิดใช้งาน) — โปรเจกต์เก่าที่ยังใช้
+  // สถานะนั้นอยู่จะได้ยังมีสี ไม่กลายเป็น pill เทาเฉยๆ
+  const byCode = new Map(STATUS_CACHE.map(s => [s.status_code, s]));
+  for (const s of data || []) byCode.set(s.status_code, s);
+  STATUS_CACHE = [...byCode.values()].sort(
+    (a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999)
+  );
+
+  return data || [];
+}
+
+/**
+ * รายการสถานะที่โหลดไว้แล้ว (เฉพาะที่ active)
+ * @returns {Array}
+ */
+export function projectStatuses() {
+  return STATUS_CACHE.filter(s => s.is_active !== false);
+}
+
+/**
+ * <option> ของสถานะ สำหรับ dropdown — ต้องเรียก loadProjectStatuses() ก่อน
+ * @param {string} [selected] — ค่าที่เลือกอยู่ (ถ้าไม่มีในลิสต์จะถูกเติมท้ายให้ ไม่หาย)
+ * @param {string} [placeholder] — ข้อความตัวเลือกว่าง
+ * @returns {string} HTML
+ */
+export function statusOptionsHTML(selected = '', placeholder = '— ทั้งหมด —') {
+  const list = projectStatuses();
+  const codes = list.map(s => s.status_code);
+  // สถานะที่ถูกปิดใช้งานไปแล้วแต่โปรเจกต์นี้ยังใช้อยู่ — ต้องโชว์ ไม่งั้นเซฟทับแล้วหาย
+  if (selected && !codes.includes(selected)) codes.push(selected);
+
+  return `<option value="">${esc(placeholder)}</option>` +
+    codes.map(c =>
+      `<option value="${esc(c)}"${c === selected ? ' selected' : ''}>${esc(c)}</option>`
+    ).join('');
+}
+
+/**
+ * Render status pill HTML (สีมาจาก master — fallback เป็น class เดิมถ้ายังไม่ได้โหลด)
  * @param {string} status
  * @returns {string} HTML
  */
 export function statusPill(status) {
-  const map = {
-    'Need Attention': 'st-need',
-    'Ready to Start': 'st-ready',
-    'In Progress': 'st-prog',
-    'Completed': 'st-done'
-  };
   if (!status) return '<span class="muted">—</span>';
-  return `<span class="status-pill ${map[status] || ''}">${esc(status)}</span>`;
+
+  const s  = STATUS_CACHE.find(x => x.status_code === status);
+  const bg = safeColor(s && s.pill_bg);
+  const fg = safeColor(s && s.pill_fg);
+  if (bg && fg) {
+    return `<span class="status-pill" style="background:${bg};color:${fg}">${esc(status)}</span>`;
+  }
+  return `<span class="status-pill ${LEGACY_STATUS_CLASS[status] || ''}">${esc(status)}</span>`;
 }
 
 /**
