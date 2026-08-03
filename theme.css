@@ -351,8 +351,11 @@ tbody tr:hover {
 /* จุดสถานะแบบย่อ (ใช้ในคอลัมน์ Status ของ Gantt) — hover แล้วขึ้น tooltip */
 .status-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  flex: 0 0 auto;
+  box-sizing: content-box;   /* กัน border-box บีบให้วงเบี้ยว */
   border-radius: 50%;
   vertical-align: middle;
   cursor: help;
