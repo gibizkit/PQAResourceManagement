@@ -214,7 +214,7 @@
 <!-- ============ APP ============ -->
 <div id="app" class="hidden">
   <div class="topbar">
-    <span class="brand">PQA Resource Mgmt <small>Supabase</small></span>
+    <span class="brand">PQA Resource Mgmt</span>
     <nav class="nav">
       <a href="gantt.html" class="active">Project Gantt</a>
       <a href="outsource.html">Outsource</a>
@@ -638,19 +638,18 @@ function canWrite(){ return !!(S.user && (S.user.app_role === 'admin' || S.user.
 /* ============ DEFAULT LEAD FILTER ============ */
 function applyDefaultLeadFilter(){
   S.filter.leads = new Set();
-  // admin เห็นทุก project เสมอ ไม่ต้องกรอง แม้จะผูก pqa_emp_id ไว้
+  // admin เห็นทุก project เสมอ ไม่ต้องตั้ง default filter แม้จะผูก pqa_emp_id ไว้
   if (S.user && S.user.app_role === 'admin') return;
   const me = S.user && S.user.pqa_emp_id;
-  if (!me) return;
+  if (!me) return;                       // ไม่ผูก emp_id → เห็นทุก project (ปรับ dropdown เองได้)
   const meLead = S.leads.find(l => l.emp_id === me);
-  if (!meLead) return;
-  const role = (meLead.incharge_role || '').trim().toLowerCase();
-  if (role === 'overall') return;
-  if (role === 'manager') {
-    S.filter.leads.add(me);
+  if (!meLead) return;                   // ไม่ได้อยู่ใน pqa_lead → เห็นทุก project
+  // default ตอน login = เฉพาะ project ที่ตัวเองเป็น lead (owner) คนใดคนหนึ่ง
+  // ผู้ใช้ปรับ dropdown "Lead" เพื่อดูทุก project ได้
+  S.filter.leads.add(me);
+  // manager เห็นงานลูกทีมด้วยตอน default (เพิ่ม emp_id ของคนที่มี manager_emp_id = ตัวเอง)
+  if ((meLead.incharge_role || '').trim().toLowerCase() === 'manager') {
     S.leads.forEach(l => { if (l.manager_emp_id === me) S.filter.leads.add(l.emp_id); });
-  } else {
-    S.filter.leads.add(me);
   }
   syncMultiSelect('msLead', S.filter.leads);
 }
