@@ -104,6 +104,22 @@
     margin: 0;
     font-size: 13px;
   }
+
+  /* ---- sub lead rows (project modal) ---- */
+  .sublead-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .sublead-row select {
+    flex: 1;
+  }
+
+  .sublead-row .btn {
+    padding: 6px 10px;
+  }
 </style>
 </head>
 <body>
@@ -383,6 +399,18 @@
         <label for="pfActive" style="margin:0">Active (เปิดใช้งานโปรเจกต์)</label>
       </div>
 
+      <div class="section-title">Lead</div>
+      <div class="field">
+        <label>Main Lead</label>
+        <select id="pfMainLead"><option value="">— เลือก Lead —</option></select>
+        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้า Gantt</span>
+      </div>
+      <div class="field">
+        <label>Sub Lead (เพิ่มได้หลายคน)</label>
+        <div id="pfSubLeadRows"></div>
+        <button type="button" class="btn" onclick="addProjectSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
+      </div>
+
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
         <div>Phase</div><div>Start</div><div>End</div><div>MD</div><div>Resource</div>
@@ -400,7 +428,8 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { supabase, $, toast, esc, dDisp, parseInputDate, statusPill, fmtDate } from './common.js';
+import { supabase, $, toast, esc, dDisp, parseInputDate, statusPill, fmtDate,
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads } from './common.js';
 
 /* ============ STATE ============ */
 window.STATE = {
@@ -651,6 +680,37 @@ function renderProjectRows() {
 const _projectSearchEl = document.getElementById('projectSearch');
 if (_projectSearchEl) _projectSearchEl.addEventListener('input', renderProjectRows);
 
+/* ---- Lead pickers ในโมดัล Project (STATE.pqaLeads = pqa_lead ที่ active) ---- */
+window.addProjectSubLeadRow = function(selected) {
+  const row = document.createElement('div');
+  row.className = 'sublead-row';
+  const sel = document.createElement('select');
+  sel.className = 'sub-lead';
+  sel.innerHTML = leadOptionsHTML(STATE.pqaLeads, selected || '', '— เลือก Lead —');
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn';
+  del.textContent = '✕';
+  del.title = 'ลบ Sub Lead แถวนี้';
+  del.onclick = () => row.remove();
+  row.appendChild(sel);
+  row.appendChild(del);
+  $('pfSubLeadRows').appendChild(row);
+};
+
+function buildProjectLeadPicker(main, subs) {
+  $('pfMainLead').innerHTML = leadOptionsHTML(STATE.pqaLeads, main || '', '— ไม่ระบุ —');
+  $('pfSubLeadRows').innerHTML = '';
+  (subs || []).forEach(id => window.addProjectSubLeadRow(id));
+}
+
+function readProjectLeadPicker() {
+  return {
+    main: $('pfMainLead').value || null,
+    subs: [...document.querySelectorAll('#pfSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean)
+  };
+}
+
 window.openAddProject = function() {
   editingProjectKey = null;
   existingProjectPhases = {};
@@ -666,6 +726,7 @@ window.openAddProject = function() {
   $('pfSignoffUrl').value = '';
   $('pfNote').value = '';
   $('pfActiveField').style.display = 'none';   // add mode: โปรเจกต์ใหม่ active อยู่แล้ว
+  buildProjectLeadPicker('', []);
   buildProjectPhaseRows(null);
   $('pfFormErr').textContent = '';
   $('projOverlay').classList.remove('hidden');
@@ -689,7 +750,11 @@ window.openEditProject = async function(key) {
   $('pfActiveField').style.display = 'flex';   // แก้ is_active ได้ตอน edit (แทนปุ่มลบ)
   $('pfActive').checked = p.is_active !== false;
   $('pfFormErr').textContent = '';
+  buildProjectLeadPicker('', []);
   $('projOverlay').classList.remove('hidden');
+
+  const pl = await loadProjectLeads(key);
+  if (editingProjectKey === key) buildProjectLeadPicker(pl.main, pl.subs);   // กันเคสเปิดโปรเจกต์อื่นทับ
 
   // โหลด phase จริงจาก project_phase
   const { data: phs } = await supabase.from('project_phase')
@@ -766,6 +831,16 @@ window.saveProject = async function() {
     btn.disabled = false;
     btn.textContent = 'บันทึก';
     err.textContent = 'บันทึก Project ไม่สำเร็จ: ' + res.error.message;
+    return;
+  }
+
+  // ---- leads (project_lead) — ต้องเขียนทุกครั้ง ไม่งั้น filter ด้วย Lead หาโปรเจกต์ไม่เจอ ----
+  const pickedLeads = readProjectLeadPicker();
+  const leadRes = await saveProjectLeads(key, pickedLeads.main, pickedLeads.subs);
+  if (leadRes.error) {
+    btn.disabled = false;
+    btn.textContent = 'บันทึก';
+    err.textContent = 'บันทึก Lead ไม่สำเร็จ: ' + leadRes.error.message;
     return;
   }
 

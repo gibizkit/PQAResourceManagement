@@ -303,6 +303,112 @@ export function resName(nickname, fullName) {
   return nn || fn || '';
 }
 
+/* ============ PROJECT LEAD (pqa.project_lead) ============ */
+
+/**
+ * โหลด pqa_lead ที่ยัง active ทั้งหมด (เรียงตามชื่อ) — ใช้เติม dropdown Lead
+ * @returns {Promise<Array>} [{ emp_id, short_name, nickname }]
+ */
+export async function loadPqaLeadOptions() {
+  const { data, error } = await supabase.from('pqa_lead')
+    .select('emp_id,short_name,nickname')
+    .eq('is_active', true);
+  if (error) { console.warn('loadPqaLeadOptions error:', error); return []; }
+  return (data || []).sort((a, b) =>
+    String(a.short_name || '').localeCompare(String(b.short_name || '')));
+}
+
+/**
+ * ป้ายชื่อ Lead สำหรับ dropdown — 'ชื่อเล่น : ชื่อเต็ม' (§4.4)
+ * @param {Object} l — row ของ pqa_lead
+ */
+export function leadLabel(l) {
+  if (!l) return '';
+  return resName(l.nickname, l.short_name) || l.emp_id;
+}
+
+/**
+ * สร้าง <option> ทั้งชุดสำหรับ dropdown Lead
+ * @param {Array} leads — จาก loadPqaLeadOptions()
+ * @param {string} selected — emp_id ที่เลือกอยู่
+ * @param {string} placeholder — ข้อความ option ว่าง
+ * @returns {string} HTML
+ */
+export function leadOptionsHTML(leads, selected = '', placeholder = '— เลือก Lead —') {
+  const list = leads || [];
+  let html = `<option value="">${esc(placeholder)}</option>` +
+    list.map(l =>
+      `<option value="${esc(l.emp_id)}"${l.emp_id === selected ? ' selected' : ''}>${esc(leadLabel(l))}</option>`
+    ).join('');
+  // lead เดิมที่ถูกปิดใช้งานไปแล้ว: ยังต้องโชว์ไว้ ไม่งั้นเซฟทับแล้วหายเงียบๆ
+  if (selected && !list.some(l => l.emp_id === selected)) {
+    html += `<option value="${esc(selected)}" selected>${esc(selected)} (inactive)</option>`;
+  }
+  return html;
+}
+
+/**
+ * โหลด lead ของโปรเจกต์หนึ่ง
+ * @param {string} projectKey
+ * @returns {Promise<{main: string|null, subs: string[]}>}
+ */
+export async function loadProjectLeads(projectKey) {
+  const { data, error } = await supabase.from('project_lead')
+    .select('pqa_emp_id,is_main').eq('project_key', projectKey);
+  if (error) { console.warn('loadProjectLeads error:', error); return { main: null, subs: [] }; }
+  const rows = data || [];
+  const main = rows.find(r => r.is_main);
+  return {
+    main: main ? main.pqa_emp_id : null,
+    subs: rows.filter(r => !r.is_main).map(r => r.pqa_emp_id)
+  };
+}
+
+/**
+ * เขียน lead ของโปรเจกต์ (replace ทั้งชุด) — main lead ได้คนเดียว (unique index
+ * project_lead_one_main_uk บังคับอยู่แล้ว), sub lead กี่คนก็ได้
+ *
+ * หมายเหตุ: RLS ที่บล็อกจะไม่คืน error แต่ไม่มีแถวถูกเขียน (ดู memory
+ * "RLS silent no-op writes") จึงเช็คจำนวนแถวที่คืนกลับด้วยเสมอ
+ *
+ * @param {string} projectKey
+ * @param {string|null} mainEmpId
+ * @param {string[]} subEmpIds
+ * @returns {Promise<{error: {message:string}|null}>}
+ */
+export async function saveProjectLeads(projectKey, mainEmpId, subEmpIds = []) {
+  const rows = [];
+  const seen = new Set();
+  if (mainEmpId) {
+    rows.push({ project_key: projectKey, pqa_emp_id: mainEmpId, is_main: true });
+    seen.add(mainEmpId);
+  }
+  for (const id of (subEmpIds || [])) {
+    if (!id || seen.has(id)) continue;   // กันซ้ำกับ main และซ้ำกันเอง
+    seen.add(id);
+    rows.push({ project_key: projectKey, pqa_emp_id: id, is_main: false });
+  }
+
+  const del = await supabase.from('project_lead').delete().eq('project_key', projectKey);
+  if (del.error) return { error: del.error };
+
+  if (!rows.length) {
+    // ไม่มี lead ใหม่ → ยืนยันว่าลบของเดิมได้จริง (RLS บล็อก = เงียบ ไม่ error)
+    const chk = await supabase.from('project_lead').select('pqa_emp_id').eq('project_key', projectKey);
+    if (!chk.error && chk.data && chk.data.length) {
+      return { error: { message: 'ลบ Lead เดิมไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์เขียน project_lead' } };
+    }
+    return { error: null };
+  }
+
+  const ins = await supabase.from('project_lead').insert(rows).select('pqa_emp_id');
+  if (ins.error) return { error: ins.error };
+  if (!ins.data || !ins.data.length) {
+    return { error: { message: 'บันทึก Lead ไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์เขียน project_lead' } };
+  }
+  return { error: null };
+}
+
 /* ============ MONTH LABEL (Mmm-yyyy) ============ */
 
 /** English 3-letter month abbreviations (index 0 = Jan) */

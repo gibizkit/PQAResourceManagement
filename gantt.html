@@ -162,6 +162,10 @@
 
   /* ---- signoff / project modals reuse theme.css .modal/.field/.grid2 ---- */
   #projOverlay .modal { width:660px; }
+  /* ---- sub lead rows (project modal) ---- */
+  .sublead-row { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  .sublead-row select { flex:1; }
+  .sublead-row .btn { padding:6px 10px; }
 
   /* ---- booking popup ---- */
   .modal.wide { width:920px; }
@@ -338,6 +342,18 @@
         <textarea id="fNote" rows="2"></textarea>
       </div>
 
+      <div class="section-title">Lead</div>
+      <div class="field">
+        <label>Main Lead</label>
+        <select id="fMainLead"><option value="">— เลือก Lead —</option></select>
+        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้</span>
+      </div>
+      <div class="field">
+        <label>Sub Lead (เพิ่มได้หลายคน)</label>
+        <div id="fSubLeadRows"></div>
+        <button type="button" class="btn" id="fAddSubLeadBtn" onclick="addSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
+      </div>
+
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
         <div>Phase</div><div>Start</div><div>End</div><div>MD</div><div>Resource</div>
@@ -456,7 +472,8 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 
 <script type="module">
-import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr } from './common.js';
+import { supabase, $, toast, esc, dDisp, d2s, statusPill, resName as fmtResName, monthLabel, defaultFilterEndStr,
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -1062,6 +1079,35 @@ function buildPhaseRows(data){
     </div>`;
   }).join('');
 }
+/* ---- Lead pickers ในโมดัล Project (S.leads = pqa_lead ที่ active) ---- */
+function fillMainLeadOptions(selected){
+  $('fMainLead').innerHTML = leadOptionsHTML(S.leads, selected || '', '— ไม่ระบุ —');
+}
+window.addSubLeadRow = function(selected){
+  const row = document.createElement('div');
+  row.className = 'sublead-row';
+  const sel = document.createElement('select');
+  sel.className = 'sub-lead';
+  sel.innerHTML = leadOptionsHTML(S.leads, selected || '', '— เลือก Lead —');
+  const del = document.createElement('button');
+  del.type = 'button'; del.className = 'btn'; del.textContent = '✕';
+  del.title = 'ลบ Sub Lead แถวนี้';
+  del.onclick = () => row.remove();
+  row.appendChild(sel); row.appendChild(del);
+  $('fSubLeadRows').appendChild(row);
+};
+function buildLeadPicker(main, subs){
+  fillMainLeadOptions(main || '');
+  $('fSubLeadRows').innerHTML = '';
+  (subs || []).forEach(id => window.addSubLeadRow(id));
+}
+function readLeadPicker(){
+  return {
+    main: $('fMainLead').value || null,
+    subs: [...document.querySelectorAll('#fSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean)
+  };
+}
+
 function suggestKey(){
   const now = new Date();
   const ym = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0');
@@ -1084,6 +1130,10 @@ window.openProjAdd = function(){
   $('fKey').value = suggestKey(); $('fKey').disabled = false;
   $('fName').value=''; $('fOtherApp').value=''; $('fStatus').value='';
   $('fSignoff').value=''; $('fDeploy').value=''; $('fSignoffUrl').value=''; $('fNote').value='';
+  // default Main Lead = ตัวผู้ใช้ที่ล็อกอิน ถ้าอยู่ใน pqa_lead (เลือกใหม่ได้)
+  const me = S.user && S.user.pqa_emp_id;
+  const meIsLead = me && S.leads.some(l => l.emp_id === me);
+  buildLeadPicker(meIsLead ? me : '', []);
   buildPhaseRows(null);
   $('projFormErr').textContent='';
   $('projOverlay').classList.remove('hidden');
@@ -1107,8 +1157,12 @@ window.openProjEdit = async function(key){
   $('fSignoffUrl').value = p.signoff_url || '';
   $('fNote').value = p.project_note || '';
   $('projFormErr').textContent='';
+  buildLeadPicker('', []);
   buildPhaseRows(null);
   $('projOverlay').classList.remove('hidden');
+
+  const pl = await loadProjectLeads(key);
+  if (editingKey === key) buildLeadPicker(pl.main, pl.subs);   // กันเคสผู้ใช้เปิดโปรเจกต์อื่นทับ
 
   const { data: phs } = await supabase.from('project_phase')
     .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
@@ -1165,6 +1219,14 @@ window.saveProj = async function(){
   if (!res.data || !res.data.length){
     btn.disabled=false; btn.textContent='บันทึก';
     err.textContent = 'บันทึก Project ไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์เขียน (ตรวจสอบสิทธิ์หรือลองล็อกอินใหม่)'; return;
+  }
+
+  // ---- leads (project_lead) — ต้องเขียนทุกครั้ง ไม่งั้น filter ด้วย Lead หาโปรเจกต์ไม่เจอ ----
+  const picked = readLeadPicker();
+  const leadRes = await saveProjectLeads(key, picked.main, picked.subs);
+  if (leadRes.error){
+    btn.disabled=false; btn.textContent='บันทึก';
+    err.textContent = 'บันทึก Lead ไม่สำเร็จ: ' + leadRes.error.message; return;
   }
 
   const phases = readPhaseInputs();
