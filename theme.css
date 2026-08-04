@@ -418,8 +418,8 @@ tbody tr:hover {
 /* โมดัลที่มีตารางเฟส 8 คอลัมน์ (New/Edit Project)
    min() กัน viewport แคบ (จอเล็ก/ซูม) แล้ว modal ล้นจอจนโดนตัด */
 .modal.modal-wide {
-  width: 1040px;
-  max-width: min(1040px, 96vw);
+  width: 1080px;
+  max-width: min(1080px, 97vw);
 }
 
 .modal-head {
@@ -514,6 +514,16 @@ tbody tr:hover {
   padding-top: 14px;
 }
 
+/* ตาราง Phases กว้างขั้นต่ำ ~800px (8 คอลัมน์ + gap) — จอ/หน้าต่างที่แคบกว่านั้น
+   (เช่น modal-wide โดน max-width: 97vw บีบ) จะเลื่อนแนวนอนได้แทนที่จะโดนตัดทิ้งเงียบๆ
+   (เดิม modal-body overflow-x:hidden ทำให้คอลัมน์ AI Note หายไปเฉยๆ ไม่มีทางเห็น —
+   ครอบด้วย wrapper นี้แทน ให้ scroll เกิดเฉพาะในตาราง ไม่ใช่ทั้ง modal) */
+.phase-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+}
+
 /* 8 คอลัมน์: Phase | Start | End | WD | Resource | Total WD | AI | AI Note
    (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์)
    minmax() กันคอลัมน์ Start/End/AI Note บีบจนล้น — grid item ตัวใดตัวหนึ่ง
@@ -528,6 +538,7 @@ tbody tr:hover {
   padding: 6px 8px;
   border-radius: 8px;
   margin-bottom: 3px;
+  min-width: 800px;
 }
 
 .phase-row > * {
