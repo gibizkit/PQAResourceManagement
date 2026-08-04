@@ -418,8 +418,8 @@ tbody tr:hover {
 /* โมดัลที่มีตารางเฟส 8 คอลัมน์ (New/Edit Project)
    min() กัน viewport แคบ (จอเล็ก/ซูม) แล้ว modal ล้นจอจนโดนตัด */
 .modal.modal-wide {
-  width: 960px;
-  max-width: min(960px, 94vw);
+  width: 1040px;
+  max-width: min(1040px, 96vw);
 }
 
 .modal-head {
@@ -522,17 +522,12 @@ tbody tr:hover {
    ขึ้น scrollbar แนวนอน (ห้ามลบ regel นี้ทิ้ง) */
 .phase-row {
   display: grid;
-  grid-template-columns: 76px minmax(96px,1fr) minmax(96px,1fr) 46px 56px 60px 34px minmax(130px,1.5fr);
+  grid-template-columns: 76px minmax(140px,1fr) minmax(140px,1fr) 46px 56px 60px 34px minmax(150px,1.5fr);
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
   border-radius: 8px;
   margin-bottom: 3px;
-  transition: background .12s;
-}
-
-.phase-row:hover {
-  background: var(--dk-surface);
 }
 
 .phase-row > * {
@@ -608,10 +603,6 @@ tbody tr:hover {
   color: var(--dk-text3);
   letter-spacing: .02em;
   text-transform: uppercase;
-}
-
-.section-title + .phase-row:hover {
-  background: none;
 }
 
 .form-err {
