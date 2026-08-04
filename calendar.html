@@ -127,7 +127,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt</span>
     <nav class="nav">
-      <a href="gantt.html">Project Gantt</a>
+      <a href="gantt.html">Project</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html" class="active">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -180,8 +180,10 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort,
   isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut,
-  resName, monthLabel, MONTH_ABBR
+  resName, monthLabel, MONTH_ABBR, loadPrefs, savePrefs, setPrefsOwner
 } from './common.js';
+
+const PAGE = 'calendar';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
 const DEFAULT_ROLE_MAP = {
@@ -276,6 +278,15 @@ async function showApp(session) {
   const today = new Date();
   S.y = today.getFullYear();
   S.m = today.getMonth() + 1;
+
+  // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อนอ่าน prefs เสมอ)
+  setPrefsOwner(session.user.email);
+  // จำเดือนที่ดูค้างไว้ (sessionStorage) — ใช้ต่อเมื่อค่าที่เก็บสมเหตุสมผลเท่านั้น
+  const prefs = loadPrefs(PAGE);
+  const py = Number(prefs.y), pm = Number(prefs.m);
+  if (Number.isInteger(py) && py >= 2000 && py <= 2100 && Number.isInteger(pm) && pm >= 1 && pm <= 12) {
+    S.y = py; S.m = pm;
+  }
 
   await loadMaster();
   await renderMonth(false);
@@ -452,6 +463,7 @@ function changeMonth(delta) {
   if (m < 1) { m = 12; y -= 1; }
   else if (m > 12) { m = 1; y += 1; }
   S.y = y; S.m = m;
+  savePrefs(PAGE, { y: S.y, m: S.m });
   renderMonth(false);
 }
 $('prevBtn').addEventListener('click', () => changeMonth(-1));
@@ -459,6 +471,7 @@ $('nextBtn').addEventListener('click', () => changeMonth(1));
 $('todayBtn').addEventListener('click', () => {
   const t = new Date();
   S.y = t.getFullYear(); S.m = t.getMonth() + 1;
+  savePrefs(PAGE, { y: S.y, m: S.m });
   renderMonth(false);
 });
 $('refreshBtn').addEventListener('click', async () => {
@@ -489,6 +502,7 @@ window.calPickerYear = function (delta) {
 };
 window.calPickMonth = function (y, m) {
   S.y = y; S.m = m;
+  savePrefs(PAGE, { y: S.y, m: S.m });
   $('monthPanel').classList.add('hidden');
   renderMonth(false);
 };

@@ -251,7 +251,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt</span>
     <nav class="nav">
-      <a href="gantt.html">Project Gantt</a>
+      <a href="gantt.html">Project</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html" class="active">Dashboard</a>
@@ -355,8 +355,10 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, setPrefsOwner
 } from './common.js';
+
+const PAGE = 'dashboard';
 
 /* =====================================================================
    CONSTANTS
@@ -478,6 +480,42 @@ function showLogin(){
 // running 2-3x in a row, which is exactly what caused the chart-flicker bug (task 6).
 let sessionBooted = false;
 
+/* จำ Applied filter/มุมมองตอนสลับหน้า (sessionStorage ผ่าน common.js) — restore ต้องเกิด
+   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange เป็นตัวกำหนด query (periodCacheKey) ค่าที่อ่านจาก
+   storage ไม่น่าไว้ใจ → validate ชนิด/ช่วงก่อนใช้เสมอ เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ
+   (ensureOverallRangeDefaults จะไม่ทับถ้า overallRange ถูก set ไว้แล้วจากตรงนี้) */
+function restoreDashPrefs(){
+  const p = loadPrefs(PAGE);
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (typeof p.rangeS === 'string' && typeof p.rangeE === 'string' &&
+      dateRe.test(p.rangeS) && dateRe.test(p.rangeE) && p.rangeS <= p.rangeE) {
+    S.overallRange = { s: p.rangeS, e: p.rangeE };
+    $('ovStart').value = p.rangeS;
+    $('ovEnd').value = p.rangeE;
+  }
+
+  if (['project', 'os', 'lead', 'signoff'].includes(p.dashView)) {
+    S.dashView = p.dashView;
+    document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
+  }
+
+  if (typeof p.chartCollapsed === 'boolean') S.chartCollapsed = p.chartCollapsed;
+
+  if (p.projectSort && typeof p.projectSort === 'object') {
+    const { key, dir } = p.projectSort;
+    if (Object.prototype.hasOwnProperty.call(PROJECT_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
+      S.projectSort = { key, dir };
+    }
+  }
+  if (p.signoffSort && typeof p.signoffSort === 'object') {
+    const { key, dir } = p.signoffSort;
+    if (Object.prototype.hasOwnProperty.call(SIGNOFF_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
+      S.signoffSort = { key, dir };
+    }
+  }
+}
+
 async function showApp(session){
   $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
   let who = session.user.email, role = '';
@@ -496,6 +534,9 @@ async function showApp(session){
   showDashLoading();
   wireToolbar();
   await loadMasterData();
+  // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreDashPrefs เสมอ)
+  setPrefsOwner(session.user.email);
+  restoreDashPrefs();
   await ensureOverallRangeDefaults();
   await loadPeriod(true);
 }
@@ -975,7 +1016,10 @@ function renderProjectView(container){
       </table>
     </div>`;
 
-  wireSortHeader(container.querySelector('#projectTable thead'), S.projectSort, () => renderProjectView(container));
+  wireSortHeader(container.querySelector('#projectTable thead'), S.projectSort, () => {
+    savePrefs(PAGE, { projectSort: S.projectSort });
+    renderProjectView(container);
+  });
 }
 
 /* ---- By OS (pivot: OS x App) ---- */
@@ -1169,7 +1213,10 @@ function renderSignoffView(container){
       </table>
     </div>`;
 
-  wireSortHeader(container.querySelector('#signoffTable thead'), S.signoffSort, () => renderSignoffView(container));
+  wireSortHeader(container.querySelector('#signoffTable thead'), S.signoffSort, () => {
+    savePrefs(PAGE, { signoffSort: S.signoffSort });
+    renderSignoffView(container);
+  });
 }
 
 /* =====================================================================
@@ -1199,6 +1246,7 @@ function wireToolbar(){
   });
   $('summaryToggleBtn').addEventListener('click', () => {
     S.chartCollapsed = !S.chartCollapsed;
+    savePrefs(PAGE, { chartCollapsed: S.chartCollapsed });
     showDashLoading();
     renderAll();
     hideDashLoading();
@@ -1208,6 +1256,7 @@ function wireToolbar(){
     if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
     if (s > e) { toast('End ต้องไม่ก่อน Start', true); return; }
     S.overallRange = { s, e };
+    savePrefs(PAGE, { rangeS: s, rangeE: e });
     loadPeriod(true);
   });
 }
@@ -1215,6 +1264,7 @@ function wireToolbar(){
 function switchDashView(view){
   if (S.dashView === view) return;
   S.dashView = view;
+  savePrefs(PAGE, { dashView: S.dashView });
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the

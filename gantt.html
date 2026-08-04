@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Project Gantt — PQA Resource Management</title>
+<title>Project — PQA Resource Management</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="theme.css">
@@ -230,7 +230,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt</span>
     <nav class="nav">
-      <a href="gantt.html" class="active">Project Gantt</a>
+      <a href="gantt.html" class="active">Project</a>
       <a href="outsource.html">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -474,7 +474,8 @@
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads,
-         loadProjectStatuses, statusOptionsHTML } from './common.js';
+         loadProjectStatuses, statusOptionsHTML,
+         loadPrefs, savePrefs, prefSet, setPrefsOwner } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -591,7 +592,53 @@ async function showApp(session){
   $('fStart').value = S.filter.start;
   $('fEnd').value   = S.filter.end;
 
+  // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreFilterPrefs เสมอ)
+  setPrefsOwner(session.user.email);
+  // มี filter ที่จำไว้จากตอนสลับหน้า (sessionStorage) → ใช้แทนค่า default ด้านบน
+  // และกัน applyDefaultLeadFilter() ใน loadAll() ทับ leads ที่ restore มา (ดูคอมเมนต์ที่ leadFilterApplied)
+  if (restoreFilterPrefs()) S.leadFilterApplied = true;
+
   await loadAll();
+}
+
+/* ============ FILTER PREFS (จำ filter ตอนสลับหน้า — sessionStorage ผ่าน common.js) ============ */
+// คืน true ถ้ามี prefs ของหน้านี้เก็บไว้จริง (ไม่ว่าค่าจะว่างหรือไม่) — ใช้กันตอน login
+function restoreFilterPrefs(){
+  const p = loadPrefs('gantt');
+  if (!Object.keys(p).length) return false;
+
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (typeof p.start === 'string' && dateRe.test(p.start)) S.filter.start = p.start;
+  if (typeof p.end   === 'string' && dateRe.test(p.end))   S.filter.end   = p.end;
+  $('fStart').value = S.filter.start;
+  $('fEnd').value   = S.filter.end;
+
+  S.filter.projects = prefSet(p.projects);
+  S.filter.leads    = prefSet(p.leads);
+  S.filter.apps     = prefSet(p.apps);
+  S.filter.phases   = prefSet(p.phases);
+
+  const validOrders = new Set(['', 'timeline', 'lead']);
+  S.filter.order = (typeof p.order === 'string' && validOrders.has(p.order)) ? p.order : '';
+  $('fOrder').value = S.filter.order;
+
+  if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
+
+  return true;
+}
+
+// dump S.filter (+panelOpen จาก DOM) ทั้งก้อนลง sessionStorage — เรียกทุกจุดที่ filter เปลี่ยน
+function saveFilterPrefs(){
+  savePrefs('gantt', {
+    projects: [...S.filter.projects],
+    leads:    [...S.filter.leads],
+    apps:     [...S.filter.apps],
+    phases:   [...S.filter.phases],
+    start: S.filter.start,
+    end:   S.filter.end,
+    order: S.filter.order,
+    panelOpen: !$('filterPanel').classList.contains('hidden'),
+  });
 }
 
 /* ============ LOAD ============ */
@@ -750,16 +797,19 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
     list.querySelectorAll('input:checked').forEach(cb => selectedSet.add(cb.value));
     updateMsLabel(host, items, selectedSet, labelAll);
     renderGantt();
+    saveFilterPrefs();
   };
   host.querySelector('[data-act=all]').onclick = () => {
     items.forEach(it => selectedSet.add(it.value));
     list.querySelectorAll('input').forEach(cb => cb.checked=true);
     updateMsLabel(host, items, selectedSet, labelAll); renderGantt();
+    saveFilterPrefs();
   };
   host.querySelector('[data-act=none]').onclick = () => {
     selectedSet.clear();
     list.querySelectorAll('input').forEach(cb => cb.checked=false);
     updateMsLabel(host, items, selectedSet, labelAll); renderGantt();
+    saveFilterPrefs();
   };
   updateMsLabel(host, items, selectedSet, labelAll);
 }
@@ -1143,14 +1193,15 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 $('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 $('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
-$('toggleFilterBtn').onclick = () => $('filterPanel').classList.toggle('hidden');
+$('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); saveFilterPrefs(); };
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
   renderGantt();
   $('filterPanel').classList.add('hidden');   // req 6: auto-collapse after search
+  saveFilterPrefs();
 };
-$('fOrder').onchange   = () => { S.filter.order = $('fOrder').value; renderGantt(); };
+$('fOrder').onchange   = () => { S.filter.order = $('fOrder').value; renderGantt(); saveFilterPrefs(); };
 
 /* ============ PROJECT EDIT MODAL (req 1) ============ */
 let editingKey = null;

@@ -260,6 +260,80 @@ export async function signOut() {
   return await supabase.auth.signOut();
 }
 
+/* ============ FILTER PREFS (จำ filter ตอนสลับหน้า) ============ */
+/*
+ * เก็บใน sessionStorage → สลับหน้า (Project ↔ Outsource ↔ Calendar ...) แล้ว filter ยังอยู่
+ * แต่ปิดแท็บ/เปิดแท็บใหม่ = กลับเป็นค่า default ตามปกติ
+ * ล้างอัตโนมัติตอน logout (กันคนถัดไปที่ล็อกอินบนเครื่องเดียวกันเห็น filter ของคนก่อน)
+ *
+ * โครงข้อมูล: { [page]: { key: value, ... } }  — page = 'gantt'|'outsource'|'calendar'|'dashboard'|'signoff'
+ * ทุกฟังก์ชัน fail-safe: storage ถูกปิด/เต็ม/JSON พัง ต้องไม่ทำให้หน้าเว็บล้ม
+ */
+const PREFS_KEY = 'pqa.filters.v1';
+const PREFS_OWNER_KEY = 'pqa.filters.owner';   // อีเมลเจ้าของ filter ที่จำไว้ (กันข้ามคน)
+
+function readAllPrefs() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(PREFS_KEY) || '{}');
+    return (o && typeof o === 'object') ? o : {};
+  } catch { return {}; }
+}
+
+/**
+ * อ่าน prefs ของหน้าหนึ่ง
+ * @param {string} page
+ * @returns {Object} object เปล่าถ้ายังไม่เคยบันทึก (ไม่คืน null เพื่อให้ destructure ได้เลย)
+ */
+export function loadPrefs(page) {
+  const o = readAllPrefs()[page];
+  return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+}
+
+/**
+ * บันทึก prefs แบบ merge (เขียนทับเฉพาะ key ที่ส่งมา)
+ * ⚠️ Set ต้องแปลงเป็น array ก่อนส่ง (JSON.stringify(Set) = {})
+ */
+export function savePrefs(page, patch) {
+  try {
+    const all = readAllPrefs();
+    all[page] = { ...(all[page] || {}), ...(patch || {}) };
+    sessionStorage.setItem(PREFS_KEY, JSON.stringify(all));
+  } catch { /* storage เต็ม/ถูกปิด — ข้ามไป ไม่ต้องทำให้หน้าเว็บพัง */ }
+}
+
+/** ล้าง filter ที่จำไว้ทั้งหมด (เรียกตอน logout / เปลี่ยน user) */
+export function clearPrefs() {
+  try {
+    sessionStorage.removeItem(PREFS_KEY);
+    sessionStorage.removeItem(PREFS_OWNER_KEY);
+  } catch { /* ignore */ }
+}
+
+/**
+ * ผูก filter ที่จำไว้กับ user ที่ล็อกอินอยู่ — **เปลี่ยน login = ล้าง filter กลับเป็น default**
+ * ทุกหน้าต้องเรียกใน showApp() **ก่อน** restore prefs (ต้องเป็น sync ไม่ใช่รอ auth event
+ * เพราะแต่ละหน้าบูตจาก getSession() ขนานกับ onAuthStateChange ลำดับไม่แน่นอน)
+ * @param {string} email อีเมลของ session ปัจจุบัน
+ */
+export function setPrefsOwner(email) {
+  const e = String(email || '');
+  try {
+    const cur = sessionStorage.getItem(PREFS_OWNER_KEY);
+    if (cur !== null && cur !== e) clearPrefs();   // คนละคนกับที่บันทึกไว้ → ทิ้ง filter ของคนก่อน
+    sessionStorage.setItem(PREFS_OWNER_KEY, e);
+  } catch { /* ignore */ }
+}
+
+/** array จาก prefs → Set (filter หลายตัวเก็บเป็น Set ในหน้าเว็บ) */
+export function prefSet(v) {
+  return new Set(Array.isArray(v) ? v.filter(x => typeof x === 'string') : []);
+}
+
+// logout จากหน้าไหนก็ได้ → ล้างทิ้ง (ทุกหน้า import common.js อยู่แล้ว จึงติดครบทุกหน้า)
+supabase.auth.onAuthStateChange((evt) => {
+  if (evt === 'SIGNED_OUT') clearPrefs();
+});
+
 /* ============ UI HELPERS ============ */
 
 /* ============ PROJECT STATUS (pqa.project_status) ============ */

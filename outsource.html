@@ -326,7 +326,7 @@
   <div class="topbar">
     <span class="brand">PQA Resource Mgmt</span>
     <nav class="page-nav">
-      <a href="gantt.html">Project Gantt</a>
+      <a href="gantt.html">Project</a>
       <a href="outsource.html" class="active">Outsource</a>
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
@@ -499,7 +499,8 @@
 <script type="module">
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
-  leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr
+  leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
+  loadPrefs, savePrefs, setPrefsOwner
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -682,7 +683,47 @@ async function showApp(session) {
   const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
 
   $('app').classList.remove('hidden');
+  // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreFilterPrefs เสมอ)
+  setPrefsOwner(session.user.email);
+  // มี filter ที่จำไว้จากตอนสลับหน้า (sessionStorage) → restore ก่อนโหลดข้อมูล
+  // (ต้องมาก่อน loadAll() เพื่อให้ setDefaultRangeIfEmpty() เห็น S.range ไม่ว่างแล้วข้าม default ไป
+  // และ reloadRangeData()/renderGrid() ที่เรียกท้าย loadAll() ใช้ค่า restore ได้เลย)
+  restoreFilterPrefs();
   await loadAll();
+}
+
+/* ============ FILTER PREFS (จำ filter ตอนสลับหน้า — sessionStorage ผ่าน common.js) ============ */
+function restoreFilterPrefs() {
+  const p = loadPrefs('outsource');
+  if (!Object.keys(p).length) return;
+
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (typeof p.start === 'string' && typeof p.end === 'string' &&
+      dateRe.test(p.start) && dateRe.test(p.end) && p.start <= p.end) {
+    S.range = { s: p.start, e: p.end };
+    $('fStart').value = dDisp(p.start);
+    $('fEnd').value   = dDisp(p.end);
+  }
+
+  if (typeof p.name === 'string')   $('fName').value = p.name;
+  if (typeof p.skills === 'string') $('fSkills').value = p.skills;
+  if (typeof p.groupBy === 'boolean')  $('chkGroupBy').checked  = p.groupBy;
+  if (typeof p.conflict === 'boolean') $('chkConflict').checked = p.conflict;
+
+  if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
+}
+
+// dump ค่า filter ปัจจุบัน (+panelOpen จาก DOM) ลง sessionStorage — เรียกทุกจุดที่ filter เปลี่ยน
+function saveFilterPrefs() {
+  savePrefs('outsource', {
+    name: $('fName').value,
+    skills: $('fSkills').value,
+    start: S.range.s,
+    end: S.range.e,
+    groupBy: $('chkGroupBy').checked,
+    conflict: $('chkConflict').checked,
+    panelOpen: !$('filterPanel').classList.contains('hidden'),
+  });
 }
 
 /* ============ LOAD MASTER + RANGE DATA ============ */
@@ -991,10 +1032,10 @@ function renderTbody(days) {
 }
 
 /* ============ TOOLBAR EVENTS ============ */
-$('fName').addEventListener('input', renderGrid);
-$('fSkills').addEventListener('input', renderGrid);
-$('chkGroupBy').addEventListener('change', renderGrid);
-$('chkConflict').addEventListener('change', renderGrid);
+$('fName').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
+$('fSkills').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
+$('chkGroupBy').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
+$('chkConflict').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
 
 async function onRangeChange() {
   const s = parseInputDate($('fStart').value);
@@ -1005,15 +1046,22 @@ async function onRangeChange() {
   $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
   await reloadRangeData();
   renderGrid();
+  saveFilterPrefs();   // ครอบคลุมทั้ง applyBtn และตอนแก้ fStart/fEnd ตรงๆ (ทั้งคู่มาลง onRangeChange)
   return true;
 }
 $('fStart').addEventListener('change', onRangeChange);
 $('fEnd').addEventListener('change', onRangeChange);
 // req 6: filter panel toggle (default หุบ) + auto-collapse after กด แสดง
-$('toggleFilterBtn').addEventListener('click', () => $('filterPanel').classList.toggle('hidden'));
+$('toggleFilterBtn').addEventListener('click', () => {
+  $('filterPanel').classList.toggle('hidden');
+  saveFilterPrefs();
+});
 $('applyBtn').addEventListener('click', async () => {
   const ok = await onRangeChange();
-  if (ok) $('filterPanel').classList.add('hidden');
+  if (ok) {
+    $('filterPanel').classList.add('hidden');
+    saveFilterPrefs();   // เรียกซ้ำหลังหุบ panel — onRangeChange() เซฟตอน panel ยังเปิดอยู่ (panelOpen จะค้างเป็น true ถ้าไม่เซฟซ้ำ)
+  }
 });
 
 /* ============ ESC closes any open modal (req 2) ============ */
