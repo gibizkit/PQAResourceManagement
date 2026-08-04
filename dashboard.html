@@ -916,6 +916,7 @@ function buildProjectRows(){
   const subLeads = subLeadMap();
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
   // already server-filtered via .eq('is_active', true) in loadMasterData().
+  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
   return S.activeProjects.map(p => {
     const pk = p.project_key;
     const phases = S.phasesByProject[pk] || [];
@@ -942,6 +943,17 @@ function buildProjectRows(){
     const uatPeriodDisp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
       : periodStart ? dDisp(periodStart) : '—';
 
+    /* §5.23 แสดงเฉพาะโปรเจกต์ที่ Project Period "คาบเกี่ยว" ช่วง Period ที่เลือก
+       (มาตรฐานเดียวกับ §4.1: start ≤ End && end ≥ Start — วันที่เป็น 'yyyy-mm-dd'
+       เทียบเป็น string ได้ตรงกับเทียบเป็นวันที่)
+       - ไม่มีวันที่เฟสเลย (periodStart = null) → ซ่อน
+       - ข้อยกเว้น: ถ้า totalMD > 0 ต้องแสดงเสมอ ไม่งั้นผลรวมท้ายตารางจะไม่เท่ากับ KPI
+         (invariant ตาม §5.20 — booking อาจอยู่นอกช่วงวันที่ของเฟส) */
+    const periodEnd = maxEnd || periodStart;
+    const inRange = !!periodStart && !!rangeS && !!rangeE
+      && periodStart <= rangeE && periodEnd >= rangeS;
+    if (!inRange && !(totalMD > 0)) return null;
+
     return {
       app: p.app || p.other_app || '— ไม่มี App —',
       projectName: p.project_name || '',
@@ -951,7 +963,7 @@ function buildProjectRows(){
       totalMD, tcprep: pAgg.TCPREP || 0, uat: pAgg.UAT || 0, reg: pAgg.REG || 0,
       other1, other2, support: pAgg.SUPPORT || 0,
     };
-  });
+  }).filter(Boolean);
 }
 const PROJECT_KEYFNS = {
   app: r => r.app, lead: r => r.lead, uatPeriod: r => r.uatPeriodSortKey,

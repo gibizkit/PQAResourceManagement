@@ -415,15 +415,17 @@ tbody tr:hover {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
 }
 
-/* โมดัลที่มีตารางเฟส 8 คอลัมน์ (New/Edit Project) */
+/* โมดัลที่มีตารางเฟส 8 คอลัมน์ (New/Edit Project)
+   min() กัน viewport แคบ (จอเล็ก/ซูม) แล้ว modal ล้นจอจนโดนตัด */
 .modal.modal-wide {
-  width: 900px;
+  width: 960px;
+  max-width: min(960px, 94vw);
 }
 
 .modal-head {
   display: flex;
   align-items: center;
-  padding: 16px 20px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--dk-border);
 }
 
@@ -441,12 +443,21 @@ tbody tr:hover {
   color: var(--dk-text3);
   cursor: pointer;
   line-height: 1;
+  border-radius: 6px;
+  padding: 2px 6px;
+  transition: background .12s, color .12s;
+}
+
+.modal-head .x:hover {
+  background: var(--dk-surface);
+  color: var(--dk-text);
 }
 
 .modal-body {
-  padding: 18px 20px;
+  padding: 18px 22px;
   max-height: 70vh;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .modal-foot {
@@ -504,31 +515,57 @@ tbody tr:hover {
 }
 
 /* 8 คอลัมน์: Phase | Start | End | WD | Resource | Total WD | AI | AI Note
-   (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์) */
+   (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์)
+   minmax() กันคอลัมน์ Start/End/AI Note บีบจนล้น — grid item ตัวใดตัวหนึ่ง
+   (โดยเฉพาะ input) มี min-width:auto เป็นค่าเริ่มต้นของ browser ถ้าไม่ set
+   min-width:0 ให้ชัดๆ มันจะไม่ยอมหดตามคอลัมน์ แล้วดันทั้งแถวล้นจน modal
+   ขึ้น scrollbar แนวนอน (ห้ามลบ regel นี้ทิ้ง) */
 .phase-row {
   display: grid;
-  grid-template-columns: 84px 1fr 1fr 56px 66px 66px 32px 1.6fr;
+  grid-template-columns: 76px minmax(96px,1fr) minmax(96px,1fr) 46px 56px 60px 34px minmax(130px,1.5fr);
   gap: 8px;
   align-items: center;
-  margin-bottom: 7px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin-bottom: 3px;
+  transition: background .12s;
+}
+
+.phase-row:hover {
+  background: var(--dk-surface);
+}
+
+.phase-row > * {
+  min-width: 0;   /* กันล้น — ดูคอมเมนต์ด้านบน */
 }
 
 .phase-row .ph-ai-cell {
   display: flex;
   justify-content: center;
+  align-items: center;
 }
 
 .phase-row .ph-ai {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   accent-color: var(--dk-accent);
   cursor: pointer;
+}
+
+.phase-row .ph-ainote {
+  min-width: 0;
 }
 
 .phase-row .ph-ainote:disabled {
   background: var(--dk-surface);
   color: var(--dk-text3);
+  border-color: transparent;
   cursor: not-allowed;
+}
+
+.phase-row .ph-ainote:not(:disabled):focus {
+  outline: none;
+  border-color: var(--dk-accent);
 }
 
 .phase-row .ph-name {
@@ -538,14 +575,19 @@ tbody tr:hover {
 }
 
 .phase-row input {
+  width: 100%;
   padding: 7px 8px;
   font-size: 12.5px;
   border-radius: 7px;
   border: 1px solid var(--dk-border-s);
 }
 
+.phase-row input[type="date"] {
+  padding: 6px 6px;
+}
+
 .phase-row .ph-calc {
-  padding: 7px 8px;
+  padding: 7px 4px;
   font-size: 12.5px;
   border-radius: 7px;
   border: 1px solid transparent;
@@ -553,6 +595,23 @@ tbody tr:hover {
   color: var(--dk-text2);
   text-align: center;
   font-weight: 600;
+}
+
+/* หัวคอลัมน์ของตารางเฟส — .phase-row ที่ตามหลัง .section-title ทันที
+   (โครง HTML: section-title → phase-row หัวตาราง → #phaseRows ที่ JS เติมแถวข้อมูล) */
+.section-title + .phase-row {
+  padding: 0 8px 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--dk-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dk-text3);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.section-title + .phase-row:hover {
+  background: none;
 }
 
 .form-err {
