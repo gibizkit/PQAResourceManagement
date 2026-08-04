@@ -363,7 +363,7 @@
 
 <!-- ============ PROJECT MODAL ============ -->
 <div id="projOverlay" class="overlay hidden">
-  <div class="modal">
+  <div class="modal modal-wide">
     <div class="modal-head">
       <h3 id="projModalTitle">เพิ่ม Project</h3>
       <button class="x" onclick="closeProjectModal()">×</button>
@@ -410,7 +410,7 @@
 
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-row" style="font-size:11px;color:var(--dk-text3);font-weight:600">
-        <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Resource</div><div>Total WD</div>
+        <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Resource</div><div>Total WD</div><div style="text-align:center">AI</div><div>AI Note</div>
       </div>
       <div id="pfPhaseRows"></div>
 
@@ -471,12 +471,15 @@ window.STATE = {
 };
 
 /* ============ PROJECT TAB STATE (ported from pqaResourceManagement.html) ============ */
+// ต้องตรงกับ PHASES ใน gantt.html (โมดัล Project 2 หน้าใช้ชุดเฟสเดียวกัน)
 const PROJECT_PHASES = [
   { code: 'SIT',     name: 'SIT' },
   { code: 'TCPREP',  name: 'TC Prep' },
   { code: 'UAT',     name: 'UAT' },
   { code: 'REG',     name: 'Reg' },
   { code: 'SUPPORT', name: 'Support' },
+  { code: 'OTHER1',  name: 'Other 1' },
+  { code: 'OTHER2',  name: 'Other 2' },
 ];
 let allProjects = [];
 let projectAppList = [];
@@ -642,6 +645,14 @@ function buildProjectPhaseRows(data) {
     const wd = ph.code === 'SIT' ? '' : calcWD(d.start_date, d.end_date);
     const res = d.resource_count ?? '';
     const totalWd = ph.code === 'SIT' ? '' : ((wd && res !== '') ? wd * Number(res) : 0);
+    // AI Assisted / AI Note: เฉพาะเฟสของทีม UAT — SIT เป็นงานทีมพัฒนา ปล่อยช่องว่างไว้
+    const isSit = ph.code === 'SIT';
+    const aiOn = !isSit && !!d.ai_assisted;
+    const aiNote = (!isSit && d.ai_note) ? esc(d.ai_note) : '';
+    const aiCells = isSit
+      ? `<div></div><div></div>`
+      : `<div class="ph-ai-cell"><input type="checkbox" class="ph-ai" ${aiOn ? 'checked' : ''} title="AI Assisted"></div>
+         <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
@@ -649,10 +660,20 @@ function buildProjectPhaseRows(data) {
       <div class="ph-wd ph-calc">${wd || ''}</div>
       <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">
       <div class="ph-totalwd ph-calc">${totalWd || ''}</div>
+      ${aiCells}
     </div>`;
   }).join('');
   document.querySelectorAll('#pfPhaseRows .phase-row').forEach(row => {
     const isSIT = row.dataset.phase === 'SIT';
+    // ไม่ติ๊ก AI = พิมพ์ note ไม่ได้ (ตรงกับ check constraint ai_note ต้องคู่กับ ai_assisted)
+    const ai = row.querySelector('.ph-ai'), aiNoteEl = row.querySelector('.ph-ainote');
+    if (ai && aiNoteEl) {
+      ai.addEventListener('change', () => {
+        aiNoteEl.disabled = !ai.checked;
+        if (!ai.checked) aiNoteEl.value = '';
+        else aiNoteEl.focus();
+      });
+    }
     const recalc = () => {
       if (isSIT) return;  // SIT ไม่ต้องคำนวณ WD/Total WD
       const wd = calcWD(row.querySelector('.ph-start').value, row.querySelector('.ph-end').value);
@@ -818,7 +839,7 @@ window.openEditProject = async function(key) {
 
   // โหลด phase จริงจาก project_phase
   const { data: phs } = await supabase.from('project_phase')
-    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count')
+    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count,ai_assisted,ai_note')
     .eq('project_key', key);
   const map = {};
   (phs || []).forEach(ph => {
@@ -836,12 +857,19 @@ function readProjectPhases() {
   return [...document.querySelectorAll('#pfPhaseRows .phase-row')].map(r => {
     const wdText = r.querySelector('.ph-wd').textContent.trim();
     const phaseCode = r.dataset.phase;
+    // AI: SIT ไม่มีช่องให้ติ๊ก (ส่ง false/null เสมอ) · ไม่ติ๊ก = note ต้องเป็น null
+    // ตรงกับ check constraint project_phase_ai_not_sit / project_phase_ai_note_needs_flag
+    const aiEl = r.querySelector('.ph-ai');
+    const aiOn = phaseCode !== 'SIT' && !!(aiEl && aiEl.checked);
+    const noteEl = r.querySelector('.ph-ainote');
     return {
       phase_code: phaseCode,
       start_date: r.querySelector('.ph-start').value || null,
       end_date: r.querySelector('.ph-end').value || null,
       md: phaseCode === 'SIT' ? null : (wdText === '' ? null : Number(wdText)),   // SIT ต้องส่ง md=null เสมอ ไม่มี WD
       resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+      ai_assisted: aiOn,
+      ai_note: aiOn ? ((noteEl && noteEl.value.trim()) || null) : null,
     };
   });
 }
@@ -911,7 +939,8 @@ window.saveProject = async function() {
   // ---- phases ----
   const phases = readProjectPhases();
   for (const ph of phases) {
-    const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null;
+    const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null
+                    || ph.ai_assisted;
     const existingId = existingProjectPhases[ph.phase_code];
     if (hasData) {
       const phPayload = {
@@ -920,7 +949,9 @@ window.saveProject = async function() {
         start_date: ph.start_date,
         end_date: ph.end_date,
         md: ph.md,
-        resource_count: ph.resource_count
+        resource_count: ph.resource_count,
+        ai_assisted: ph.ai_assisted,
+        ai_note: ph.ai_note
       };
       if (existingId) {
         await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);

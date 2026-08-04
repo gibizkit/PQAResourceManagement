@@ -415,6 +415,11 @@ tbody tr:hover {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
 }
 
+/* โมดัลที่มีตารางเฟส 8 คอลัมน์ (New/Edit Project) */
+.modal.modal-wide {
+  width: 900px;
+}
+
 .modal-head {
   display: flex;
   align-items: center;
@@ -498,12 +503,32 @@ tbody tr:hover {
   padding-top: 14px;
 }
 
+/* 8 คอลัมน์: Phase | Start | End | WD | Resource | Total WD | AI | AI Note
+   (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์) */
 .phase-row {
   display: grid;
-  grid-template-columns: 90px 1fr 1fr 64px 70px 72px;
+  grid-template-columns: 84px 1fr 1fr 56px 66px 66px 32px 1.6fr;
   gap: 8px;
   align-items: center;
   margin-bottom: 7px;
+}
+
+.phase-row .ph-ai-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.phase-row .ph-ai {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--dk-accent);
+  cursor: pointer;
+}
+
+.phase-row .ph-ainote:disabled {
+  background: var(--dk-surface);
+  color: var(--dk-text3);
+  cursor: not-allowed;
 }
 
 .phase-row .ph-name {
