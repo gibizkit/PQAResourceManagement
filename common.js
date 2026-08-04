@@ -18,27 +18,36 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 /* ============ LOGIN LOG ============ */
 export const APP_VERSION = '1.0.0';
+const LOGIN_LOGGED_KEY = 'pqa.login_logged.v1';
 
 /**
  * บันทึกการล็อกอินลง pqa.login_log — best-effort, ไม่ block การเข้าแอป
- * ทำงานอัตโนมัติเมื่อ sign-in สำเร็จ (event 'SIGNED_IN') เท่านั้น
- * การ restore session ตอนเปลี่ยนหน้าจะเป็น event 'INITIAL_SESSION' จึงไม่ถูกนับซ้ำ
+ *
+ * ⚠️ เดิมเคยผูกกับ supabase.auth.onAuthStateChange(event === 'SIGNED_IN') ที่ module-level
+ * แต่ SIGNED_IN ยิงซ้ำได้หลายรอบต่อการโหลดหน้าเดียว (คอมเมนต์เก่าใน dashboard.html ก็เคย
+ * เตือนเรื่องนี้ไว้แล้ว) + ตัวกันซ้ำเดิม (_loginLogged) เป็นแค่ตัวแปรใน memory ที่รีเซ็ตทุกครั้ง
+ * ที่โหลดหน้าใหม่ (แอปนี้เป็น multi-page ไม่ใช่ SPA) → ผลคือบันทึกซ้ำเป็นสิบๆ แถวต่อ session จริง
+ *
+ * ตอนนี้เปลี่ยนมาเรียก logLogin() ตรงๆ จากจุดเดียว คือหลัง signIn() (ด้านล่าง) สำเร็จเท่านั้น
+ * — ไม่ผูกกับ onAuthStateChange อีกต่อไป จึงไม่มีทางถูกยิงซ้ำจาก session-restore/token-refresh/
+ * cross-tab broadcast กันซ้ำอีกชั้นด้วย sessionStorage (อยู่ข้ามหน้าในแท็บเดียวกัน จนกว่าจะ
+ * SIGNED_OUT หรือปิดแท็บ) เผื่อกรณี submit form ซ้ำเร็วๆ
  */
-let _loginLogged = false;
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session?.user && !_loginLogged) {
-    _loginLogged = true;
-    supabase.from('login_log').insert({
-      user_id: session.user.id,
-      username: session.user.email,
-      auth_type: 'password',
-      app_version: APP_VERSION
-    }).then(({ error }) => {
-      if (error) console.warn('login_log insert failed:', error.message);
-    });
-  }
-  if (event === 'SIGNED_OUT') _loginLogged = false;
-});
+function logLogin(session) {
+  if (!session?.user) return;
+  try {
+    if (sessionStorage.getItem(LOGIN_LOGGED_KEY) === '1') return;
+    sessionStorage.setItem(LOGIN_LOGGED_KEY, '1');
+  } catch { /* storage ปิด/เต็ม — ยอมเสี่ยงบันทึกซ้ำได้ ดีกว่าบล็อกทั้งฟีเจอร์ */ }
+  supabase.from('login_log').insert({
+    user_id: session.user.id,
+    username: session.user.email,
+    auth_type: 'password',
+    app_version: APP_VERSION
+  }).then(({ error }) => {
+    if (error) console.warn('login_log insert failed:', error.message);
+  });
+}
 
 /* ============ DOM HELPERS ============ */
 
@@ -241,15 +250,19 @@ export function onAuth(callback) {
 
 /**
  * Sign in with email & password
+ * เรียก logLogin() ครั้งเดียวตรงนี้เมื่อสำเร็จเท่านั้น — ทุกหน้าต้องเรียก signIn() ตัวนี้
+ * แทนการเรียก supabase.auth.signInWithPassword() ตรงๆ ไม่งั้น login_log จะไม่ถูกบันทึก
  * @param {string} email
  * @param {string} password
  * @returns {Promise<Object>} { error } on failure, { data, error } on success
  */
 export async function signIn(email, password) {
-  return await supabase.auth.signInWithPassword({
+  const result = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password
   });
+  if (!result.error && result.data?.session) logLogin(result.data.session);
+  return result;
 }
 
 /**
@@ -330,8 +343,12 @@ export function prefSet(v) {
 }
 
 // logout จากหน้าไหนก็ได้ → ล้างทิ้ง (ทุกหน้า import common.js อยู่แล้ว จึงติดครบทุกหน้า)
+// เคลียร์ login-log guard ด้วย ไม่งั้น login รอบถัดไปในแท็บเดียวกันจะไม่ถูกบันทึก
 supabase.auth.onAuthStateChange((evt) => {
-  if (evt === 'SIGNED_OUT') clearPrefs();
+  if (evt === 'SIGNED_OUT') {
+    clearPrefs();
+    try { sessionStorage.removeItem(LOGIN_LOGGED_KEY); } catch { /* ignore */ }
+  }
 });
 
 /* ============ UI HELPERS ============ */

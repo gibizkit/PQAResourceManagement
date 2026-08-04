@@ -150,14 +150,15 @@
   .cur-chip.done { background:#e8f2e6; color:#2e7d32; }
   .cur-chip.upcoming { color:var(--dk-text2); }
 
-  /* phase row: label on one line, prefixed with the Booked/Plan MD number (.ph-md) before the dot */
+  /* phase row: label on one line (dot + phase name only — MD moved into .c0-dates, see below) */
   .ph-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
   .ph-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--dk-text2);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ph-swatch { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
-  /* Booked MD / Plan MD text — shown in the Phase column (.c1), right before the swatch+name */
+  /* Booked MD / Plan MD text — shown in the Project column (.c0), right after the WD pill
+     (milestone row has no WD pill, so it's the lone child of .c0-dates there) */
   .ph-md { font-size:11.5px; font-weight:700; color:var(--dk-text2); white-space:nowrap; flex:0 0 auto; }
-  /* Start–End date range + working-day count for a phase, shown in the Project column (.c0) —
+  /* Start–End date range + WD count for a phase, shown in the Project column (.c0) —
      static text only (dates are still edited through the Project modal, not inline here).
      (ป้าย 👤 booked/required อยู่คอลัมน์ Action .c2 เหมือนเดิม) */
   .c0-dates { display:flex; align-items:center; gap:6px; overflow:hidden; padding-right:8px; }
@@ -484,7 +485,7 @@
 import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads,
          loadProjectStatuses, statusOptionsHTML,
-         loadPrefs, savePrefs, prefSet, setPrefsOwner } from './common.js';
+         loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -573,7 +574,7 @@ function noteKey(pk, phaseCode, ds){ return pk+'|'+(phaseCode||'')+'|'+ds; }
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const btn=$('loginBtn'); btn.disabled=true; btn.textContent='กำลังเข้าสู่ระบบ...'; $('loginErr').textContent='';
-  const { error } = await supabase.auth.signInWithPassword({ email:$('email').value.trim(), password:$('password').value });
+  const { error } = await signIn($('email').value, $('password').value);
   btn.disabled=false; btn.textContent='เข้าสู่ระบบ';
   if(error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
 });
@@ -1119,17 +1120,8 @@ function phaseRow(p, ph, days){
   const bookBadge = ph.phase_code === 'SIT' ? '' :
     `<span class="${bkCls}" onclick="openBookingPopup(${idx})" title="เปิด Resource Booking">👤 ${bkCnt}/${reqDisp}</span>`;
 
-  // Project column (.c0) ของแถว phase = ช่วงวันที่เริ่ม-จบ + จำนวนวันทำการของเฟสนี้ (static text
-  // อ่านอย่างเดียว — แก้วันที่จริงต้องผ่าน Project modal) ไม่มีวันที่ = เว้นว่าง
-  const dateCell = (!ph.start_date || !ph.end_date) ? '' : `
-    <div class="c0-dates">
-      <span class="d-badge">📅 ${dDisp(ph.start_date)}</span>
-      <span class="d-arrow">→</span>
-      <span class="d-badge">📅 ${dDisp(ph.end_date)}</span>
-      <span class="wd-chip">🕐 ${calcWD(ph.start_date, ph.end_date)} วันทำการ</span>
-    </div>`;
-
-  // Phase column (.c1) นำหน้าจุดสี+ชื่อเฟส ด้วย Booked MD / Plan MD — SIT ไม่มี booking/plan md เลย → "–"
+  // Phase column (.c1) MD ที่เคยนำหน้าจุดสี+ชื่อเฟสย้ายมาต่อจาก pill WD ใน .c0 แทนแล้ว (ดูล่าง)
+  // SIT ไม่มี booking/plan md เลย → "–"
   const mdText = ph.phase_code === 'SIT'
     ? '–'
     : (() => {
@@ -1140,10 +1132,22 @@ function phaseRow(p, ph, days){
       })();
   const mdTitle = ph.phase_code === 'SIT' ? 'SIT ไม่มี Booking MD' : 'Booked MD / Plan MD';
 
+  // Project column (.c0) ของแถว phase = ช่วงวันที่เริ่ม-จบ + WD ของเฟสนี้ (static text
+  // อ่านอย่างเดียว — แก้วันที่จริงต้องผ่าน Project modal) ต่อท้ายด้วยเลข Booked MD / Plan MD
+  // ไม่มีวันที่ = เว้นว่าง (ไม่โชว์เลข MD ด้วย เพราะไม่มี pill WD ให้ต่อท้าย)
+  const dateCell = (!ph.start_date || !ph.end_date) ? '' : `
+    <div class="c0-dates">
+      <span class="d-badge">📅 ${dDisp(ph.start_date)}</span>
+      <span class="d-arrow">→</span>
+      <span class="d-badge">📅 ${dDisp(ph.end_date)}</span>
+      <span class="wd-chip">🕐 ${calcWD(ph.start_date, ph.end_date)} WD</span>
+      <span class="ph-md" title="${mdTitle}">${mdText}</span>
+    </div>`;
+
   return `<tr>
     <td class="sticky-col c0">${dateCell}</td>
     <td class="sticky-col c1">
-      <span class="ph-label" title="${lbl}"><span class="ph-md" title="${mdTitle}">${mdText}</span><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
+      <span class="ph-label" title="${lbl}"><span class="ph-swatch" style="background:${color}"></span>${lbl}</span>
     </td>
     <td class="sticky-col c2"><div class="act">${bookBadge}</div></td>
     ${cells}
@@ -1157,13 +1161,14 @@ function milestoneRow(p, days){
     else if (ds===p.deploy_date) inner = `<span class="diamond" style="background:var(--ph-deploy)" title="Deploy ${dDisp(ds)}"></span>`;
     return `<td class="${cls}" style="text-align:center">${inner}</td>`;
   }).join('');
-  // req 3 (2026-08-04: ย้ายเข้าคอลัมน์ Phase .c1 นำหน้าข้อความ Milestones — .c0 ไม่มีช่วงวันที่
-  // เดี่ยวให้โชว์เพราะเป็นผลรวมหลายเฟส จึงเว้นว่าง) = ผลรวม Total Booked MD / Total Plan MD ทั้งโปรเจกต์ (ไม่รวม SIT)
+  // req 3 (2026-08-04: อยู่ในคอลัมน์ Project .c0 — ไม่มีช่วงวันที่เดี่ยว/pill WD ให้ต่อท้ายเหมือน
+  // แถวเฟส เพราะเป็นผลรวมหลายเฟส จึงโชว์แค่ตัวเลขเปล่าๆ) = ผลรวม Total Booked MD / Total Plan MD
+  // ทั้งโปรเจกต์ (ไม่รวม SIT)
   const totals = projectTotalMD(p.project_key);
   const totalPlanDisp = totals.plan == null ? '–' : fmtMD(totals.plan);
   return `<tr>
-    <td class="sticky-col c0"></td>
-    <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)"><span class="ph-md" title="Total Booked MD / Total Plan MD">${fmtMD(totals.booked)}/${totalPlanDisp}</span>Milestones</div></td>
+    <td class="sticky-col c0"><div class="c0-dates"><span class="ph-md" title="Total Booked MD / Total Plan MD">${fmtMD(totals.booked)}/${totalPlanDisp}</span></div></td>
+    <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
     <td class="sticky-col c2"></td>
     ${cells}
   </tr>`;
@@ -1171,8 +1176,8 @@ function milestoneRow(p, days){
 
 function fmtNum(n){ return Number.isInteger(n) ? String(n) : String(n); }
 
-/* ============ MD CALC (Booked / Plan) — now shown in the Phase column (.c1) ของแถว phase/milestone
-   (2026-08-04: ย้ายจาก .c0 มา .c1 เพื่อให้ .c0 ใช้แสดงช่วงวันที่เริ่ม-จบ + WD ของเฟสแทน) ============ */
+/* ============ MD CALC (Booked / Plan) — shown in the Project column (.c0) ของแถว phase/milestone
+   ต่อจาก pill WD (แถว milestone ไม่มี pill WD เลยโชว์แค่ตัวเลขเปล่าๆ) ============ */
 // Plan MD ของเฟส = WD คำนวณสดจาก start/end ของเฟส (calcWD) × resource_count
 // — ไม่ใช้ project_phase.md ที่เก็บใน DB ตรงๆ เพราะเป็นข้อมูลเก่าที่ migrate มาจากชีต
 // (บางแถวยังเป็น 0/ค่าเก่า จนกว่าจะเซฟทับผ่าน Project modal ตาม §5.5) — คอลัมน์/การบันทึกใน DB

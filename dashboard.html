@@ -355,7 +355,7 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, setPrefsOwner
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, setPrefsOwner, signIn
 } from './common.js';
 
 const PAGE = 'dashboard';
@@ -459,9 +459,7 @@ $('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('loginBtn');
   btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...'; $('loginErr').textContent = '';
-  const { error } = await supabase.auth.signInWithPassword({
-    email: $('email').value.trim(), password: $('password').value
-  });
+  const { error } = await signIn($('email').value, $('password').value);
   btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ';
   if (error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
 });

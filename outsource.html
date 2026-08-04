@@ -500,7 +500,7 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
   leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
-  loadPrefs, savePrefs, setPrefsOwner
+  loadPrefs, savePrefs, setPrefsOwner, signIn
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -635,10 +635,7 @@ $('loginForm').addEventListener('submit', async e => {
   btn.textContent = 'กำลังเข้าสู่ระบบ...';
   $('loginErr').textContent = '';
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email: $('email').value.trim(),
-    password: $('password').value
-  });
+  const { error } = await signIn($('email').value, $('password').value);
 
   btn.disabled = false;
   btn.textContent = 'เข้าสู่ระบบ';

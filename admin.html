@@ -449,7 +449,7 @@
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, parseInputDate, statusPill, fmtDate,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads,
-         loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays } from './common.js';
+         loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn } from './common.js';
 
 // holiday map { 'yyyy-MM-dd': desc } ใช้เฉพาะคำนวณ WD ใน Project modal (แยกจาก STATE.holidays ที่เป็น array ของแท็บ Holiday)
 let projectHolidayMap = {};
@@ -496,10 +496,7 @@ $('loginForm').addEventListener('submit', async e => {
   btn.textContent = 'กำลังเข้าสู่ระบบ...';
   $('loginErr').textContent = '';
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email: $('email').value.trim(),
-    password: $('password').value
-  });
+  const { error } = await signIn($('email').value, $('password').value);
 
   btn.disabled = false;
   btn.textContent = 'เข้าสู่ระบบ';
