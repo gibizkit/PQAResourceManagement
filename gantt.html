@@ -278,6 +278,7 @@
           <option value="">Default (App · Project · Lead · Date)</option>
           <option value="timeline">Timeline</option>
           <option value="lead">UAT Lead</option>
+          <option value="phase">Phase</option>
         </select>
       </div>
       <div class="fld">
@@ -520,6 +521,11 @@ function phaseRowLabel(ph){
 }
 function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
 function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
+// ใช้กับ Order = Phase — sort_order จาก master pqa.phase (แก้ได้จากหน้า Admin) fallback เป็น PHASE_META.order ถ้าโหลดไม่ทัน
+function phaseMasterOrder(code){
+  const so = S.phaseSortOrder[code];
+  return (so === undefined || so === null) ? phaseOrder(code) : so;
+}
 
 const PHASES = [
   { code:'SIT', name:'SIT' }, { code:'TCPREP', name:'TC Prep' },
@@ -551,6 +557,7 @@ const S = {
   user: null,
   collapsed: {},
   appOrder: {},
+  phaseSortOrder: {},   // master pqa.phase.sort_order (phase_code -> number) ใช้กับ Order = Phase
   filter: { projects:new Set(), leads:new Set(), apps:new Set(), phases:new Set(), start:'', end:'', order:'' },
   leadFilterApplied: false,  // กันไม่ให้ default-lead-filter ทับ filter ที่ผู้ใช้เคลียร์เอง ตอน loadAll() ถูกเรียกซ้ำ (save/delete project)
   renderedPhases: [],
@@ -645,7 +652,7 @@ function restoreFilterPrefs(){
   S.filter.apps     = prefSet(p.apps);
   S.filter.phases   = prefSet(p.phases);
 
-  const validOrders = new Set(['', 'timeline', 'lead']);
+  const validOrders = new Set(['', 'timeline', 'lead', 'phase']);
   S.filter.order = (typeof p.order === 'string' && validOrders.has(p.order)) ? p.order : '';
   $('fOrder').value = S.filter.order;
 
@@ -672,7 +679,7 @@ function saveFilterPrefs(){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes] = await Promise.all([
+    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes] = await Promise.all([
       loadHolidaysSafe(),
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
@@ -681,13 +688,18 @@ async function loadAll(){
       supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
       supabase.from('booking').select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true),
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
-      supabase.from('app').select('app_code,app_name').eq('is_active', true).order('sort_order', { nullsFirst:false }),
+      supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
+      supabase.from('phase').select('phase_code,sort_order'),   // master order สำหรับ Order = Phase
     ]);
 
     for (const r of [projRes, phaseRes, plRes, leadRes, bkRes, resRes]) {
       if (r.error) throw r.error;
     }
+
+    S.phaseSortOrder = {};
+    if (phaseMasterRes.error) console.warn('phase master (sort_order) load error', phaseMasterRes.error);
+    else (phaseMasterRes.data || []).forEach(ph => { S.phaseSortOrder[ph.phase_code] = ph.sort_order; });
 
     S.noteMap = {};
     if (noteRes.error) console.warn('project_comment (notes) load error', noteRes.error);
@@ -699,7 +711,7 @@ async function loadAll(){
     S.leads    = leadRes.data || [];
     S.apps     = appRes.error ? [] : (appRes.data || []);
     S.appOrder = {};
-    S.apps.forEach((a, i) => { S.appOrder[a.app_code] = i; }); // เก็บไว้ใช้กับ dropdown filter (การเรียงแถวใช้ appSortKey A–Z)
+    S.apps.forEach((a, i) => { S.appOrder[a.app_code] = i; }); // เก็บไว้ใช้กับ dropdown filter (query เรียง app_code A-Z แล้ว)
 
     S.resourceMap = {};
     S.outsourceList = [];
@@ -894,7 +906,7 @@ function buildFilters(){
       .map(l => ({ value:l.emp_id, label:l.short_name })),
     S.filter.leads, 'ทุก Lead');
   makeMultiSelect('msApp',
-    S.apps.map(a => ({ value:a.app_code, label:a.app_name || a.app_code })),
+    S.apps.map(a => ({ value:a.app_code, label:a.app_code })),
     S.filter.apps, 'ทุก App');
   makeMultiSelect('msPhase',
     PHASES.map(ph => ({ value:ph.code, label:ph.name })),
@@ -959,11 +971,26 @@ function sortProjects(list){
   const minStart = (p, exclSit) => projSpan(p.project_key, exclSit).mn || '9999-12-31';
 
   if (order === 'timeline'){
-    // min start_date across ALL phases (incl. SIT)
-    arr.sort((a,b) => { const sa=minStart(a,false), sb=minStart(b,false);
+    // min start_date ไม่รวม SIT — ให้ตรงกับเส้น timeline หลักที่ตีเส้นเริ่มจาก TC Prep
+    // (รวม SIT แล้วโปรเจกต์ที่มี SIT เริ่มเร็วมากจะแทรกขึ้นมาก่อนทั้งที่ยังไม่ถึงคิวจริง)
+    arr.sort((a,b) => { const sa=minStart(a,true), sb=minStart(b,true);
       return sa<sb?-1 : sa>sb?1 : byName(a,b); });
   } else if (order === 'lead'){
     arr.sort((a,b) => projLeadName(a.project_key).localeCompare(projLeadName(b.project_key)) || byName(a,b));
+  } else if (order === 'phase'){
+    // เรียงตามเฟสปัจจุบันของโปรเจกต์ (ไม่รวม SIT — ตาม currentPhaseInfo) โดยใช้ sort_order
+    // จาก master pqa.phase เป็นเงื่อนไขหลัก: เฟสที่ sort_order น้อยกว่ามาก่อน (ทั้งกำลังรันและ upcoming)
+    // เสร็จสิ้นแล้ว → ท้ายสุดก่อน "ไม่มีเฟส", state active มาก่อน upcoming เมื่อ sort_order เท่ากัน
+    const rank = (info) => info ? (info.state === 'done' ? 9000 : phaseMasterOrder(info.code)) : 9999;
+    arr.sort((a,b) => {
+      const ia = currentPhaseInfo(a.project_key), ib = currentPhaseInfo(b.project_key);
+      const ra = rank(ia), rb = rank(ib);
+      if (ra !== rb) return ra - rb;
+      const sa = (ia && ia.state === 'active') ? 0 : 1;
+      const sb = (ib && ib.state === 'active') ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return byName(a,b);
+    });
   } else {
     // default: App (A–Z) → Project Name (A–Z) → Lead → Project Date (min start EXCLUDING SIT)
     arr.sort((a,b) => {

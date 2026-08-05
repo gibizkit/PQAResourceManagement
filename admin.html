@@ -703,7 +703,7 @@ function suggestProjectKey() {
 
 async function loadProjectApps() {
   const { data, error } = await supabase.from('app').select('app_code,app_name')
-    .eq('is_active', true).order('sort_order', { nullsFirst: false });
+    .eq('is_active', true).order('app_code', { ascending: true });
   if (error) {
     console.warn('load project apps', error);
     return;
