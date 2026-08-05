@@ -314,7 +314,8 @@ const S = {
   projects: [],            // v_project_wide rows that have a signoff_date
   projMap: {},              // project_key -> row
   phasesByProject: {},      // project_key -> project_phase rows (ใช้หา "เฟสปัจจุบัน")
-  lastCommentMap: {},      // project_key -> {author_email, body, created_at} (most recent, non-root)
+  lastCommentMap: {},      // project_key -> {author_email, body, created_at} (most recent, non-root — ใช้ทำ snippet)
+  lastUpdateMap: {},       // project_key -> ISO timestamp ล่าสุด นับทุกคอมเมนต์ (รวม root + edited_at)
 
   mode: 'monthly',          // 'monthly' | 'all'
   y: 0, m: 0,               // monthly nav (1-based month)
@@ -357,6 +358,16 @@ function appShort(name){
   const parts = spaced.split(/[\s_\-]+/).filter(Boolean);
   if (parts.length >= 2) return parts.slice(0,3).map(p=>p[0].toUpperCase()).join('');
   return String(name).replace(/[^A-Za-z0-9ก-๙]/g,'').slice(0,3).toUpperCase() || '?';
+}
+/* เลข App (app_number) — parse จาก app_code เช่น '294_PaoTang' -> '294' (ตรงกับ pqa.app.app_number
+   ที่เป็น generated column ใน DB) โปรเจกต์ที่ไม่มี app_code (กรอกเป็น other_app แทน) ไม่มีเลขจริง
+   → fallback เป็นตัวย่อชื่อแอปแบบเดิม */
+function appNumberOf(proj){
+  if (!proj) return '?';
+  const code = String(proj.app || '');
+  const numPart = code.split('_')[0];
+  if (numPart && /^\d+$/.test(numPart)) return numPart;
+  return proj.other_app ? appShort(proj.other_app) : '?';
 }
 function truncate(s, max){
   s = String(s||'');
@@ -497,9 +508,11 @@ async function loadMasterData(){
       .eq('is_active', true),   // req: แสดงเฉพาะโปรเจกต์ที่ยัง active (isActive=Y)
     supabase.from('app').select('app_code,app_name'),
     supabase.from('app_user').select('email,display_name'),
+    // ดึงคอมเมนต์ "ทุกแถว" (รวม root) มาคำนวณ Last Update — root เดี่ยวๆ ที่ยังไม่มีใครตอบ
+    // ก็ต้องนับเป็นอัปเดตด้วย (ไม่ใช่แค่ reply) ดู loadMasterData() ด้านล่าง
     supabase.from('signoff_comment')
-      .select('project_key,author_email,body,created_at')
-      .is('deleted_at', null).eq('is_root', false)
+      .select('project_key,author_email,body,created_at,edited_at,is_root')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false }),
     // req 7: only show projects that already have a "room" — i.e. any signoff_comment row
     // (the root card is created from the Gantt modal via fn_upsert_signoff_review)
@@ -530,8 +543,15 @@ async function loadMasterData(){
   (userRes.data || []).forEach(u => { S.userMap[u.email] = u.display_name; });
 
   S.lastCommentMap = {};
+  S.lastUpdateMap = {};
   (lastCmtRes.data || []).forEach(c => {
-    if (!(c.project_key in S.lastCommentMap)) S.lastCommentMap[c.project_key] = c; // first = most recent (desc order)
+    // Last Update = เวลากิจกรรมล่าสุดของโปรเจกต์ นับทุกคอมเมนต์ (รวม root) และนับการแก้ไขด้วย
+    const activityTs = c.edited_at || c.created_at;
+    if (!S.lastUpdateMap[c.project_key] || activityTs > S.lastUpdateMap[c.project_key]) {
+      S.lastUpdateMap[c.project_key] = activityTs;
+    }
+    // snippet แถบซ้าย ยังใช้แค่คอมเมนต์ตอบกลับ (ไม่รวม root) เหมือนเดิม — root คือโพสต์เปิดหัวข้อ ไม่ใช่ "reply"
+    if (!c.is_root && !(c.project_key in S.lastCommentMap)) S.lastCommentMap[c.project_key] = c; // first = most recent (desc order)
   });
 }
 
@@ -565,20 +585,20 @@ function groupByMonth(list){
 }
 function buildRoomItemHTML(p){
   const active = S.selectedKey === p.project_key;
-  const appName = appNameOf(p);
-  const short = appShort(appName);
+  const badgeTxt = appNumberOf(p);
   const last = S.lastCommentMap[p.project_key];
   const snippet = last
     ? `${displayNameFor(last.author_email)}: ${truncate(last.body, 44)}`
     : 'ยังไม่มีความคิดเห็น';
-  const timeTxt = last ? commentTimeFull(last.created_at) : '';
+  const updateTs = S.lastUpdateMap[p.project_key];
+  const timeTxt = updateTs ? commentTimeFull(updateTs) : '';
   return `
     <button class="sr-room ${active?'active':''}" data-key="${esc(p.project_key)}">
-      <span class="sr-room-badge">${esc(short)}</span>
+      <span class="sr-room-badge" title="App ${esc(badgeTxt)}">${esc(badgeTxt)}</span>
       <span class="sr-room-body">
         <span class="sr-room-top">
           <span class="sr-room-name" title="${esc(p.project_name||'')}">${esc(p.project_name||'')}</span>
-          <span class="sr-room-time">${esc(timeTxt)}</span>
+          <span class="sr-room-time" title="อัปเดตล่าสุด">${timeTxt ? '🕓 '+esc(timeTxt) : ''}</span>
         </span>
         <span class="sr-room-snippet">${esc(snippet)}</span>
         <span class="sr-room-meta">${statusHTML(p)}</span>
@@ -597,14 +617,16 @@ function renderRail(){
     return;
   }
 
-  const byDateAsc = (a,b) => (a.signoff_date||'').localeCompare(b.signoff_date||'');
+  // เรียง Project ตาม Last Update ล่าสุดก่อน (z-a / ใหม่สุดอยู่บนสุด) — ไม่มีคอมเมนต์เลย = ไปท้ายสุด
+  const byLastUpdateDesc = (a,b) =>
+    (S.lastUpdateMap[b.project_key]||'').localeCompare(S.lastUpdateMap[a.project_key]||'');
   if (S.mode === 'monthly') {
-    container.innerHTML = list.slice().sort(byDateAsc).map(buildRoomItemHTML).join('');
+    container.innerHTML = list.slice().sort(byLastUpdateDesc).map(buildRoomItemHTML).join('');
   } else {
     const groups = groupByMonth(list);
     container.innerHTML = groups.map(g => `
       <div class="sr-group-label">${esc(g.label)}</div>
-      ${g.items.slice().sort(byDateAsc).map(buildRoomItemHTML).join('')}
+      ${g.items.slice().sort(byLastUpdateDesc).map(buildRoomItemHTML).join('')}
     `).join('');
   }
 }
@@ -707,16 +729,18 @@ function buildReactionsBlock(commentId, pickerKey){
 
 function buildRoomHeaderHTML(proj){
   const appName = appNameOf(proj);
-  const short = appShort(appName);
+  const badgeTxt = appNumberOf(proj);
   const docBtn = proj.signoff_url
     ? `<a class="sr-doc-btn" href="${esc(proj.signoff_url)}" target="_blank" rel="noopener">📄 เอกสาร Signoff</a>`
     : '';
+  const updateTs = S.lastUpdateMap[proj.project_key];
+  const updateTxt = updateTs ? ` · อัปเดตล่าสุด ${esc(commentTimeFull(updateTs))}` : '';
   return `
     <div class="sr-room-header">
-      <span class="sr-room-header-badge">${esc(short)}</span>
+      <span class="sr-room-header-badge" title="App ${esc(badgeTxt)}">${esc(badgeTxt)}</span>
       <div class="sr-room-header-info">
         <div class="sr-room-header-title" title="${esc(proj.project_name||'')}">${esc(proj.project_name||'')}</div>
-        <div class="sr-room-header-sub">${esc(appName)} · UAT Lead: ${esc(proj.uat_lead||'—')}</div>
+        <div class="sr-room-header-sub">${esc(appName)} · UAT Lead: ${esc(proj.uat_lead||'—')}${updateTxt}</div>
       </div>
       <div class="sr-room-header-actions">
         ${statusHTML(proj)}
@@ -1033,11 +1057,16 @@ async function saveCommentEdit(id){
 }
 async function refreshRailSnippet(pk){
   const { data, error } = await supabase.from('signoff_comment')
-    .select('project_key,author_email,body,created_at')
-    .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
-    .order('created_at', { ascending: false }).limit(1);
+    .select('project_key,author_email,body,created_at,edited_at,is_root')
+    .eq('project_key', pk).is('deleted_at', null)
+    .order('created_at', { ascending: false });
   if (error) { console.warn('refreshRailSnippet error', error); return; }
-  if (data && data.length) S.lastCommentMap[pk] = data[0];
+  (data || []).forEach(c => {
+    const activityTs = c.edited_at || c.created_at;
+    if (!S.lastUpdateMap[pk] || activityTs > S.lastUpdateMap[pk]) S.lastUpdateMap[pk] = activityTs;
+  });
+  const nonRoot = (data || []).find(c => !c.is_root);
+  if (nonRoot) S.lastCommentMap[pk] = nonRoot;
   renderRail();
 }
 
