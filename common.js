@@ -314,11 +314,12 @@ export function savePrefs(page, patch) {
   } catch { /* storage เต็ม/ถูกปิด — ข้ามไป ไม่ต้องทำให้หน้าเว็บพัง */ }
 }
 
-/** ล้าง filter ที่จำไว้ทั้งหมด (เรียกตอน logout / เปลี่ยน user) */
+/** ล้าง filter ที่จำไว้ทั้งหมด (เรียกตอน logout / เปลี่ยน user) — เคลียร์ role cache คู่กันด้วย */
 export function clearPrefs() {
   try {
     sessionStorage.removeItem(PREFS_KEY);
     sessionStorage.removeItem(PREFS_OWNER_KEY);
+    sessionStorage.removeItem(ROLE_CACHE_KEY);
   } catch { /* ignore */ }
 }
 
@@ -350,6 +351,51 @@ supabase.auth.onAuthStateChange((evt) => {
     try { sessionStorage.removeItem(LOGIN_LOGGED_KEY); } catch { /* ignore */ }
   }
 });
+
+/* ============ ROLE CACHE (กันเมนู Admin กระพริบตอนสลับหน้า) ============ */
+/*
+ * แอปนี้เป็น multi-page — ทุกครั้งคลิกเมนู = full page reload ใหม่หมด ต้อง query role จาก DB
+ * (getProfile()) ใหม่ทุกครั้งแบบ async ก่อนจะรู้ว่าจะโชว์เมนู Admin หรือไม่ → ระหว่างรอ query
+ * เมนู Admin จะซ่อนไว้ก่อนเสมอ (ค่าเริ่มต้น) แล้วค่อยโผล่ทีหลังถ้าเป็น admin จริง = กระพริบ
+ * (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า
+ *
+ * แก้ด้วยการแคช role ไว้ใน sessionStorage หลัง query DB สำเร็จ แล้วรอบถัดไป paint เมนูแบบ
+ * optimistic (sync, ทันทีตอนหน้าโหลด) จาก cache ก่อน query DB จริงจะเสร็จ — ผิดพลาดได้ไม่เกิน
+ * 1 เฟรมถ้า role เปลี่ยนไปจริงๆ ระหว่างนั้น (เคสหายาก) เพราะพอ query จริงเสร็จจะ paint ทับอีกที
+ */
+const ROLE_CACHE_KEY = 'pqa.role.cache.v1';
+
+/**
+ * อ่าน role ที่แคชไว้จากการโหลดหน้าก่อนหน้า — ใช้ paint เมนู Admin แบบ optimistic (sync)
+ * ทันทีตอนหน้าเว็บเพิ่งโหลด ก่อนที่จะ query DB จริงเสร็จ (กันเมนูกระพริบตอนสลับหน้า)
+ * คืนค่าเฉพาะเมื่อ email ตรงกับที่แคชไว้ (กันเห็น role ของ session/คนก่อนหน้า)
+ * @param {string} email
+ * @returns {string} role หรือ '' ถ้าไม่มี cache/email ไม่ตรง
+ */
+export function getCachedRole(email) {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(ROLE_CACHE_KEY) || 'null');
+    return (o && o.email === email && typeof o.role === 'string') ? o.role : '';
+  } catch { return ''; }
+}
+
+/** บันทึก role หลัง query DB จริงเสร็จ (getProfile()) — เรียกคู่กันเสมอ */
+export function setCachedRole(email, role) {
+  try {
+    sessionStorage.setItem(ROLE_CACHE_KEY, JSON.stringify({ email, role: role || '' }));
+  } catch { /* storage เต็ม/ถูกปิด — ข้ามไป */ }
+}
+
+/**
+ * โชว์/ซ่อนลิงก์ Admin ใน topbar ตาม role — ใช้แทนการเขียน
+ * `document.getElementById('navAdmin').style.display = ...` ตรงๆ กระจายอยู่หลายหน้า
+ * (ทุกหน้าที่มีลิงก์ Admin ต้องเรียกตัวนี้ ไม่ใช่ set style เอง กันหน้าใหม่ๆ ลืมเงื่อนไข role)
+ * @param {string} role
+ */
+export function paintNavAdmin(role) {
+  const el = document.getElementById('navAdmin');
+  if (el) el.style.display = (role === 'admin') ? '' : 'none';
+}
 
 /* ============ UI HELPERS ============ */
 

@@ -485,7 +485,8 @@
 import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads,
          loadProjectStatuses, statusOptionsHTML,
-         loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn } from './common.js';
+         loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
+         getCachedRole, setCachedRole, paintNavAdmin } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -579,20 +580,36 @@ $('loginForm').addEventListener('submit', async e => {
   if(error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
 });
 $('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
-supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
-(async () => { const { data } = await supabase.auth.getSession(); if(data.session) showApp(data.session); else showLogin(); })();
+// _authBooted กัน getSession() IIFE ชนกับ onAuthStateChange (race ที่ทั้งคู่เรียก showApp() ซ้ำซ้อน
+// ตอนโหลดหน้าครั้งแรก) — event ในอนาคต (token refresh ฯลฯ) ยังทำงานผ่าน onAuthStateChange ปกติ
+let _authBooted = false;
+supabase.auth.onAuthStateChange((_e, session) => {
+  _authBooted = true;
+  session ? showApp(session) : showLogin();
+});
+(async () => {
+  if (_authBooted) return;
+  const { data } = await supabase.auth.getSession();
+  if (_authBooted) return; // onAuthStateChange ชนะไปแล้วระหว่างรอ await นี้
+  _authBooted = true;
+  if(data.session) showApp(data.session); else showLogin();
+})();
 
 function showLogin(){ $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden'); }
 
 async function showApp(session){
   $('loginPage').classList.add('hidden');
+  // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
+  // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
+  paintNavAdmin(getCachedRole(session.user.email));
   let who=session.user.email, role='';
   const { data:u } = await supabase.from('app_user')
     .select('display_name,app_role,pqa_emp_id').eq('email', session.user.email).maybeSingle();
   if(u){ who=u.display_name; role=u.app_role; S.user={ pqa_emp_id:u.pqa_emp_id, display_name:u.display_name, app_role:u.app_role }; }
   else { S.user={ pqa_emp_id:null, display_name:session.user.email, app_role:'' }; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
-  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+  setCachedRole(session.user.email, role);
+  paintNavAdmin(role);
   $('app').classList.remove('hidden');
   // ทุกคนที่ล็อกอินแล้ว (รวม viewer) เพิ่ม/แก้ไข Project ได้ → โชว์ปุ่มเสมอ (RLS เปิดสิทธิ์แยกแล้ว)
   const _addBtn = document.getElementById('addBtn'); if (_addBtn) _addBtn.style.display = '';
@@ -921,10 +938,15 @@ function filteredProjects(){
         TODAY >= ph.start_date && TODAY <= ph.end_date);
       if (!inPhase) return false;
     }
-    // req 13: only projects whose span overlaps the Start–End window
+    // req 13 (+ signoff/deploy): keep project if EITHER its phase span overlaps the
+    // Start–End window, OR its Signoff Date / Deploy Date falls inside the window —
+    // even when the project has no project_phase rows at all (mn/mx null).
     const { mn, mx } = projSpan(p.project_key, false);
-    if (!mn || !mx) return false;                       // no dates → no overlap
-    if (!(mn <= S.filter.end && mx >= S.filter.start)) return false;
+    const spanInRange = !!mn && !!mx && mn <= S.filter.end && mx >= S.filter.start;
+    const s = p.signoff_date, d = p.deploy_date;
+    const signoffInRange = !!s && s >= S.filter.start && s <= S.filter.end;
+    const deployInRange  = !!d && d >= S.filter.start && d <= S.filter.end;
+    if (!spanInRange && !signoffInRange && !deployInRange) return false;
     return true;
   });
 }

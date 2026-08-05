@@ -218,7 +218,7 @@
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html" class="active">Signoff Review</a>
-      <a href="admin.html" id="navAdmin">Admin</a>
+      <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -270,7 +270,8 @@
 <script type="module">
 import {
   supabase, $, toast, esc, dDisp, monthLabel, loadProjectStatuses, statusDot, d2s,
-  loadPrefs, savePrefs, setPrefsOwner, signIn
+  loadPrefs, savePrefs, setPrefsOwner, signIn,
+  getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
 
 const PAGE = 'signoff';
@@ -418,8 +419,21 @@ $('loginForm').addEventListener('submit', async e => {
   if (error) $('loginErr').textContent = error.message || 'เข้าสู่ระบบไม่สำเร็จ';
 });
 $('logoutBtn').addEventListener('click', () => supabase.auth.signOut());
-supabase.auth.onAuthStateChange((_e, session) => { session ? showApp(session) : showLogin(); });
-(async () => { const { data } = await supabase.auth.getSession(); if (data.session) showApp(data.session); else showLogin(); })();
+// _authBooted กัน getSession() IIFE ชนกับ onAuthStateChange (race ที่ทั้งคู่เรียก showApp() ซ้ำซ้อน
+// ตอนโหลดหน้าครั้งแรก) — event ในอนาคต (token refresh ฯลฯ) ยังทำงานผ่าน onAuthStateChange ปกติ
+// (คนละชั้นกับ sessionBooted ด้านล่าง ซึ่งกันโหลดข้อมูลหลักไม่ให้รันซ้ำ)
+let _authBooted = false;
+supabase.auth.onAuthStateChange((_e, session) => {
+  _authBooted = true;
+  session ? showApp(session) : showLogin();
+});
+(async () => {
+  if (_authBooted) return;
+  const { data } = await supabase.auth.getSession();
+  if (_authBooted) return; // onAuthStateChange ชนะไปแล้วระหว่างรอ await นี้
+  _authBooted = true;
+  if (data.session) showApp(data.session); else showLogin();
+})();
 
 function showLogin(){
   $('app').classList.add('hidden'); $('loginPage').classList.remove('hidden');
@@ -431,13 +445,17 @@ let sessionBooted = false;
 
 async function showApp(session){
   $('loginPage').classList.add('hidden'); $('app').classList.remove('hidden');
+  // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
+  // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
+  paintNavAdmin(getCachedRole(session.user.email));
   S.me = session.user.email;
   let who = session.user.email, role = '';
   const { data:u } = await supabase.from('app_user').select('display_name,app_role')
     .eq('email', session.user.email).maybeSingle();
   if (u) { who = u.display_name; role = u.app_role; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
-  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+  setCachedRole(session.user.email, role);
+  paintNavAdmin(role);
 
   if (sessionBooted) return;
   sessionBooted = true;

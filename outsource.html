@@ -500,7 +500,8 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
   leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
-  loadPrefs, savePrefs, setPrefsOwner, signIn
+  loadPrefs, savePrefs, setPrefsOwner, signIn,
+  getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -649,13 +650,20 @@ $('logoutBtn').addEventListener('click', async () => {
   await supabase.auth.signOut();
 });
 
+// _authBooted กัน getSession() IIFE ชนกับ onAuthStateChange (race ที่ทั้งคู่เรียก showApp() ซ้ำซ้อน
+// ตอนโหลดหน้าครั้งแรก) — event ในอนาคต (token refresh ฯลฯ) ยังทำงานผ่าน onAuthStateChange ปกติ
+let _authBooted = false;
 supabase.auth.onAuthStateChange((_evt, session) => {
+  _authBooted = true;
   if (session) showApp(session);
   else showLogin();
 });
 
 (async () => {
+  if (_authBooted) return;
   const { data } = await supabase.auth.getSession();
+  if (_authBooted) return; // onAuthStateChange ชนะไปแล้วระหว่างรอ await นี้
+  _authBooted = true;
   if (data.session) showApp(data.session);
   else showLogin();
 })();
@@ -667,6 +675,9 @@ function showLogin() {
 
 async function showApp(session) {
   $('loginPage').classList.add('hidden');
+  // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
+  // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
+  paintNavAdmin(getCachedRole(session.user.email));
 
   let who = session.user.email;
   let role = '';
@@ -677,7 +688,8 @@ async function showApp(session) {
     role = u.app_role;
   }
   $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
-  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (role === 'admin') ? '' : 'none';
+  setCachedRole(session.user.email, role);
+  paintNavAdmin(role);
 
   $('app').classList.remove('hidden');
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreFilterPrefs เสมอ)

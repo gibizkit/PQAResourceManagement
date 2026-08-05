@@ -132,7 +132,7 @@
       <a href="calendar.html" class="active">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html">Signoff Review</a>
-      <a href="admin.html" id="navAdmin">Admin</a>
+      <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
     <span class="who" id="who"></span>
@@ -180,7 +180,8 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort,
   isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut,
-  resName, monthLabel, MONTH_ABBR, loadPrefs, savePrefs, setPrefsOwner
+  resName, monthLabel, MONTH_ABBR, loadPrefs, savePrefs, setPrefsOwner,
+  getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
 
 const PAGE = 'calendar';
@@ -251,13 +252,20 @@ $('logoutBtn').addEventListener('click', async () => {
   await signOut();
 });
 
+// _authBooted กัน getSession() IIFE ชนกับ onAuth() (race ที่ทั้งคู่เรียก showApp() ซ้ำซ้อน
+// ตอนโหลดหน้าครั้งแรก) — event ในอนาคต (token refresh ฯลฯ) ยังทำงานผ่าน onAuth() ปกติ
+let _authBooted = false;
 onAuth(session => {
+  _authBooted = true;
   if (session) showApp(session);
   else showLogin();
 });
 
 (async () => {
+  if (_authBooted) return;
   const session = await getSession();
+  if (_authBooted) return; // onAuth() ชนะไปแล้วระหว่างรอ await นี้
+  _authBooted = true;
   if (session) showApp(session);
   else showLogin();
 })();
@@ -270,10 +278,14 @@ function showLogin() {
 async function showApp(session) {
   $('loginPage').classList.add('hidden');
   $('app').classList.remove('hidden');
+  // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
+  // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
+  paintNavAdmin(getCachedRole(session.user.email));
 
   const profile = await getProfile(session);
   $('who').innerHTML = `<b>${esc(profile.displayName)}</b>${profile.role ? ` · ${esc(profile.role)}` : ''}`;
-  const _adm = document.getElementById('navAdmin'); if (_adm) _adm.style.display = (profile.role === 'admin') ? '' : 'none';
+  setCachedRole(session.user.email, profile.role);
+  paintNavAdmin(profile.role);
 
   const today = new Date();
   S.y = today.getFullYear();
