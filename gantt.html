@@ -103,13 +103,19 @@
   .c2  { min-width:72px;  width:72px;  left:550px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
 
-  /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days */
+  /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days
+     thead มี 2 แถว sticky ซ้อนกัน (month + day) — ต้องคนละ top offset กัน ไม่งั้นแถว day
+     (มาทีหลังใน DOM) จะ sticky ทับแถว month ตอน scroll ลง (เดิมทั้งคู่ top:0 เท่ากัน = บั๊กที่ทำให้
+     เดือนหายไปตอน scroll) --th-month-h ถูกตั้งจาก JS (renderGantt) เป็นความสูงจริงของแถว month
+     ให้แถว day เกาะติดใต้แถว month พอดี ไม่ใช่ทับ */
   .sticky-col { position:sticky; background:#fff; z-index:6; }
   thead .sticky-col { z-index:25; background:var(--dk-surface); }
   thead th { position:sticky; top:0; z-index:15; background:var(--dk-surface);
     color:var(--dk-text2); font-weight:700; padding:6px 10px; text-align:left; white-space:nowrap; }
-  .th-day { min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:5px 0; color:var(--dk-text2); font-weight:600; }
+  /* .th-day มี specificity สูงกว่า "thead th" (class ชนะ type selector) จึงทับค่า top:0 เดิมได้
+     โดยไม่กระทบ .bk-table (booking popup) ที่ยังพึ่ง top:0 จาก "thead th" เหมือนเดิม */
   .th-month { text-align:center; font-weight:700; color:var(--dk-text); font-size:12px; letter-spacing:.01em; }
+  .th-day { top:var(--th-month-h, 33px); min-width:28px; width:28px; text-align:center; font-size:10.5px; padding:5px 0; color:var(--dk-text2); font-weight:600; }
   .th-day.wknd { background:#efe5d6; color:var(--dk-text3); }
   .th-day.today-col { background:var(--today); color:#fff; font-weight:800; border-radius:6px; }
 
@@ -372,8 +378,8 @@
       </div>
     </div>
     <div class="modal-foot">
-      <div class="form-err" id="projFormErr"></div>
       <button class="btn danger" id="projDeleteBtn" onclick="deleteProj()">🗑️ ปิดใช้งาน</button>
+      <div class="form-err" id="projFormErr"></div>
       <button class="btn" onclick="closeProjModal()">ยกเลิก</button>
       <button class="btn accent" id="projSaveBtn" onclick="saveProj()">บันทึก</button>
     </div>
@@ -1108,6 +1114,12 @@ function renderGantt(){
 
   const colgroup = buildColgroup(days.length);
   $('ganttScroll').innerHTML = `<table class="gantt">${colgroup}${head}${body}</table>`;
+
+  // แถว day (th-day) ต้อง sticky ที่ top = ความสูงจริงของแถว month (th-month) ไม่ใช่ top:0
+  // เหมือนกัน ไม่งั้นตอน scroll ลงแถว day จะไป sticky ทับแถว month จนเดือนหายไป (ดู CSS comment
+  // ด้านบน) — วัดความสูงจริงหลัง render แล้วตั้งเป็น CSS var ให้ .th-day อ้างอิง
+  const monthRow = $('ganttScroll').querySelector('thead tr:first-child');
+  if (monthRow) $('ganttScroll').style.setProperty('--th-month-h', monthRow.offsetHeight + 'px');
 }
 
 function summaryRow(p, days){
