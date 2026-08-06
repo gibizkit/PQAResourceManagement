@@ -1388,12 +1388,18 @@ function readLeadPicker(){
   };
 }
 
-function suggestKey(){
+async function suggestKey(){
   const now = new Date();
   const ym = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0');
   const prefix = 'P'+ym;
+  // ต้องเช็คกับ project_key ทั้งหมด (รวม is_active=false) ไม่ใช่แค่ S.projects ที่กรอง active มาแล้ว
+  // ไม่งั้นเลขของโปรเจกต์ที่ถูกปิดใช้งานจะถูกเสนอซ้ำ → insert ชน primary key ทุกครั้ง
   let max=0;
-  S.projects.forEach(p => {
+  const { data, error } = await supabase.from('project').select('project_key')
+    .like('project_key', prefix+'%');
+  const rows = error ? S.projects : (data || []);
+  if (error) console.warn('suggestKey: query all projects failed, fallback to active-only list', error);
+  rows.forEach(p => {
     if (p.project_key && p.project_key.startsWith(prefix)){
       const n = parseInt(p.project_key.slice(prefix.length), 10);
       if (!isNaN(n) && n>max) max=n;
@@ -1402,9 +1408,9 @@ function suggestKey(){
   return prefix + String(max+1).padStart(4,'0');
 }
 
-window.openProjAdd = function(){
+window.openProjAdd = async function(){
   editingKey = null; existingPhases = {};
-  const key = suggestKey();
+  const key = await suggestKey();
   $('projModalTitle').textContent = 'New Project : ' + key;
   $('projDeleteBtn').style.display = 'none';
   fillAppOptions('');
