@@ -376,6 +376,7 @@
         <button class="btn" id="refreshAppReleaseScheduleBtn" onclick="loadData('app_release_schedule')">🔄 Refresh</button>
       </div>
       <div class="subtab-bar" id="releaseScheduleSubtabs"></div>
+      <div class="subtab-bar" id="releaseScheduleYearSubtabs"></div>
       <div class="table-wrap">
         <table>
           <thead id="theadAppReleaseSchedule">
@@ -624,7 +625,10 @@ window.STATE = {
   // sort state ของตาราง App Release Schedule (default = submitted_date ใหม่สุดก่อน ตรงกับ order เดิม)
   releaseScheduleSort: { key: 'submitted_date', dir: 'desc' },
   // subtab filter ของตาราง App Release Schedule — 'all' หรือ app_code ของ release_app
-  releaseScheduleAppFilter: 'all'
+  releaseScheduleAppFilter: 'all',
+  // subtab filter ปี (ตาม submitted_date) ของตาราง App Release Schedule — 'all' หรือ 'YYYY'
+  // default = ปีปัจจุบัน (ตัดสินใจโดยเจ้าของระบบ 2026-08-06)
+  releaseScheduleYearFilter: String(new Date().getFullYear())
 };
 
 /* ============ PROJECT TAB STATE (ported from pqaResourceManagement.html) ============ */
@@ -1258,12 +1262,38 @@ window.filterReleaseScheduleByApp = function(appCode) {
   renderRows('app_release_schedule', STATE.appReleaseSchedules);
 };
 
+/* ============ SUBTABS: App Release Schedule → filter ตามปี (submitted_date) ============
+   ตัวเลือกปีมาจากข้อมูลที่มีจริง (submitted_date) เรียงปีใหม่สุดก่อน + เติมปีปัจจุบันเข้าไปเสมอ
+   แม้ยังไม่มีข้อมูลปีนั้น (กันเคส subtab ว่างตอนเปิดแอปครั้งแรกของปี) — default ที่เลือก = ปีปัจจุบัน */
+function releaseScheduleYears() {
+  const years = new Set(STATE.appReleaseSchedules
+    .map(r => (r.submitted_date || '').slice(0, 4))
+    .filter(Boolean));
+  years.add(String(new Date().getFullYear()));
+  return Array.from(years).sort((a, b) => b.localeCompare(a));
+}
+
+function renderReleaseScheduleYearSubtabs() {
+  const wrap = $('releaseScheduleYearSubtabs');
+  if (!wrap) return;
+  const items = [{ code: 'all', label: 'ทั้งหมด' }, ...releaseScheduleYears().map(y => ({ code: y, label: y }))];
+  wrap.innerHTML = items.map(y => {
+    const active = STATE.releaseScheduleYearFilter === y.code ? ' active' : '';
+    return `<button class="subtab-btn${active}" onclick="filterReleaseScheduleByYear('${esc(y.code)}')">${esc(y.label)}</button>`;
+  }).join('');
+}
+
+window.filterReleaseScheduleByYear = function(year) {
+  STATE.releaseScheduleYearFilter = year;
+  renderRows('app_release_schedule', STATE.appReleaseSchedules);
+};
+
 function renderRows(table, data) {
   const rowsId = `rows-${table}`;
   const rows = $(rowsId);
 
   if (!data.length) {
-    if (table === 'app_release_schedule') renderReleaseScheduleSubtabs();
+    if (table === 'app_release_schedule') { renderReleaseScheduleSubtabs(); renderReleaseScheduleYearSubtabs(); }
     rows.innerHTML = '<tr><td colspan="6" class="loading">ไม่พบข้อมูล</td></tr>';
     return;
   }
@@ -1310,9 +1340,13 @@ function renderRows(table, data) {
   } else if (table === 'app_release_schedule') {
     renderReleaseScheduleHead();
     renderReleaseScheduleSubtabs();
-    const filtered = STATE.releaseScheduleAppFilter === 'all'
+    renderReleaseScheduleYearSubtabs();
+    let filtered = STATE.releaseScheduleAppFilter === 'all'
       ? data
       : data.filter(r => r.app_code === STATE.releaseScheduleAppFilter);
+    if (STATE.releaseScheduleYearFilter !== 'all') {
+      filtered = filtered.filter(r => (r.submitted_date || '').slice(0, 4) === STATE.releaseScheduleYearFilter);
+    }
     if (!filtered.length) {
       rows.innerHTML = '<tr><td colspan="9" class="loading">ไม่พบข้อมูล</td></tr>';
       return;
