@@ -134,6 +134,55 @@
     color: #c0392b;
   }
 
+  /* ---- sortable table header (App Release Schedule) ---- */
+  th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+  th.sortable:hover {
+    color: var(--dk-text);
+  }
+  th.sortable .sort-ico {
+    margin-left: 4px;
+    opacity: .6;
+    font-size: 10px;
+  }
+  th.sortable.sort-active {
+    color: var(--dk-accent);
+  }
+  th.sortable.sort-active .sort-ico {
+    opacity: 1;
+  }
+
+  /* ---- subtab bar (App Release Schedule → filter ตาม Release App) ---- */
+  .subtab-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .subtab-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--dk-border);
+    border-radius: 20px;
+    background: #fff;
+    color: var(--dk-text2);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .subtab-btn:hover {
+    color: var(--dk-text);
+    border-color: var(--dk-text3);
+  }
+  .subtab-btn.active {
+    background: var(--dk-accent);
+    border-color: var(--dk-accent);
+    color: #fff;
+  }
+
   .field.checkbox {
     display: flex;
     align-items: center;
@@ -326,9 +375,10 @@
         <button class="btn accent" id="addAppReleaseScheduleBtn" onclick="openAddModal('app_release_schedule')">+ เพิ่ม App Release Schedule</button>
         <button class="btn" id="refreshAppReleaseScheduleBtn" onclick="loadData('app_release_schedule')">🔄 Refresh</button>
       </div>
+      <div class="subtab-bar" id="releaseScheduleSubtabs"></div>
       <div class="table-wrap">
         <table>
-          <thead>
+          <thead id="theadAppReleaseSchedule">
             <tr>
               <th>App</th>
               <th>Submitted FE</th>
@@ -569,7 +619,12 @@ window.STATE = {
   testerRoles: [],
   appUsers: [],
   pqaLeads: [],
-  projectStatuses: []
+  projectStatuses: [],
+
+  // sort state ของตาราง App Release Schedule (default = submitted_date ใหม่สุดก่อน ตรงกับ order เดิม)
+  releaseScheduleSort: { key: 'submitted_date', dir: 'desc' },
+  // subtab filter ของตาราง App Release Schedule — 'all' หรือ app_code ของ release_app
+  releaseScheduleAppFilter: 'all'
 };
 
 /* ============ PROJECT TAB STATE (ported from pqaResourceManagement.html) ============ */
@@ -1122,11 +1177,93 @@ function releaseAppName(appCode) {
   return (a && a.app_name) || appCode || '—';
 }
 
+/* ============ SORTABLE HEADER: App Release Schedule ============
+   คลิกหัวคอลัมน์ = เรียง (คลิกซ้ำ = สลับ asc/desc) — เรียงฝั่ง client จาก STATE.appReleaseSchedules
+   ที่โหลดมาแล้วทั้งก้อน ไม่ยิง query ใหม่ */
+const RELEASE_SCHEDULE_COLS = [
+  ['app', 'App'],
+  ['submitted_fe', 'Submitted FE'],
+  ['app_version', 'App Version'],
+  ['platform', 'Platform'],
+  ['submitted_date', 'Submitted Date'],
+  ['regression_start', 'Regression Start'],
+  ['regression_end', 'Regression End'],
+  ['is_active', 'Active']
+];
+const RELEASE_SCHEDULE_KEYFNS = {
+  app: r => releaseAppName(r.app_code).toLowerCase(),
+  submitted_fe: r => r.submitted_fe ? 1 : 0,
+  app_version: r => (r.app_version || '').toLowerCase(),
+  platform: r => (r.platform || '').toLowerCase(),
+  submitted_date: r => r.submitted_date || '',
+  regression_start: r => r.regression_start || '',
+  regression_end: r => r.regression_end || '',
+  is_active: r => r.is_active ? 1 : 0
+};
+
+function sortReleaseSchedule(rows) {
+  const kf = RELEASE_SCHEDULE_KEYFNS[STATE.releaseScheduleSort.key];
+  if (!kf) return rows;
+  const dir = STATE.releaseScheduleSort.dir === 'desc' ? -1 : 1;
+  return rows.slice().sort((a, b) => {
+    const va = kf(a), vb = kf(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+}
+
+function renderReleaseScheduleHead() {
+  const thead = $('theadAppReleaseSchedule');
+  if (!thead) return;
+  const cells = RELEASE_SCHEDULE_COLS.map(([key, label]) => {
+    const active = STATE.releaseScheduleSort.key === key;
+    const cls = 'sortable' + (active ? ' sort-active' : '');
+    const ico = active ? `<span class="sort-ico">${STATE.releaseScheduleSort.dir === 'asc' ? '▲' : '▼'}</span>` : '';
+    return `<th class="${cls}" onclick="sortReleaseScheduleBy('${key}')">${esc(label)}${ico}</th>`;
+  }).join('');
+  thead.innerHTML = `<tr>${cells}<th class="center">Action</th></tr>`;
+}
+
+window.sortReleaseScheduleBy = function(key) {
+  if (STATE.releaseScheduleSort.key === key) {
+    STATE.releaseScheduleSort.dir = STATE.releaseScheduleSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    STATE.releaseScheduleSort = { key, dir: 'asc' };
+  }
+  renderRows('app_release_schedule', STATE.appReleaseSchedules);
+};
+
+/* ============ SUBTABS: App Release Schedule → filter ตาม Release App ============
+   Subtab แรกเป็น "ทั้งหมด" (all) ตามด้วย release_app ที่ active เรียงตาม sort_order เดิม
+   — app ที่ถูกปิดใช้งานไม่โผล่เป็น subtab แต่แถวข้อมูลเก่าของมันยังเห็นได้ผ่านแท็บ "ทั้งหมด" */
+function renderReleaseScheduleSubtabs() {
+  const wrap = $('releaseScheduleSubtabs');
+  if (!wrap) return;
+  const apps = STATE.releaseApps
+    .filter(a => a.is_active)
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const items = [{ app_code: 'all', app_name: 'ทั้งหมด' }, ...apps];
+  wrap.innerHTML = items.map(a => {
+    const active = STATE.releaseScheduleAppFilter === a.app_code ? ' active' : '';
+    return `<button class="subtab-btn${active}" onclick="filterReleaseScheduleByApp('${esc(a.app_code)}')">${esc(a.app_name)}</button>`;
+  }).join('');
+}
+
+window.filterReleaseScheduleByApp = function(appCode) {
+  STATE.releaseScheduleAppFilter = appCode;
+  renderRows('app_release_schedule', STATE.appReleaseSchedules);
+};
+
 function renderRows(table, data) {
   const rowsId = `rows-${table}`;
   const rows = $(rowsId);
 
   if (!data.length) {
+    if (table === 'app_release_schedule') renderReleaseScheduleSubtabs();
     rows.innerHTML = '<tr><td colspan="6" class="loading">ไม่พบข้อมูล</td></tr>';
     return;
   }
@@ -1171,7 +1308,16 @@ function renderRows(table, data) {
       </tr>
     `).join('');
   } else if (table === 'app_release_schedule') {
-    html = data.map(r => `
+    renderReleaseScheduleHead();
+    renderReleaseScheduleSubtabs();
+    const filtered = STATE.releaseScheduleAppFilter === 'all'
+      ? data
+      : data.filter(r => r.app_code === STATE.releaseScheduleAppFilter);
+    if (!filtered.length) {
+      rows.innerHTML = '<tr><td colspan="9" class="loading">ไม่พบข้อมูล</td></tr>';
+      return;
+    }
+    html = sortReleaseSchedule(filtered).map(r => `
       <tr>
         <td><b>${esc(releaseAppName(r.app_code))}</b></td>
         <td>${r.submitted_fe ? 'Y' : 'N'}</td>
@@ -1376,9 +1522,12 @@ function renderForm(table, data) {
       ` : ''}
     `;
   } else if (table === 'app_release_schedule') {
+    // ตอนเพิ่มใหม่ (ไม่ใช่ edit) — prefill App ตาม subtab ที่กำลังดูอยู่ (ถ้าไม่ใช่ "ทั้งหมด")
+    const preselectCode = STATE.editingMode && data ? data.app_code
+      : (STATE.releaseScheduleAppFilter && STATE.releaseScheduleAppFilter !== 'all' ? STATE.releaseScheduleAppFilter : null);
     const appOpts = STATE.releaseApps
       .filter(a => a.is_active || (data && data.app_code === a.app_code))
-      .map(a => `<option value="${esc(a.app_code)}" ${data && data.app_code === a.app_code ? 'selected' : ''}>${esc(a.app_name)}${a.is_active ? '' : ' (inactive)'}</option>`)
+      .map(a => `<option value="${esc(a.app_code)}" ${preselectCode === a.app_code ? 'selected' : ''}>${esc(a.app_name)}${a.is_active ? '' : ' (inactive)'}</option>`)
       .join('');
     const fe = STATE.editingMode && data ? !!data.submitted_fe : false;
     html = `
