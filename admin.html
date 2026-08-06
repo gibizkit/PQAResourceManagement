@@ -66,8 +66,54 @@
     display: none;
   }
 
+  /* ---- fix: horizontal scrollbar ของตาราง (โดยเฉพาะ Projects) โดนดันเลย viewport
+     ต้องเลื่อนหน้าลงสุดถึงจะเห็น scrollbar แนวนอน ----
+     ต้นเหตุ: .table-wrap (theme.css) ใช้ max-height: calc(100vh - 220px) แบบตายตัว
+     แต่หน้า admin มี tab-bar + page-head + toolbar สูงกว่าที่ 220px รองรับ ทำให้กล่อง
+     ยื่นเลยขอบล่างจอ scrollbar แนวนอน (อยู่ขอบล่างกล่อง) เลยหลุดไปนอกจอ
+     แก้ด้วย flexbox ให้ #app เต็มความสูงจอพอดี แล้วให้ .table-wrap ยืดเต็มพื้นที่ที่เหลือ
+     จริงแทนการเดา px — ใช้ได้กับทุกแท็บ ไม่ใช่แค่ Projects (scope เฉพาะหน้านี้เท่านั้น
+     เพราะ style นี้อยู่ใน <style> ของ admin.html เอง ไม่กระทบ dashboard.html/signoff.js
+     ที่ใช้ class .table-wrap ร่วมกันจาก theme.css) */
+  #app {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #adminContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tab-bar {
+    flex: none;
+  }
+
   .tab-content.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tab-content .page-head,
+  .tab-content .toolbar {
+    flex: none;
+  }
+
+  .tab-content .table-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
   }
 
   .is-active-pill {
@@ -177,6 +223,8 @@
       <button class="tab-btn active" onclick="switchTab('project')">Projects</button>
       <button class="tab-btn" onclick="switchTab('holiday')">Holiday</button>
       <button class="tab-btn" onclick="switchTab('app')">App</button>
+      <button class="tab-btn" onclick="switchTab('release_app')">Release App</button>
+      <button class="tab-btn" onclick="switchTab('app_release_schedule')">App Release Schedule</button>
       <button class="tab-btn" onclick="switchTab('phase')">Phase</button>
       <button class="tab-btn" onclick="switchTab('project_status')">Project Status</button>
       <button class="tab-btn" onclick="switchTab('tester_role')">Tester Role</button>
@@ -245,6 +293,55 @@
             </tr>
           </thead>
           <tbody id="rows-app"><tr><td colspan="5" class="loading">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ RELEASE APP TAB ============ -->
+    <!-- master App สำหรับ App Release Schedule โดยเฉพาะ (แยกจาก App ด้านบนที่ผูกกับ Project) -->
+    <div id="tab-release_app" class="tab-content">
+      <div class="toolbar">
+        <button class="btn accent" id="addReleaseAppBtn" onclick="openAddModal('release_app')">+ เพิ่ม Release App</button>
+        <button class="btn" id="refreshReleaseAppBtn" onclick="loadData('release_app')">🔄 Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>App Code</th>
+              <th>App Name</th>
+              <th>Sort Order</th>
+              <th>Status</th>
+              <th class="center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows-release_app"><tr><td colspan="5" class="loading">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ APP RELEASE SCHEDULE TAB ============ -->
+    <div id="tab-app_release_schedule" class="tab-content">
+      <div class="toolbar">
+        <button class="btn accent" id="addAppReleaseScheduleBtn" onclick="openAddModal('app_release_schedule')">+ เพิ่ม App Release Schedule</button>
+        <button class="btn" id="refreshAppReleaseScheduleBtn" onclick="loadData('app_release_schedule')">🔄 Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>App</th>
+              <th>Submitted FE</th>
+              <th>App Version</th>
+              <th>Platform</th>
+              <th>Submitted Date</th>
+              <th>Regression Start</th>
+              <th>Regression End</th>
+              <th>Active</th>
+              <th class="center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows-app_release_schedule"><tr><td colspan="9" class="loading">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -461,10 +558,13 @@ window.STATE = {
   editingMode: false,
   editingPK: null,
   currentTable: null,
+  myEmpId: null,          // pqa_emp_id ของแอดมินที่ล็อกอินอยู่ — ใช้เป็น created_by/updated_by ของ app_release_schedule
 
   // Data caches
   holidays: [],
   apps: [],
+  releaseApps: [],
+  appReleaseSchedules: [],
   phases: [],
   testerRoles: [],
   appUsers: [],
@@ -536,11 +636,12 @@ async function showApp(session) {
   // Get user profile & role
   let who = session.user.email;
   let role = '';
-  const { data: u } = await supabase.from('app_user').select('display_name,app_role')
+  const { data: u } = await supabase.from('app_user').select('display_name,app_role,pqa_emp_id')
     .eq('email', session.user.email).maybeSingle();
   if (u) {
     who = u.display_name;
     role = u.app_role;
+    STATE.myEmpId = u.pqa_emp_id || null;   // ใช้เป็น created_by/updated_by ของ app_release_schedule
   }
   $('who').innerHTML = `<b>${esc(who)}</b>${role ? ` · ${esc(role)}` : ''}`;
 
@@ -620,10 +721,19 @@ window.switchTab = function(tab) {
   // Load data for this tab
   if (tab === 'project') {
     loadProjects();
+  } else if (tab === 'app_release_schedule') {
+    // ต้องมี release_app (dropdown App ในฟอร์ม) พร้อมก่อนโหลดตารางเสมอ
+    ensureReleaseAppsLoaded().then(() => loadData('app_release_schedule'));
   } else {
     loadData(tab);
   }
 };
+
+// release_app เป็น master ตัวเล็ก โหลดครั้งเดียวพอ (Refresh ในแท็บ Release App เอง จะสั่งโหลดใหม่ตรงๆ ผ่าน loadData)
+async function ensureReleaseAppsLoaded() {
+  if (STATE.releaseApps.length) return;
+  await loadData('release_app');
+}
 
 /* ============ PROJECT TAB (ported from pqaResourceManagement.html) ============ */
 function eachDayStr(s, e) {
@@ -977,9 +1087,14 @@ async function loadData(table) {
   rows.innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
 
   try {
-    // holiday ไม่มีคอลัมน์ sort_order — เรียงตามวันที่แทน, app_user ไม่มี sort_order — เรียงตามชื่อแทน, ตารางอื่นเรียง sort_order
-    const orderCol = table === 'holiday' ? 'holiday_date' : (table === 'app_user' ? 'display_name' : 'sort_order');
-    const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending: true });
+    // holiday ไม่มีคอลัมน์ sort_order — เรียงตามวันที่แทน, app_user ไม่มี sort_order — เรียงตามชื่อแทน,
+    // app_release_schedule ไม่มี sort_order — เรียงตาม submitted_date ล่าสุดก่อน, ตารางอื่นเรียง sort_order
+    const orderCol = table === 'holiday' ? 'holiday_date'
+      : table === 'app_user' ? 'display_name'
+      : table === 'app_release_schedule' ? 'submitted_date'
+      : 'sort_order';
+    const ascending = table !== 'app_release_schedule';
+    const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending });
     // sync cache สถานะใน common.js ด้วย (pill ในแท็บ Projects จะได้ใช้สีล่าสุด)
     if (table === 'project_status') await loadProjectStatuses({ includeInactive: true });
 
@@ -988,6 +1103,8 @@ async function loadData(table) {
     // Store in cache
     if (table === 'holiday') STATE.holidays = data || [];
     else if (table === 'app') STATE.apps = data || [];
+    else if (table === 'release_app') STATE.releaseApps = data || [];
+    else if (table === 'app_release_schedule') STATE.appReleaseSchedules = data || [];
     else if (table === 'phase') STATE.phases = data || [];
     else if (table === 'project_status') STATE.projectStatuses = data || [];
     else if (table === 'tester_role') STATE.testerRoles = data || [];
@@ -997,6 +1114,12 @@ async function loadData(table) {
   } catch (err) {
     rows.innerHTML = `<tr><td colspan="6" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(err.message)}</td></tr>`;
   }
+}
+
+// ชื่อ App ที่แสดงในตาราง App Release Schedule — fallback เป็น code เอง เผื่อ cache ยังไม่มา
+function releaseAppName(appCode) {
+  const a = STATE.releaseApps.find(x => x.app_code === appCode);
+  return (a && a.app_name) || appCode || '—';
 }
 
 function renderRows(table, data) {
@@ -1031,6 +1154,36 @@ function renderRows(table, data) {
         <td class="center">
           <button class="btn sm" onclick="openEditModal('app', '${esc(a.app_code)}')">✏️</button>
           <button class="btn sm danger" onclick="deleteRecord('app', '${esc(a.app_code)}')">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  } else if (table === 'release_app') {
+    html = data.map(a => `
+      <tr>
+        <td><b>${esc(a.app_code)}</b></td>
+        <td>${esc(a.app_name)}</td>
+        <td>${a.sort_order ?? '—'}</td>
+        <td><span class="is-active-pill ${a.is_active ? 'yes' : 'no'}">${a.is_active ? 'Y' : 'N'}</span></td>
+        <td class="center">
+          <button class="btn sm" onclick="openEditModal('release_app', '${esc(a.app_code)}')">✏️</button>
+          <button class="btn sm danger" onclick="deleteRecord('release_app', '${esc(a.app_code)}')">🗑️</button>
+        </td>
+      </tr>
+    `).join('');
+  } else if (table === 'app_release_schedule') {
+    html = data.map(r => `
+      <tr>
+        <td><b>${esc(releaseAppName(r.app_code))}</b></td>
+        <td>${r.submitted_fe ? 'Y' : 'N'}</td>
+        <td>${esc(r.app_version || '') || '<span class="muted">—</span>'}</td>
+        <td>${esc(r.platform || '') || '<span class="muted">—</span>'}</td>
+        <td>${fmtDate(r.submitted_date)}</td>
+        <td>${fmtDate(r.regression_start)}</td>
+        <td>${fmtDate(r.regression_end)}</td>
+        <td><span class="is-active-pill ${r.is_active ? 'yes' : 'no'}">${r.is_active ? 'Y' : 'N'}</span></td>
+        <td class="center">
+          <button class="btn sm" onclick="openEditModal('app_release_schedule', '${r.release_id}')">✏️</button>
+          <button class="btn sm danger" onclick="deleteRecord('app_release_schedule', '${r.release_id}')">🗑️</button>
         </td>
       </tr>
     `).join('');
@@ -1092,11 +1245,13 @@ function renderRows(table, data) {
 }
 
 /* ============ MODAL ============ */
-window.openAddModal = function(table) {
+window.openAddModal = async function(table) {
   if (!STATE.isAdmin) {
     toast('Admin only', true);
     return;
   }
+  // App Release Schedule ต้องมี release_app (dropdown App) มาก่อนเสมอ กันเคสกดเพิ่มเร็วกว่าโหลดตาราง Release App เสร็จ
+  if (table === 'app_release_schedule') await ensureReleaseAppsLoaded();
   STATE.editingMode = false;
   STATE.editingPK = null;
   STATE.currentTable = table;
@@ -1111,6 +1266,7 @@ window.openEditModal = async function(table, pk) {
     toast('Admin only', true);
     return;
   }
+  if (table === 'app_release_schedule') await ensureReleaseAppsLoaded();
 
   STATE.editingMode = true;
   STATE.editingPK = pk;
@@ -1137,6 +1293,8 @@ function getTableLabel(table) {
   const map = {
     holiday: 'Holiday',
     app: 'App',
+    release_app: 'Release App',
+    app_release_schedule: 'App Release Schedule',
     phase: 'Phase',
     project_status: 'Project Status',
     tester_role: 'Tester Role',
@@ -1149,6 +1307,8 @@ function getPKField(table) {
   const map = {
     holiday: 'holiday_date',
     app: 'app_code',
+    release_app: 'app_code',
+    app_release_schedule: 'release_id',
     phase: 'phase_code',
     project_status: 'status_code',
     tester_role: 'role_code',
@@ -1185,6 +1345,73 @@ function renderForm(table, data) {
       <div class="field">
         <label>Sort Order</label>
         <input type="number" id="f-sort_order" placeholder="0" value="${STATE.editingMode && data && data.sort_order !== null ? data.sort_order : ''}">
+      </div>
+      ${STATE.editingMode ? `
+        <div class="field checkbox">
+          <input type="checkbox" id="f-is_active" ${data && data.is_active ? 'checked' : ''}>
+          <label for="f-is_active">Active</label>
+        </div>
+      ` : ''}
+    `;
+  } else if (table === 'release_app') {
+    html = `
+      <div class="field">
+        <label>App Code *</label>
+        <input type="text" id="f-app_code" placeholder="e.g. NEXT" value="${STATE.editingMode && data ? esc(data.app_code) : ''}" ${STATE.editingMode ? 'disabled' : ''}>
+        <span class="hint">ใช้แยกจาก App ของ Project (แท็บ App) — สำหรับ App Release Schedule เท่านั้น</span>
+      </div>
+      <div class="field">
+        <label>App Name *</label>
+        <input type="text" id="f-app_name" placeholder="App name" value="${STATE.editingMode && data ? esc(data.app_name) : ''}">
+      </div>
+      <div class="field">
+        <label>Sort Order</label>
+        <input type="number" id="f-sort_order" placeholder="0" value="${STATE.editingMode && data && data.sort_order !== null ? data.sort_order : ''}">
+      </div>
+      ${STATE.editingMode ? `
+        <div class="field checkbox">
+          <input type="checkbox" id="f-is_active" ${data && data.is_active ? 'checked' : ''}>
+          <label for="f-is_active">Active</label>
+        </div>
+      ` : ''}
+    `;
+  } else if (table === 'app_release_schedule') {
+    const appOpts = STATE.releaseApps
+      .filter(a => a.is_active || (data && data.app_code === a.app_code))
+      .map(a => `<option value="${esc(a.app_code)}" ${data && data.app_code === a.app_code ? 'selected' : ''}>${esc(a.app_name)}${a.is_active ? '' : ' (inactive)'}</option>`)
+      .join('');
+    const fe = STATE.editingMode && data ? !!data.submitted_fe : false;
+    html = `
+      <div class="field">
+        <label>App *</label>
+        <select id="f-app_code"><option value="">— เลือก App —</option>${appOpts}</select>
+        ${STATE.releaseApps.length ? '' : '<span class="hint" style="color:var(--danger)">ยังไม่มี Release App ในระบบ — ไปเพิ่มที่แท็บ Release App ก่อน</span>'}
+      </div>
+      <div class="field checkbox">
+        <input type="checkbox" id="f-submitted_fe" ${fe ? 'checked' : ''}>
+        <label for="f-submitted_fe">Submitted App (FE)</label>
+      </div>
+      <div class="field">
+        <label>App Version</label>
+        <input type="text" id="f-app_version" placeholder="e.g. 16.23.0" value="${STATE.editingMode && data ? esc(data.app_version || '') : ''}">
+      </div>
+      <div class="field">
+        <label>Platform</label>
+        <input type="text" id="f-platform" placeholder="e.g. PTC, OB" value="${STATE.editingMode && data ? esc(data.platform || '') : ''}">
+      </div>
+      <div class="field">
+        <label>Submitted Date</label>
+        <input type="date" id="f-submitted_date" value="${STATE.editingMode && data ? (data.submitted_date || '') : ''}">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Regression Start</label>
+          <input type="date" id="f-regression_start" value="${STATE.editingMode && data ? (data.regression_start || '') : ''}">
+        </div>
+        <div class="field">
+          <label>Regression End</label>
+          <input type="date" id="f-regression_end" value="${STATE.editingMode && data ? (data.regression_end || '') : ''}">
+        </div>
       </div>
       ${STATE.editingMode ? `
         <div class="field checkbox">
@@ -1357,6 +1584,23 @@ function readFormData(table) {
     payload.app_name = $('f-app_name').value.trim();
     payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : null;
     payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
+  } else if (table === 'release_app') {
+    payload.app_code = $('f-app_code').value.trim();
+    payload.app_name = $('f-app_name').value.trim();
+    payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : null;
+    payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
+  } else if (table === 'app_release_schedule') {
+    payload.app_code = $('f-app_code').value || null;
+    payload.submitted_fe = $('f-submitted_fe').checked;
+    payload.app_version = $('f-app_version').value.trim() || null;
+    payload.platform = $('f-platform').value.trim() || null;
+    payload.submitted_date = $('f-submitted_date').value || null;
+    payload.regression_start = $('f-regression_start').value || null;
+    payload.regression_end = $('f-regression_end').value || null;
+    payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
+    // created_by/updated_by = pqa_emp_id ของแอดมินที่กำลังบันทึกอยู่ (STATE.myEmpId ตั้งค่าตอน login — §5.29)
+    payload.updated_by = STATE.myEmpId || null;
+    if (!STATE.editingMode) payload.created_by = STATE.myEmpId || null;
   } else if (table === 'phase') {
     payload.phase_code = $('f-phase_code').value.trim();
     payload.phase_name = $('f-phase_name').value.trim();
@@ -1391,6 +1635,15 @@ function validateRecord(table, payload) {
     if (!payload.app_code) return { ok: false, err: 'กรุณาระบุ App Code' };
     if (!payload.app_name) return { ok: false, err: 'กรุณาระบุชื่อ App' };
     if (payload.sort_order !== null && isNaN(payload.sort_order)) return { ok: false, err: 'Sort Order ต้องเป็นตัวเลข' };
+  } else if (table === 'release_app') {
+    if (!payload.app_code) return { ok: false, err: 'กรุณาระบุ App Code' };
+    if (!payload.app_name) return { ok: false, err: 'กรุณาระบุชื่อ App' };
+    if (payload.sort_order !== null && isNaN(payload.sort_order)) return { ok: false, err: 'Sort Order ต้องเป็นตัวเลข' };
+  } else if (table === 'app_release_schedule') {
+    if (!payload.app_code) return { ok: false, err: 'กรุณาเลือก App' };
+    if (payload.regression_start && payload.regression_end && payload.regression_end < payload.regression_start) {
+      return { ok: false, err: 'Regression End ต้องไม่มาก่อน Regression Start' };
+    }
   } else if (table === 'phase') {
     if (!payload.phase_code) return { ok: false, err: 'กรุณาระบุ Phase Code' };
     if (!payload.phase_name) return { ok: false, err: 'กรุณาระบุชื่อ Phase' };
@@ -1418,7 +1671,10 @@ window.deleteRecord = async function(table, pk) {
 
   const tableLabel = getTableLabel(table);
   // project_status: ปิดใช้งานแทนลบเสมอ — โปรเจกต์เก่าที่ใช้สถานะนี้อยู่จะได้ไม่ FK error
-  const isSoftDelete = (table === 'app' || table === 'phase' || table === 'project_status');
+  // release_app: กันเหมือนกัน (app_release_schedule มี FK ชี้มา) / app_release_schedule: มีคอลัมน์ is_active
+  // อยู่แล้วโดยตั้งใจให้เก็บประวัติไว้ ไม่ลบทิ้งจริง
+  const isSoftDelete = (table === 'app' || table === 'phase' || table === 'project_status'
+                         || table === 'release_app' || table === 'app_release_schedule');
   const msg = isSoftDelete
     ? `ยืนยันปิดใช้งาน ${tableLabel} ${pk}?`
     : `ยืนยันลบ ${tableLabel} ${pk}? (ไม่สามารถกู้คืนได้)`;

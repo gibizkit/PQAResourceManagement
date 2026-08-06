@@ -1118,10 +1118,22 @@ function setMode(mode){
   updateModeUI();
   renderRail();
 }
+/* เคลียร์ห้องที่เปิดอยู่ (ถ้ามี) — ใช้ตอนเปลี่ยนเดือนใน Calendar เพราะห้องเดิมอาจไม่อยู่ใน
+   รายการเดือนใหม่แล้ว (โชว์เธรดของโปรเจกต์ที่ไม่อยู่ในรายการซ้ายมือค้างไว้ = สับสน) */
+function clearSelectedRoom(){
+  if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+  S.selectedKey = null;
+  S.room = null;
+  S.pickerOpenKey = null;
+  S.replyOpenKey = null;
+  S.editOpenKey = null;
+  renderConvEmpty();
+}
 function changeMonth(delta){
   const d = new Date(S.y, S.m - 1 + delta, 1);
   S.y = d.getFullYear(); S.m = d.getMonth() + 1;
   savePrefs(PAGE, { y: S.y, m: S.m });
+  clearSelectedRoom();
   updateModeUI();
   renderRail();
 }
