@@ -288,7 +288,6 @@
       </div>
       <div class="toolbar">
         <button class="btn accent" id="addProjectBtn" onclick="openAddProject()">+ เพิ่ม Project</button>
-        <button class="btn" id="refreshProjectBtn" onclick="loadProjects()">🔄 Refresh</button>
         <input class="search" id="projectSearch" placeholder="ค้นหา ชื่อ / key / app / lead...">
       </div>
       <div class="table-wrap">
@@ -308,7 +307,6 @@
     <div id="tab-holiday" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addHolidayBtn" onclick="openAddModal('holiday')">+ เพิ่ม Holiday</button>
-        <button class="btn" id="refreshHolidayBtn" onclick="loadData('holiday')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -328,7 +326,6 @@
     <div id="tab-app" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addAppBtn" onclick="openAddModal('app')">+ เพิ่ม App</button>
-        <button class="btn" id="refreshAppBtn" onclick="loadData('app')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -351,7 +348,6 @@
     <div id="tab-release_app" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addReleaseAppBtn" onclick="openAddModal('release_app')">+ เพิ่ม Release App</button>
-        <button class="btn" id="refreshReleaseAppBtn" onclick="loadData('release_app')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -373,7 +369,6 @@
     <div id="tab-app_release_schedule" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addAppReleaseScheduleBtn" onclick="openAddModal('app_release_schedule')">+ เพิ่ม App Release Schedule</button>
-        <button class="btn" id="refreshAppReleaseScheduleBtn" onclick="loadData('app_release_schedule')">🔄 Refresh</button>
       </div>
       <div class="subtab-bar" id="releaseScheduleSubtabs"></div>
       <div class="subtab-bar" id="releaseScheduleYearSubtabs"></div>
@@ -401,7 +396,6 @@
     <div id="tab-phase" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addPhaseBtn" onclick="openAddModal('phase')">+ เพิ่ม Phase</button>
-        <button class="btn" id="refreshPhaseBtn" onclick="loadData('phase')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -425,7 +419,6 @@
     <div id="tab-project_status" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addProjectStatusBtn" onclick="openAddModal('project_status')">+ เพิ่ม Status</button>
-        <button class="btn" id="refreshProjectStatusBtn" onclick="loadData('project_status')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -447,7 +440,6 @@
     <div id="tab-tester_role" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addTesterRoleBtn" onclick="openAddModal('tester_role')">+ เพิ่ม Tester Role</button>
-        <button class="btn" id="refreshTesterRoleBtn" onclick="loadData('tester_role')">🔄 Refresh</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -466,9 +458,6 @@
 
     <!-- ============ USER TAB ============ -->
     <div id="tab-app_user" class="tab-content">
-      <div class="toolbar">
-        <button class="btn" id="refreshAppUserBtn" onclick="loadData('app_user')">🔄 Refresh</button>
-      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -622,8 +611,10 @@ window.STATE = {
   pqaLeads: [],
   projectStatuses: [],
 
-  // sort state ของตาราง App Release Schedule (default = submitted_date ใหม่สุดก่อน ตรงกับ order เดิม)
-  releaseScheduleSort: { key: 'submitted_date', dir: 'desc' },
+  // sort state ของตาราง App Release Schedule — key: 'default' = multi-key เรียง
+  // Active (Y ก่อน N) → App A-Z → App Version A-Z → Submitted Date A-Z (ดู defaultReleaseScheduleSort())
+  // คลิกหัวคอลัมน์เปลี่ยนเป็น single-key sort ตามปกติ (sortReleaseScheduleBy)
+  releaseScheduleSort: { key: 'default', dir: 'asc' },
   // subtab filter ของตาราง App Release Schedule — 'all' หรือ app_code ของ release_app
   releaseScheduleAppFilter: 'all',
   // subtab filter ปี (ตาม submitted_date) ของตาราง App Release Schedule — 'all' หรือ 'YYYY'
@@ -788,7 +779,7 @@ window.switchTab = function(tab) {
   }
 };
 
-// release_app เป็น master ตัวเล็ก โหลดครั้งเดียวพอ (Refresh ในแท็บ Release App เอง จะสั่งโหลดใหม่ตรงๆ ผ่าน loadData)
+// release_app เป็น master ตัวเล็ก โหลดครั้งเดียวพอ (switchTab ไปแท็บ Release App จะสั่งโหลดใหม่ตรงๆ ผ่าน loadData)
 async function ensureReleaseAppsLoaded() {
   if (STATE.releaseApps.length) return;
   await loadData('release_app');
@@ -1205,7 +1196,27 @@ const RELEASE_SCHEDULE_KEYFNS = {
   is_active: r => r.is_active ? 1 : 0
 };
 
+// Default sort (ไม่ได้คลิกหัวคอลัมน์ใดอยู่): Active (Y ก่อน N) → App A-Z → App Version A-Z
+// → Submitted Date A-Z — ยืนยัน order นี้โดยเจ้าของระบบ 2026-08-10
+function defaultReleaseScheduleSort(rows) {
+  return rows.slice().sort((a, b) => {
+    const activeDiff = (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0);
+    if (activeDiff !== 0) return activeDiff;
+
+    const appDiff = releaseAppName(a.app_code).toLowerCase()
+      .localeCompare(releaseAppName(b.app_code).toLowerCase());
+    if (appDiff !== 0) return appDiff;
+
+    // numeric:true กัน "16.3.0" แซง "16.23.0" ผิดลำดับตอนเทียบแบบ string ล้วนๆ
+    const verDiff = (a.app_version || '').localeCompare(b.app_version || '', undefined, { numeric: true, sensitivity: 'base' });
+    if (verDiff !== 0) return verDiff;
+
+    return (a.submitted_date || '').localeCompare(b.submitted_date || '');
+  });
+}
+
 function sortReleaseSchedule(rows) {
+  if (STATE.releaseScheduleSort.key === 'default') return defaultReleaseScheduleSort(rows);
   const kf = RELEASE_SCHEDULE_KEYFNS[STATE.releaseScheduleSort.key];
   if (!kf) return rows;
   const dir = STATE.releaseScheduleSort.dir === 'desc' ? -1 : 1;

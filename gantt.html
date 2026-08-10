@@ -119,6 +119,34 @@
   .th-day.wknd { background:#efe5d6; color:var(--dk-text3); }
   .th-day.today-col { background:var(--today); color:#fff; font-weight:800; border-radius:6px; }
 
+  /* ============ Release Schedule pinned rows (ฝังใน <thead> ต่อจากแถว day) ============
+     "Freeze Row" ต้องปักหมุดบนสุดเสมอไม่ขยับตาม scroll แนวตั้ง — ฝังเป็นแถวเพิ่มใน thead
+     แทนแถวลอยกลาง tbody: คอลัมน์วันที่ align ให้ฟรีเพราะใช้ days array เดียวกับตารางหลัก,
+     sticky ได้ง่ายกว่าเพราะอยู่ชั้น thead อยู่แล้ว (z-index/background เดิมใช้ได้เลย)
+     top ของแต่ละแถวตั้งจาก JS หลัง render (measure ความสูงจริงสะสม เหมือน --th-month-h
+     ที่ .th-day ใช้อยู่ — แต่ต้องตั้ง inline ทีละแถวเพราะจำนวนแถว/เลนไม่คงที่)
+     label cell เป็น <th colspan="3"> คร่อม c0+c1+c2 (ไม่ใช้ class .c0/.c1/.c2 เพราะกว้าง
+     ไม่คงที่ — ให้ colgroup+table-layout:fixed คำนวณความกว้างรวมให้เอง) */
+  .rs-label { position:sticky; left:0; z-index:25; background:var(--dk-surface);
+    padding:5px 10px; vertical-align:middle; box-shadow:4px 0 8px -2px rgba(34,28,21,.10); }
+  .rs-label-inner { display:flex; align-items:center; justify-content:space-between; gap:6px; min-width:0; }
+  .rs-label-name { font-weight:700; font-size:11.5px; color:var(--dk-text); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .rs-label-x { border:none; background:none; cursor:pointer; font-size:12px; color:var(--dk-text3);
+    width:18px; height:18px; border-radius:50%; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; }
+  .rs-label-x:hover { background:var(--dk-hover); color:var(--dk-text); }
+  /* .rs-day มี specificity สูงกว่า "thead th" (class ชนะ 2 element selector) จึงทับ top:0/padding
+     เดิมได้ — top จริงตั้งทีหลังผ่าน inline style ใน JS (ชนะทุก class อยู่แล้ว) */
+  th.rs-day { position:sticky; min-width:28px; width:28px; height:22px; padding:0;
+    text-align:center; background:#fff; font-weight:400; }
+  th.rs-day.wknd { background:var(--cell-wknd-soft); }
+  th.rs-day.today { background:rgba(46,125,50,.07); }
+  .rs-bar { display:flex; align-items:center; justify-content:flex-start; width:100%; height:16px;
+    box-shadow:0 1px 2px rgba(34,28,21,.14); font-size:9.5px; font-weight:700; color:#fff;
+    white-space:nowrap; overflow:hidden; padding-left:4px; box-sizing:border-box; }
+  .rs-diamond { display:inline-block; width:10px; height:10px; transform:rotate(45deg);
+    border:1px solid rgba(34,28,21,.35); vertical-align:middle; }
+
   td.gcell { min-width:28px; width:28px; height:26px; position:relative; }
   td.gcell.wknd { background:var(--cell-wknd-soft); }
   td.gcell.today { background:rgba(46,125,50,.07); }
@@ -263,6 +291,12 @@
       <button class="btn" id="collapseAllBtn">⊟ Collapse All</button>
       <button class="btn" id="expandAllBtn">⊞ Expand All</button>
       <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
+      <div class="ms" id="msReleaseSchedule">
+        <button class="btn" id="releaseScheduleBtn" type="button">📦 Release Schedule</button>
+        <div class="ms-panel hidden" id="releaseSchedulePanel">
+          <div class="ms-list" id="releaseScheduleList"></div>
+        </div>
+      </div>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -539,6 +573,10 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
+// สีต่อ App สำหรับแถว Release Schedule — ไล่ตามลำดับ app ที่ "มีข้อมูล" (releaseAppsWithData)
+// วนซ้ำถ้า app เยอะกว่าจำนวนสี ไม่ผูกกับสีเฟสเพราะคนละความหมาย (release train ไม่ใช่ phase)
+const RELEASE_COLORS = ['#c07f56','#6183a6','#74996a','#9d84bd','#cba25e','#7f9b93','#a9805f'];
+
 const COL_W = { c0:400, c1:150, c2:72, day:28 };
 function buildColgroup(dayCount){
   return '<colgroup>' +
@@ -564,6 +602,9 @@ const S = {
   collapsed: {},
   appOrder: {},
   phaseSortOrder: {},   // master pqa.phase.sort_order (phase_code -> number) ใช้กับ Order = Phase
+  releaseAppsAll: [],    // master pqa.release_app (is_active), เรียง sort_order แล้วจาก query
+  releaseSchedule: [],   // pqa.app_release_schedule (is_active) ทั้งก้อน — filter ตาม app ที่เลือกตอน render
+  releaseRows: new Set(),   // app_code ที่เลือกให้โชว์เป็นแถว pinned Release Schedule ใน thead
   filter: { projects:new Set(), leads:new Set(), apps:new Set(), phases:new Set(), start:'', end:'', order:'' },
   leadFilterApplied: false,  // กันไม่ให้ default-lead-filter ทับ filter ที่ผู้ใช้เคลียร์เอง ตอน loadAll() ถูกเรียกซ้ำ (save/delete project)
   renderedPhases: [],
@@ -657,6 +698,7 @@ function restoreFilterPrefs(){
   S.filter.leads    = prefSet(p.leads);
   S.filter.apps     = prefSet(p.apps);
   S.filter.phases   = prefSet(p.phases);
+  S.releaseRows     = prefSet(p.releaseApps);   // sync กับ dropdown/checkbox ตอน buildReleaseScheduleDropdown()
 
   const validOrders = new Set(['', 'timeline', 'lead', 'phase']);
   S.filter.order = (typeof p.order === 'string' && validOrders.has(p.order)) ? p.order : '';
@@ -678,6 +720,7 @@ function saveFilterPrefs(){
     end:   S.filter.end,
     order: S.filter.order,
     panelOpen: !$('filterPanel').classList.contains('hidden'),
+    releaseApps: [...S.releaseRows],
   });
 }
 
@@ -685,7 +728,7 @@ function saveFilterPrefs(){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes] = await Promise.all([
+    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes, releaseAppRes, releaseSchedRes] = await Promise.all([
       loadHolidaysSafe(),
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
@@ -697,6 +740,8 @@ async function loadAll(){
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
       supabase.from('phase').select('phase_code,sort_order'),   // master order สำหรับ Order = Phase
+      supabase.from('release_app').select('app_code,app_name,sort_order').eq('is_active', true).order('sort_order', { ascending: true }),
+      supabase.from('app_release_schedule').select('release_id,app_code,submitted_fe,app_version,platform,submitted_date,regression_start,regression_end').eq('is_active', true),
     ]);
 
     for (const r of [projRes, phaseRes, plRes, leadRes, bkRes, resRes]) {
@@ -710,6 +755,12 @@ async function loadAll(){
     S.noteMap = {};
     if (noteRes.error) console.warn('project_comment (notes) load error', noteRes.error);
     else (noteRes.data || []).forEach(n => { S.noteMap[noteKey(n.project_key, n.phase_code, n.comment_date)] = n; });
+
+    // App Release Schedule — ไม่ fatal ถ้าโหลดพลาด (ฟีเจอร์เสริม ไม่ควรทำให้ทั้งหน้า Gantt ล่ม)
+    S.releaseAppsAll = releaseAppRes.error ? [] : (releaseAppRes.data || []);
+    S.releaseSchedule = releaseSchedRes.error ? [] : (releaseSchedRes.data || []);
+    if (releaseAppRes.error) console.warn('release_app load error', releaseAppRes.error);
+    if (releaseSchedRes.error) console.warn('app_release_schedule load error', releaseSchedRes.error);
 
     S.holidays = holidays;
     S.projects = projRes.data || [];
@@ -749,6 +800,7 @@ async function loadAll(){
     S.projects.forEach(p => { if (!(p.project_key in S.collapsed)) S.collapsed[p.project_key]=true; });
 
     buildFilters();
+    buildReleaseScheduleDropdown();
     // ตั้ง default Lead filter แค่ครั้งแรกหลัง login เท่านั้น — ไม่งั้นทุกครั้งที่ loadAll()
     // ถูกเรียกซ้ำ (หลังบันทึก/ลบ project) จะทับ filter ที่ผู้ใช้เคลียร์เองไปแล้ว กลายเป็นบั๊ก
     // "เคลียร์ filter แล้วยังไม่เห็น project ทั้งหมด"
@@ -917,6 +969,143 @@ function buildFilters(){
   makeMultiSelect('msPhase',
     PHASES.map(ph => ({ value:ph.code, label:ph.name })),
     S.filter.phases, 'ทุก Phase');
+}
+
+/* ============ RELEASE SCHEDULE (pinned rows ใน thead) ============ */
+// เฉพาะ App ที่มีข้อมูลใน app_release_schedule จริง (ไม่งั้น dropdown มี App ว่างเปล่าให้เลือก)
+// เรียงตาม release_app.sort_order ที่ query มาแล้ว (ไม่ต้อง sort ซ้ำ)
+function releaseAppsWithData(){
+  const codes = new Set(S.releaseSchedule.map(r => r.app_code));
+  return S.releaseAppsAll.filter(a => codes.has(a.app_code));
+}
+function releaseAppColor(appCode){
+  const list = releaseAppsWithData();
+  const idx = list.findIndex(a => a.app_code === appCode);
+  return RELEASE_COLORS[(idx < 0 ? 0 : idx) % RELEASE_COLORS.length];
+}
+function buildReleaseScheduleDropdown(){
+  const apps = releaseAppsWithData();
+  // App ที่เคยเลือกไว้ (จาก prefs) แต่ตอนนี้ไม่มีข้อมูลแล้ว → ตัดออกกันแถวค้าง
+  [...S.releaseRows].forEach(code => { if (!apps.some(a => a.app_code === code)) S.releaseRows.delete(code); });
+  const list = $('releaseScheduleList');
+  list.innerHTML = apps.length ? apps.map(a => `
+    <label class="ms-item">
+      <input type="checkbox" value="${esc(a.app_code)}"${S.releaseRows.has(a.app_code) ? ' checked' : ''}>
+      <span>${esc(a.app_name)}</span>
+    </label>`).join('')
+    : '<div style="padding:10px;font-size:12px;color:var(--dk-text3)">ยังไม่มีข้อมูล App Release Schedule</div>';
+  list.onchange = () => {
+    S.releaseRows.clear();
+    list.querySelectorAll('input:checked').forEach(cb => S.releaseRows.add(cb.value));
+    updateReleaseScheduleBtnLabel();
+    renderGantt();
+    saveFilterPrefs();
+  };
+  updateReleaseScheduleBtnLabel();
+}
+function updateReleaseScheduleBtnLabel(){
+  const n = S.releaseRows.size;
+  $('releaseScheduleBtn').textContent = n ? `📦 Release Schedule (${n})` : '📦 Release Schedule';
+}
+// เอาแถว App ออกจากปุ่ม ✕ ในแถว pinned เอง (sync กับ checkbox ใน dropdown ด้วย)
+window.toggleReleaseRow = function(appCode){
+  S.releaseRows.delete(appCode);
+  buildReleaseScheduleDropdown();
+  renderGantt();
+  saveFilterPrefs();
+};
+$('releaseScheduleBtn').onclick = (e) => {
+  e.stopPropagation();
+  const panel = $('releaseSchedulePanel');
+  const willOpen = panel.classList.contains('hidden');
+  closeAllMsPanels();
+  if (willOpen) panel.classList.remove('hidden');
+};
+$('releaseSchedulePanel').onclick = (e) => e.stopPropagation();
+
+// ช่วงวันของ release 1 รายการ ใช้ตัดสิน overlap/lane — ไม่มี regression window
+// (แค่ submitted_date เดี่ยวๆ เช่นแถว "Lotto New" ที่ยังไม่ขึ้น regression) ก็ยังจัดเลนได้
+// เพราะถือเป็นช่วง 1 วัน (start=end=submitted_date)
+function releaseItemSpan(r){
+  const s = r.regression_start || r.submitted_date;
+  const e = r.regression_end || r.submitted_date;
+  if (!s) return null;
+  return { start: s, end: e || s };
+}
+// จัดเลนแบบ greedy interval packing (เหมือน calendar week-view จัดอีเวนต์ทับเวลากัน) —
+// item ที่ช่วงวันไม่ทับกันอยู่เลนเดียวกันได้ (ประหยัดพื้นที่แนวตั้ง), ทับกันแยกเลน
+function packLanes(items){
+  const sorted = items.slice().sort((a, b) =>
+    a.span.start < b.span.start ? -1 : a.span.start > b.span.start ? 1 : 0);
+  const laneEnds = [];
+  sorted.forEach(it => {
+    let lane = laneEnds.findIndex(end => end < it.span.start);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(it.span.end); }
+    else { laneEnds[lane] = it.span.end; }
+    it.lane = lane;
+  });
+  return { items: sorted, laneCount: laneEnds.length || 1 };
+}
+function releaseTooltip(r){
+  const parts = [];
+  if (r.app_version) parts.push('v' + r.app_version);
+  if (r.platform) parts.push(r.platform);
+  if (r.regression_start && r.regression_end) parts.push(`Regression ${dDisp(r.regression_start)} → ${dDisp(r.regression_end)}`);
+  if (r.submitted_date) parts.push(`Submit ${dDisp(r.submitted_date)}`);
+  return esc(parts.join(' · '));
+}
+// เซลล์วันเดียวของแถว Release Schedule — regression window = แท่งสี (+ เลข version ที่เซลล์ต้นแท่ง
+// ถ้ามีที่พอ, tooltip เต็มเสมอ), มีแค่ submitted_date (ไม่มี regression) = diamond marker
+// (ภาษาภาพเดียวกับ milestoneRow ที่ใช้กับ Signoff/Deploy อยู่แล้ว)
+function releaseDayCellHTML(ds, laneItems, color){
+  const wknd = isWkndStr(ds), today = ds === TODAY;
+  const cls = 'rs-day' + (wknd ? ' wknd' : '') + (today ? ' today' : '');
+  const hit = laneItems.find(it => ds >= it.span.start && ds <= it.span.end);
+  if (!hit) return `<th class="${cls}"></th>`;
+  const r = hit.r;
+  const title = releaseTooltip(r);
+  const isSubmitOnly = !r.regression_start || !r.regression_end;
+  let inner;
+  if (isSubmitOnly){
+    inner = `<span class="rs-diamond" style="background:${color}"></span>`;
+  } else {
+    const roundL = ds === hit.span.start, roundR = ds === hit.span.end;
+    const rad = roundL && roundR ? '5px' : roundL ? '5px 0 0 5px' : roundR ? '0 5px 5px 0' : '0';
+    const label = roundL && r.app_version ? esc(r.app_version) : '';
+    inner = `<span class="rs-bar" style="background:${color};border-radius:${rad}">${label}</span>`;
+  }
+  return `<th class="${cls}" title="${title}">${inner}</th>`;
+}
+// สร้างแถว <tr> ทั้งหมดของ Release Schedule (1 App อาจมีหลายเลนถ้า release ซ้อนช่วงเวลากัน) —
+// เฉพาะ release ที่ช่วงวันคาบเกี่ยวหน้าต่าง days ที่กำลังแสดง (ตามมาตรฐาน §4.1 ของโปรเจกต์)
+function releaseScheduleRowsHTML(days){
+  if (!S.releaseRows.size || !days.length) return '';
+  const viewStart = days[0], viewEnd = days[days.length - 1];
+  let html = '';
+  releaseAppsWithData().forEach(app => {
+    if (!S.releaseRows.has(app.app_code)) return;
+    const items = S.releaseSchedule
+      .filter(r => r.app_code === app.app_code)
+      .map(r => ({ r, span: releaseItemSpan(r) }))
+      .filter(x => x.span && x.span.start <= viewEnd && x.span.end >= viewStart);
+    const { items: packed, laneCount } = packLanes(items);
+    const lanes = Math.max(laneCount, 1);
+    const color = releaseAppColor(app.app_code);
+    for (let lane = 0; lane < lanes; lane++){
+      const laneItems = packed.filter(it => it.lane === lane);
+      const cells = days.map(ds => releaseDayCellHTML(ds, laneItems, color)).join('');
+      const labelCell = lane === 0
+        ? `<th class="rs-label" rowspan="${lanes}" colspan="3">
+            <div class="rs-label-inner">
+              <span class="rs-label-name" title="${esc(app.app_name)}">📦 ${esc(app.app_name)}</span>
+              <button class="rs-label-x" type="button" onclick="toggleReleaseRow('${esc(app.app_code)}')" title="เอาแถวนี้ออก">✕</button>
+            </div>
+          </th>`
+        : '';
+      html += `<tr class="rs-row">${labelCell}${cells}</tr>`;
+    }
+  });
+  return html;
 }
 
 /* ============ FILTER PROJECTS ============ */
@@ -1097,7 +1286,7 @@ function renderGantt(){
       const cls = 'th-day' + (isWkndStr(ds)?' wknd':'') + (ds===TODAY?' today-col':'');
       return `<th class="${cls}">${ds.slice(8)}</th>`;
     }).join('') +
-    '</tr></thead>';
+    '</tr>' + releaseScheduleRowsHTML(days) + '</thead>';
 
   S.renderedPhases = [];
   let body = '<tbody>';
@@ -1120,6 +1309,19 @@ function renderGantt(){
   // ด้านบน) — วัดความสูงจริงหลัง render แล้วตั้งเป็น CSS var ให้ .th-day อ้างอิง
   const monthRow = $('ganttScroll').querySelector('thead tr:first-child');
   if (monthRow) $('ganttScroll').style.setProperty('--th-month-h', monthRow.offsetHeight + 'px');
+
+  // ปักหมุดแถว Release Schedule (.rs-row) ต่อจากแถว day — จำนวนแถว/เลนไม่คงที่ เลยตั้ง top
+  // เป็น inline style ทีละแถวจากความสูงจริงสะสม (inline ชนะทุก class อยู่แล้ว ไม่ต้องพึ่ง CSS var
+  // เหมือน --th-month-h ข้างบน ซึ่งใช้ไม่ได้กับจำนวนแถวที่เปลี่ยนไปเรื่อยๆ)
+  const theadEl = $('ganttScroll').querySelector('thead');
+  if (theadEl){
+    const dayRow = theadEl.querySelector('tr:nth-child(2)');
+    let cum = (monthRow ? monthRow.offsetHeight : 0) + (dayRow ? dayRow.offsetHeight : 0);
+    theadEl.querySelectorAll('tr.rs-row').forEach(tr => {
+      tr.querySelectorAll('th').forEach(th => { th.style.top = cum + 'px'; });
+      cum += tr.offsetHeight;
+    });
+  }
 }
 
 function summaryRow(p, days){
