@@ -577,8 +577,8 @@ const PHASES = [
 ];
 
 // 3 หมวดสถานะ แสดงเป็นตัวเลือกแรกๆ ใน dropdown Filter Phase (ก่อนรหัสเฟสจริง)
-// ต่างจากรหัสเฟส (TCPREP/UAT/...) ตรงที่เทียบกับ filter ช่วง Start-End บนจอ ไม่ใช่วันนี้ (TODAY)
-// ดู projPhaseWindowStatus()
+// อิงวันนี้ (TODAY) เหมือนกับรหัสเฟส (TCPREP/UAT/...) — ใช้สถานะเดียวกับ chip "เฟสปัจจุบัน"
+// (currentPhaseInfo, รวมถึงคำว่า "เสร็จสิ้น") ดู projPhaseWindowStatus()
 const PHASE_STATUS_ITEMS = [
   { code:'NOTSTART',   name:'Not Start' },
   { code:'INPROGRESS', name:'In-Progress' },
@@ -1168,8 +1168,8 @@ function filteredProjects(){
     }
     // Phase filter: checkbox เดียวกัน 2 กลุ่ม เลือกได้พร้อมกัน (OR):
     //  - รหัสเฟสจริง (TC Prep/UAT/...) = โปรเจกต์ที่ "วันนี้" (TODAY) อยู่ในช่วงเฟสนั้น (ของเดิม)
-    //  - หมวดสถานะ (Not Start/In-Progress/Completed) = เทียบกับ filter ช่วง Start-End บนจอ
-    //    (S.filter.start/end) ไม่ใช่วันนี้ — ดู projPhaseWindowStatus()
+    //  - หมวดสถานะ (Not Start/In-Progress/Completed) = อิงวันนี้เหมือนกัน ใช้สถานะเดียวกับ
+    //    chip "เฟสปัจจุบัน" (currentPhaseInfo) — ดู projPhaseWindowStatus()
     if (S.filter.phases.size) {
       const phs = S.phasesByProject[p.project_key] || [];
       const matchPhaseCode = phs.some(ph =>
@@ -1232,21 +1232,20 @@ function sortProjects(list){
   return arr;
 }
 
-/* ============ PHASE STATUS (Not Start / In-Progress / Completed — vs. filter Start-End) ============ */
-// ใช้กับ 3 ตัวเลือกแรกใน Filter Phase — ต่างจาก currentPhaseInfo() ตรงที่เทียบกับ
-// filter ช่วง Start-End บนจอ (S.filter.start/end) แทนวันนี้ (TODAY), และไม่สนใจ SIT
-// (เหมือน currentPhaseInfo — SIT เป็นงานทีมพัฒนา ไม่ใช่เกณฑ์ความคืบหน้าของทีม UAT)
-//   - In-Progress = ช่วง Start-End คาบเกี่ยวกับเฟสใดเฟสหนึ่ง (TC Prep/UAT/Reg/Support/Other1/Other2)
-//   - Completed   = ทุกเฟส (ที่ไม่ใช่ SIT) จบลงก่อนช่วง Start-End เริ่มต้น
-//   - Not Start   = ที่เหลือทั้งหมด (ยังอยู่ในช่วง SIT / ยังไม่มีเฟส / ช่วง Start-End มาก่อนเฟสเริ่ม)
+/* ============ PHASE STATUS (Not Start / In-Progress / Completed — vs. วันนี้) ============ */
+// ใช้กับ 3 ตัวเลือกแรกใน Filter Phase — อิงสถานะเดียวกับ chip "เฟสปัจจุบัน" เป๊ะ
+// (currentPhaseInfo() เทียบกับวันนี้ (TODAY), ไม่ใช่ filter ช่วง Start-End บนจอ — ตั้งใจให้ตรงกับ
+// สถานะที่ผู้ใช้เห็นอยู่แล้วในคอลัมน์ Phase เช่น "✓ เสร็จสิ้น" / "To · UAT" / "UAT")
+//   - In-Progress = currentPhaseInfo().state === 'active'  (วันนี้อยู่ในช่วงเฟสใดเฟสหนึ่งที่ไม่ใช่ SIT)
+//   - Completed   = currentPhaseInfo().state === 'done'    (วันนี้ผ่านวันจบของทุกเฟส — chip "✓ เสร็จสิ้น")
+//   - Not Start   = ที่เหลือทั้งหมด ('upcoming' หรือไม่มีเฟสเลย — รวมกรณีอยู่ในช่วง SIT ด้วย
+//     เพราะ currentPhaseInfo ไม่นับ SIT อยู่แล้ว)
 function projPhaseWindowStatus(pk){
-  const phs = (S.phasesByProject[pk]||[]).filter(ph =>
-    effPhaseCode(ph) !== 'SIT' && ph.start_date && ph.end_date);
-  if (!phs.length) return 'NOTSTART';
-  const s = S.filter.start, e = S.filter.end;
-  if (phs.some(ph => s <= ph.end_date && e >= ph.start_date)) return 'INPROGRESS';
-  if (phs.every(ph => ph.end_date < s)) return 'COMPLETED';
-  return 'NOTSTART';
+  const info = currentPhaseInfo(pk);
+  if (!info) return 'NOTSTART';
+  if (info.state === 'active') return 'INPROGRESS';
+  if (info.state === 'done') return 'COMPLETED';
+  return 'NOTSTART';   // 'upcoming'
 }
 
 /* ============ CURRENT PHASE (for collapsed rows) ============ */
