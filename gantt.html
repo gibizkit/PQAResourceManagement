@@ -886,7 +886,6 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
         <button type="button" class="ms-search-x" title="ล้างคำค้นหา">×</button>
       </div>
       <div class="ms-tools">
-        <button type="button" data-act="all">เลือกทั้งหมด</button>
         <button type="button" data-act="none">ล้าง</button>
       </div>
       <div class="ms-list"></div>
@@ -922,12 +921,6 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
     list.querySelectorAll('input:checked').forEach(cb => selectedSet.add(cb.value));
     updateMsLabel(host, items, selectedSet, labelAll);
     renderGantt();
-    saveFilterPrefs();
-  };
-  host.querySelector('[data-act=all]').onclick = () => {
-    items.forEach(it => selectedSet.add(it.value));
-    list.querySelectorAll('input').forEach(cb => cb.checked=true);
-    updateMsLabel(host, items, selectedSet, labelAll); renderGantt();
     saveFilterPrefs();
   };
   host.querySelector('[data-act=none]').onclick = () => {
