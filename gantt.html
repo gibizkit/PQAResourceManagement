@@ -576,6 +576,15 @@ const PHASES = [
   { code:'OTHER1', name:'Other 1' }, { code:'OTHER2', name:'Other 2' },
 ];
 
+// 3 หมวดสถานะ แสดงเป็นตัวเลือกแรกๆ ใน dropdown Filter Phase (ก่อนรหัสเฟสจริง)
+// ต่างจากรหัสเฟส (TCPREP/UAT/...) ตรงที่เทียบกับ filter ช่วง Start-End บนจอ ไม่ใช่วันนี้ (TODAY)
+// ดู projPhaseWindowStatus()
+const PHASE_STATUS_ITEMS = [
+  { code:'NOTSTART',   name:'Not Start' },
+  { code:'INPROGRESS', name:'In-Progress' },
+  { code:'COMPLETED',  name:'Completed' },
+];
+
 // สีต่อ App สำหรับแถว Release Schedule — ไล่ตามลำดับ app ที่ "มีข้อมูล" (releaseAppsWithData)
 // วนซ้ำถ้า app เยอะกว่าจำนวนสี ไม่ผูกกับสีเฟสเพราะคนละความหมาย (release train ไม่ใช่ phase)
 const RELEASE_COLORS = ['#c07f56','#6183a6','#74996a','#9d84bd','#cba25e','#7f9b93','#a9805f'];
@@ -610,6 +619,7 @@ const S = {
   releaseRows: new Set(),   // app_code ที่เลือกให้โชว์เป็นแถว pinned Release Schedule ใน thead
   filter: { projects:new Set(), leads:new Set(), apps:new Set(), phases:new Set(), start:'', end:'', order:'' },
   leadFilterApplied: false,  // กันไม่ให้ default-lead-filter ทับ filter ที่ผู้ใช้เคลียร์เอง ตอน loadAll() ถูกเรียกซ้ำ (save/delete project)
+  phaseFilterApplied: false, // เหมือน leadFilterApplied แต่กับ default phase filter (Not Start + In-Progress)
   renderedPhases: [],
   noteMap: {},   // `${project_key}|${phase_code||''}|${date}` -> project_comment row
 };
@@ -679,8 +689,9 @@ async function showApp(session){
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreFilterPrefs เสมอ)
   setPrefsOwner(session.user.email);
   // มี filter ที่จำไว้จากตอนสลับหน้า (sessionStorage) → ใช้แทนค่า default ด้านบน
-  // และกัน applyDefaultLeadFilter() ใน loadAll() ทับ leads ที่ restore มา (ดูคอมเมนต์ที่ leadFilterApplied)
-  if (restoreFilterPrefs()) S.leadFilterApplied = true;
+  // และกัน applyDefaultLeadFilter()/applyDefaultPhaseFilter() ใน loadAll() ทับค่าที่ restore มา
+  // (ดูคอมเมนต์ที่ leadFilterApplied/phaseFilterApplied)
+  if (restoreFilterPrefs()) { S.leadFilterApplied = true; S.phaseFilterApplied = true; }
 
   await loadAll();
 }
@@ -813,6 +824,13 @@ async function loadAll(){
     } else {
       syncMultiSelect('msLead', S.filter.leads);
     }
+    // default filter Phase = Not Start + In-Progress (แค่ครั้งแรกหลัง login เหมือน Lead ด้านบน)
+    if (!S.phaseFilterApplied) {
+      applyDefaultPhaseFilter();
+      S.phaseFilterApplied = true;
+    } else {
+      syncMultiSelect('msPhase', S.filter.phases);
+    }
     renderGantt();
   } catch (err) {
     console.error(err);
@@ -848,6 +866,13 @@ function applyDefaultLeadFilter(){
     S.leads.forEach(l => { if (l.manager_emp_id === me) S.filter.leads.add(l.emp_id); });
   }
   syncMultiSelect('msLead', S.filter.leads);
+}
+
+/* ============ DEFAULT PHASE FILTER ============ */
+// default ตอน login = "Not Start" + "In-Progress" ติ๊กไว้ (ยังไม่รวม "Completed")
+function applyDefaultPhaseFilter(){
+  S.filter.phases = new Set(['NOTSTART', 'INPROGRESS']);
+  syncMultiSelect('msPhase', S.filter.phases);
 }
 
 /* ============ MULTISELECT ============ */
@@ -932,7 +957,7 @@ function syncMultiSelect(hostId, selectedSet){
   const host = $(hostId);
   host.querySelectorAll('.ms-list input').forEach(cb => cb.checked = selectedSet.has(cb.value));
   const btn = host.querySelector('.ms-btn');
-  const labelAll = hostId==='msLead' ? 'ทุก Lead' : 'ทุก Project';
+  const labelAll = { msLead:'ทุก Lead', msApp:'ทุก App', msPhase:'ทุก Phase' }[hostId] || 'ทุก Project';
   const n = selectedSet.size;
   let label;
   if (n === 0) {
@@ -970,7 +995,7 @@ function buildFilters(){
     S.apps.map(a => ({ value:a.app_code, label:a.app_code })),
     S.filter.apps, 'ทุก App');
   makeMultiSelect('msPhase',
-    PHASES.map(ph => ({ value:ph.code, label:ph.name })),
+    [...PHASE_STATUS_ITEMS, ...PHASES].map(ph => ({ value:ph.code, label:ph.name })),
     S.filter.phases, 'ทุก Phase');
 }
 
@@ -1141,12 +1166,17 @@ function filteredProjects(){
       const ids = (S.leadsByProject[p.project_key]||[]).map(l => l.emp_id);
       if (!ids.some(id => S.filter.leads.has(id))) return false;
     }
-    // Phase filter: keep projects where TODAY falls within a selected phase's date range
+    // Phase filter: checkbox เดียวกัน 2 กลุ่ม เลือกได้พร้อมกัน (OR):
+    //  - รหัสเฟสจริง (TC Prep/UAT/...) = โปรเจกต์ที่ "วันนี้" (TODAY) อยู่ในช่วงเฟสนั้น (ของเดิม)
+    //  - หมวดสถานะ (Not Start/In-Progress/Completed) = เทียบกับ filter ช่วง Start-End บนจอ
+    //    (S.filter.start/end) ไม่ใช่วันนี้ — ดู projPhaseWindowStatus()
     if (S.filter.phases.size) {
-      const inPhase = (S.phasesByProject[p.project_key]||[]).some(ph =>
+      const phs = S.phasesByProject[p.project_key] || [];
+      const matchPhaseCode = phs.some(ph =>
         S.filter.phases.has(effPhaseCode(ph)) && ph.start_date && ph.end_date &&
         TODAY >= ph.start_date && TODAY <= ph.end_date);
-      if (!inPhase) return false;
+      const matchStatus = S.filter.phases.has(projPhaseWindowStatus(p.project_key));
+      if (!matchPhaseCode && !matchStatus) return false;
     }
     // req 13 (+ signoff/deploy): keep project if EITHER its phase span overlaps the
     // Start–End window, OR its Signoff Date / Deploy Date falls inside the window —
@@ -1200,6 +1230,23 @@ function sortProjects(list){
     });
   }
   return arr;
+}
+
+/* ============ PHASE STATUS (Not Start / In-Progress / Completed — vs. filter Start-End) ============ */
+// ใช้กับ 3 ตัวเลือกแรกใน Filter Phase — ต่างจาก currentPhaseInfo() ตรงที่เทียบกับ
+// filter ช่วง Start-End บนจอ (S.filter.start/end) แทนวันนี้ (TODAY), และไม่สนใจ SIT
+// (เหมือน currentPhaseInfo — SIT เป็นงานทีมพัฒนา ไม่ใช่เกณฑ์ความคืบหน้าของทีม UAT)
+//   - In-Progress = ช่วง Start-End คาบเกี่ยวกับเฟสใดเฟสหนึ่ง (TC Prep/UAT/Reg/Support/Other1/Other2)
+//   - Completed   = ทุกเฟส (ที่ไม่ใช่ SIT) จบลงก่อนช่วง Start-End เริ่มต้น
+//   - Not Start   = ที่เหลือทั้งหมด (ยังอยู่ในช่วง SIT / ยังไม่มีเฟส / ช่วง Start-End มาก่อนเฟสเริ่ม)
+function projPhaseWindowStatus(pk){
+  const phs = (S.phasesByProject[pk]||[]).filter(ph =>
+    effPhaseCode(ph) !== 'SIT' && ph.start_date && ph.end_date);
+  if (!phs.length) return 'NOTSTART';
+  const s = S.filter.start, e = S.filter.end;
+  if (phs.some(ph => s <= ph.end_date && e >= ph.start_date)) return 'INPROGRESS';
+  if (phs.every(ph => ph.end_date < s)) return 'COMPLETED';
+  return 'NOTSTART';
 }
 
 /* ============ CURRENT PHASE (for collapsed rows) ============ */
