@@ -134,7 +134,43 @@
     color: #c0392b;
   }
 
-  /* ---- sortable table header (App Release Schedule) ---- */
+  /* ---- Admin > Projects: freeze first 2 columns (Project Key, Project Name)
+     ต้องกำหนด width ตายตัวของ col1/col2 เพื่อคำนวณ left ของ col2 ให้ตรง (แพทเทิร์นเดียวกับ
+     sticky column ใน gantt.html — width + left ต้องตรงกันเสมอ) ---- */
+  #tab-project .table-wrap table th:nth-child(1),
+  #tab-project .table-wrap table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+  }
+  #tab-project .table-wrap table th:nth-child(2),
+  #tab-project .table-wrap table td:nth-child(2) {
+    position: sticky;
+    left: 130px;
+    width: 220px;
+    min-width: 220px;
+    max-width: 220px;
+    white-space: normal;
+  }
+  #tab-project .table-wrap table td:nth-child(1),
+  #tab-project .table-wrap table td:nth-child(2) {
+    background: #fff;
+    z-index: 1;
+    box-shadow: 1px 0 0 var(--dk-border);
+  }
+  #tab-project .table-wrap table th:nth-child(1),
+  #tab-project .table-wrap table th:nth-child(2) {
+    z-index: 3;
+    box-shadow: 1px 0 0 var(--dk-border);
+  }
+  #tab-project .table-wrap tbody tr:hover td:nth-child(1),
+  #tab-project .table-wrap tbody tr:hover td:nth-child(2) {
+    background: var(--dk-hover);
+  }
+
+  /* ---- sortable table header (ทุกแท็บใน Admin) ---- */
   th.sortable {
     cursor: pointer;
     user-select: none;
@@ -289,13 +325,22 @@
       <div class="toolbar">
         <button class="btn accent" id="addProjectBtn" onclick="openAddProject()">+ เพิ่ม Project</button>
         <input class="search" id="projectSearch" placeholder="ค้นหา ชื่อ / key / app / lead...">
+        <select id="projectYearFilter" title="กรองตามปีของ Signoff Date"><option value="all">ทุกปี</option></select>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Project Key</th><th>Project Name</th><th>App</th><th>UAT Lead</th>
-              <th>Status</th><th>UAT Start</th><th>UAT End</th><th>Signoff</th><th>Active</th><th class="center">Action</th>
+              <th class="sortable" data-table="project" data-key="project_key" onclick="sortAdminTable(this)">Project Key<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="project_name" onclick="sortAdminTable(this)">Project Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="app" onclick="sortAdminTable(this)">App<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="uat_lead" onclick="sortAdminTable(this)">UAT Lead<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="status" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="uat_start" onclick="sortAdminTable(this)">UAT Start<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="uat_end" onclick="sortAdminTable(this)">UAT End<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="signoff_date" onclick="sortAdminTable(this)">Signoff<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
+              <th class="center">Action</th>
             </tr>
           </thead>
           <tbody id="rows-project"><tr><td colspan="10" class="loading">กำลังโหลด...</td></tr></tbody>
@@ -307,13 +352,14 @@
     <div id="tab-holiday" class="tab-content">
       <div class="toolbar">
         <button class="btn accent" id="addHolidayBtn" onclick="openAddModal('holiday')">+ เพิ่ม Holiday</button>
+        <select id="holidayYearFilter" title="กรองตามปีของ Holiday Date"><option value="all">ทุกปี</option></select>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Description</th>
+              <th class="sortable" data-table="holiday" data-key="holiday_date" onclick="sortAdminTable(this)">Date<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="holiday" data-key="description" onclick="sortAdminTable(this)">Description<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -331,10 +377,10 @@
         <table>
           <thead>
             <tr>
-              <th>App Code</th>
-              <th>App Name</th>
-              <th>Sort Order</th>
-              <th>Status</th>
+              <th class="sortable" data-table="app" data-key="app_code" onclick="sortAdminTable(this)">App Code<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app" data-key="app_name" onclick="sortAdminTable(this)">App Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app" data-key="is_active" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -353,10 +399,10 @@
         <table>
           <thead>
             <tr>
-              <th>App Code</th>
-              <th>App Name</th>
-              <th>Sort Order</th>
-              <th>Status</th>
+              <th class="sortable" data-table="release_app" data-key="app_code" onclick="sortAdminTable(this)">App Code<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="release_app" data-key="app_name" onclick="sortAdminTable(this)">App Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="release_app" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="release_app" data-key="is_active" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -371,7 +417,10 @@
         <button class="btn accent" id="addAppReleaseScheduleBtn" onclick="openAddModal('app_release_schedule')">+ เพิ่ม App Release Schedule</button>
       </div>
       <div class="subtab-bar" id="releaseScheduleSubtabs"></div>
-      <div class="subtab-bar" id="releaseScheduleYearSubtabs"></div>
+      <div class="toolbar" style="margin-bottom:12px">
+        <label style="font-size:12.5px;color:var(--dk-text2);font-weight:600">ปี:</label>
+        <select id="releaseScheduleYearFilter" onchange="filterReleaseScheduleByYear(this.value)"></select>
+      </div>
       <div class="table-wrap">
         <table>
           <thead id="theadAppReleaseSchedule">
@@ -401,11 +450,11 @@
         <table>
           <thead>
             <tr>
-              <th>Phase Code</th>
-              <th>Phase Name</th>
-              <th>Sort Order</th>
-              <th>Billable</th>
-              <th>Status</th>
+              <th class="sortable" data-table="phase" data-key="phase_code" onclick="sortAdminTable(this)">Phase Code<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="phase" data-key="phase_name" onclick="sortAdminTable(this)">Phase Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="phase" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="phase" data-key="is_billable" onclick="sortAdminTable(this)">Billable<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="phase" data-key="is_active" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -424,10 +473,10 @@
         <table>
           <thead>
             <tr>
-              <th>Status</th>
+              <th class="sortable" data-table="project_status" data-key="status_code" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th>ตัวอย่าง</th>
-              <th>Sort Order</th>
-              <th>Active</th>
+              <th class="sortable" data-table="project_status" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project_status" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -445,9 +494,9 @@
         <table>
           <thead>
             <tr>
-              <th>Role Code</th>
-              <th>Role Name</th>
-              <th>Sort Order</th>
+              <th class="sortable" data-table="tester_role" data-key="role_code" onclick="sortAdminTable(this)">Role Code<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="tester_role" data-key="role_name" onclick="sortAdminTable(this)">Role Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="tester_role" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -458,15 +507,25 @@
 
     <!-- ============ USER TAB ============ -->
     <div id="tab-app_user" class="tab-content">
+      <div class="toolbar">
+        <select id="userRoleFilter">
+          <option value="all">ทุก Role</option>
+          <option value="admin">admin</option>
+          <option value="lead">lead</option>
+          <option value="tester">tester</option>
+          <option value="viewer">viewer</option>
+        </select>
+        <input class="search" id="userSearch" placeholder="ค้นหา ชื่อ / email / emp id...">
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Display Name</th>
-              <th>Email</th>
-              <th>Emp ID</th>
-              <th>Role</th>
-              <th>Active</th>
+              <th class="sortable" data-table="app_user" data-key="display_name" onclick="sortAdminTable(this)">Display Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app_user" data-key="email" onclick="sortAdminTable(this)">Email<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app_user" data-key="emp_id" onclick="sortAdminTable(this)">Emp ID<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app_user" data-key="app_role" onclick="sortAdminTable(this)">Role<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app_user" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
@@ -556,7 +615,7 @@
       <div class="section-title">Signoff & Deploy</div>
       <div class="grid2">
         <div class="field">
-          <label>Signoff Date <span style="color:var(--danger)">*</span></label>
+          <label>Signoff Date</label>
           <input id="pfSignoff" type="date">
         </div>
         <div class="field">
@@ -813,7 +872,7 @@ function buildProjectPhaseRows(data) {
       : `<div class="ph-ai-cell"><input type="checkbox" class="ph-ai" ${aiOn ? 'checked' : ''} title="AI Assisted"></div>
          <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
     return `<div class="phase-row" data-phase="${ph.code}">
-      <div class="ph-name">${ph.name}</div>
+      <div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
       <div class="ph-wd ph-calc">${wd || ''}</div>
@@ -891,17 +950,34 @@ async function loadProjects() {
     return;
   }
   allProjects = data || [];
+  renderProjectYearFilter();
   renderProjectRows();
+}
+
+// ตัวเลือกปีมาจาก signoff_date ของโปรเจกต์ (ยืนยันโดยเจ้าของระบบ 2026-08-11) — เรียงปีใหม่สุดก่อน
+// โปรเจกต์ที่ยังไม่มี signoff_date จะไม่ถูกนับเป็นปีไหนเลย (โผล่เฉพาะตอนเลือก "ทุกปี")
+function renderProjectYearFilter() {
+  const sel = $('projectYearFilter');
+  if (!sel) return;
+  const years = Array.from(new Set(allProjects.map(p => (p.signoff_date || '').slice(0, 4)).filter(Boolean)))
+    .sort((a, b) => b.localeCompare(a));
+  const cur = sel.value || 'all';
+  sel.innerHTML = '<option value="all">ทุกปี</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = (cur === 'all' || years.includes(cur)) ? cur : 'all';
 }
 
 function renderProjectRows() {
   const searchEl = $('projectSearch');
   const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
-  const rows = allProjects.filter(p => {
+  const yearEl = $('projectYearFilter');
+  const yearFilter = yearEl ? yearEl.value : 'all';
+  let rows = allProjects.filter(p => {
+    if (yearFilter !== 'all' && (p.signoff_date || '').slice(0, 4) !== yearFilter) return false;
     if (!q) return true;
     return [p.project_key, p.project_name, p.app, p.other_app, p.uat_lead, p.status]
       .some(v => (v || '').toLowerCase().includes(q));
   });
+  rows = applySortGeneric('project', rows);
   $('projCount').textContent = rows.length;
   if (!rows.length) {
     $('rows-project').innerHTML = '<tr><td colspan="10" class="loading">ไม่พบข้อมูล</td></tr>';
@@ -926,6 +1002,30 @@ function renderProjectRows() {
 
 const _projectSearchEl = document.getElementById('projectSearch');
 if (_projectSearchEl) _projectSearchEl.addEventListener('input', renderProjectRows);
+
+const _projectYearEl = document.getElementById('projectYearFilter');
+if (_projectYearEl) _projectYearEl.addEventListener('change', renderProjectRows);
+
+// ตัวเลือกปีมาจาก holiday_date ที่มีจริงใน STATE.holidays — refresh ทุกครั้งที่ renderRows('holiday', ...)
+// (ดู renderHolidayYearFilter ที่เรียกจากใน renderRows) เพื่อไม่ให้ dropdown ยุบเหลือปีเดียวหลังกรอง
+function renderHolidayYearFilter() {
+  const sel = $('holidayYearFilter');
+  if (!sel) return;
+  const years = Array.from(new Set(STATE.holidays.map(h => (h.holiday_date || '').slice(0, 4)).filter(Boolean)))
+    .sort((a, b) => b.localeCompare(a));
+  const cur = sel.value || 'all';
+  sel.innerHTML = '<option value="all">ทุกปี</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = (cur === 'all' || years.includes(cur)) ? cur : 'all';
+}
+
+const _holidayYearEl = document.getElementById('holidayYearFilter');
+if (_holidayYearEl) _holidayYearEl.addEventListener('change', () => renderRows('holiday', STATE.holidays));
+
+const _userRoleEl = document.getElementById('userRoleFilter');
+if (_userRoleEl) _userRoleEl.addEventListener('change', () => renderRows('app_user', STATE.appUsers));
+
+const _userSearchEl = document.getElementById('userSearch');
+if (_userSearchEl) _userSearchEl.addEventListener('input', () => renderRows('app_user', STATE.appUsers));
 
 /* ---- Lead pickers ในโมดัล Project (STATE.pqaLeads = pqa_lead ที่ active) ---- */
 window.addProjectSubLeadRow = function(selected) {
@@ -1061,9 +1161,10 @@ window.saveProject = async function() {
     err.textContent = 'ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง';
     return;
   }
-  // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ Signoff Date เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
-  if (!$('pfSignoff').value) {
-    err.textContent = 'กรุณาระบุ Signoff Date — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project';
+  // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
+  const uatStartRow = document.querySelector('#pfPhaseRows .phase-row[data-phase="UAT"] .ph-start');
+  if (!uatStartRow || !uatStartRow.value) {
+    err.textContent = 'กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project';
     return;
   }
 
@@ -1297,14 +1398,15 @@ function releaseScheduleYears() {
   return Array.from(years).sort((a, b) => b.localeCompare(a));
 }
 
+// dropdown แทนปุ่ม subtab เดิม — เลือกปีได้ตรงๆ จากใน dropdown (ยังใช้ STATE.releaseScheduleYearFilter
+// ตัวเดิม + filterReleaseScheduleByYear() ตัวเดิม แค่ trigger จาก onchange แทน onclick)
 function renderReleaseScheduleYearSubtabs() {
-  const wrap = $('releaseScheduleYearSubtabs');
-  if (!wrap) return;
+  const sel = $('releaseScheduleYearFilter');
+  if (!sel) return;
   const items = [{ code: 'all', label: 'ทั้งหมด' }, ...releaseScheduleYears().map(y => ({ code: y, label: y }))];
-  wrap.innerHTML = items.map(y => {
-    const active = STATE.releaseScheduleYearFilter === y.code ? ' active' : '';
-    return `<button class="subtab-btn${active}" onclick="filterReleaseScheduleByYear('${esc(y.code)}')">${esc(y.label)}</button>`;
-  }).join('');
+  sel.innerHTML = items.map(y =>
+    `<option value="${esc(y.code)}" ${STATE.releaseScheduleYearFilter === y.code ? 'selected' : ''}>${esc(y.label)}</option>`
+  ).join('');
 }
 
 window.filterReleaseScheduleByYear = function(year) {
@@ -1312,9 +1414,142 @@ window.filterReleaseScheduleByYear = function(year) {
   renderRows('app_release_schedule', STATE.appReleaseSchedules);
 };
 
+/* ============ SORTABLE HEADER: ทุกแท็บใน Admin (ยกเว้น App Release Schedule ที่มีระบบของตัวเองอยู่แล้ว
+   จาก §5.31 — คลิกหัวคอลัมน์เรียงฝั่ง client จาก cache ที่โหลดมาแล้วทั้งก้อน ไม่ยิง query ใหม่) ============ */
+window.SORT_STATE = {};   // table -> { key, dir } — ไม่มี entry = ใช้ลำดับ default จาก query เดิม
+
+const SORT_KEYFNS = {
+  project: {
+    project_key: r => r.project_key || '',
+    project_name: r => (r.project_name || '').toLowerCase(),
+    app: r => (r.app || r.other_app || '').toLowerCase(),
+    uat_lead: r => (r.uat_lead || '').toLowerCase(),
+    status: r => (r.status || '').toLowerCase(),
+    uat_start: r => r.uat_start || '',
+    uat_end: r => r.uat_end || '',
+    signoff_date: r => r.signoff_date || '',
+    is_active: r => r.is_active ? 1 : 0
+  },
+  holiday: {
+    holiday_date: r => r.holiday_date || '',
+    description: r => (r.description || '').toLowerCase()
+  },
+  app: {
+    app_code: r => (r.app_code || '').toLowerCase(),
+    app_name: r => (r.app_name || '').toLowerCase(),
+    sort_order: r => r.sort_order ?? 0,
+    is_active: r => r.is_active ? 1 : 0
+  },
+  release_app: {
+    app_code: r => (r.app_code || '').toLowerCase(),
+    app_name: r => (r.app_name || '').toLowerCase(),
+    sort_order: r => r.sort_order ?? 0,
+    is_active: r => r.is_active ? 1 : 0
+  },
+  phase: {
+    phase_code: r => (r.phase_code || '').toLowerCase(),
+    phase_name: r => (r.phase_name || '').toLowerCase(),
+    sort_order: r => r.sort_order ?? 0,
+    is_billable: r => r.is_billable ? 1 : 0,
+    is_active: r => r.is_active ? 1 : 0
+  },
+  project_status: {
+    status_code: r => (r.status_code || '').toLowerCase(),
+    sort_order: r => r.sort_order ?? 0,
+    is_active: r => r.is_active ? 1 : 0
+  },
+  tester_role: {
+    role_code: r => (r.role_code || '').toLowerCase(),
+    role_name: r => (r.role_name || '').toLowerCase(),
+    sort_order: r => r.sort_order ?? 0
+  },
+  app_user: {
+    display_name: r => (r.display_name || '').toLowerCase(),
+    email: r => (r.email || '').toLowerCase(),
+    emp_id: r => (r.emp_id || '').toLowerCase(),
+    app_role: r => (r.app_role || '').toLowerCase(),
+    is_active: r => r.is_active ? 1 : 0
+  }
+};
+
+function applySortGeneric(table, rows) {
+  const st = SORT_STATE[table];
+  const kf = st && SORT_KEYFNS[table] && SORT_KEYFNS[table][st.key];
+  if (!st || !kf) return rows;
+  const dir = st.dir === 'desc' ? -1 : 1;
+  return rows.slice().sort((a, b) => {
+    const va = kf(a), vb = kf(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+}
+
+function updateSortHeaderUI(table) {
+  const st = SORT_STATE[table];
+  document.querySelectorAll(`th.sortable[data-table="${table}"]`).forEach(el => {
+    const active = !!(st && el.dataset.key === st.key);
+    el.classList.toggle('sort-active', active);
+    const ico = el.querySelector('.sort-ico');
+    if (ico) ico.textContent = active ? (st.dir === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
+// cache ปัจจุบันของแต่ละตาราง — ใช้ตอน re-render หลังคลิกหัวคอลัมน์ ไม่ต้องยิง query ใหม่
+function getCachedRows(table) {
+  const map = {
+    holiday: STATE.holidays,
+    app: STATE.apps,
+    release_app: STATE.releaseApps,
+    phase: STATE.phases,
+    project_status: STATE.projectStatuses,
+    tester_role: STATE.testerRoles,
+    app_user: STATE.appUsers
+  };
+  return map[table] || [];
+}
+
+window.sortAdminTable = function(th) {
+  const table = th.dataset.table;
+  const key = th.dataset.key;
+  if (!table || !key) return;
+  const cur = SORT_STATE[table];
+  if (cur && cur.key === key) {
+    cur.dir = cur.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    SORT_STATE[table] = { key, dir: 'asc' };
+  }
+  updateSortHeaderUI(table);
+  if (table === 'project') {
+    renderProjectRows();
+  } else {
+    renderRows(table, getCachedRows(table));
+  }
+};
+
 function renderRows(table, data) {
   const rowsId = `rows-${table}`;
   const rows = $(rowsId);
+
+  // ---- pre-filter เฉพาะตาราง (ก่อนเช็คว่าง + ก่อนเรียง) ----
+  if (table === 'holiday') {
+    renderHolidayYearFilter();   // ตัวเลือกปีต้องมาจากชุดข้อมูลเต็ม ไม่ใช่ชุดที่ถูกกรองแล้ว
+    const yf = $('holidayYearFilter');
+    const yv = yf ? yf.value : 'all';
+    if (yv !== 'all') data = data.filter(h => (h.holiday_date || '').slice(0, 4) === yv);
+  } else if (table === 'app_user') {
+    const roleSel = $('userRoleFilter');
+    const roleVal = roleSel ? roleSel.value : 'all';
+    if (roleVal !== 'all') data = data.filter(u => u.app_role === roleVal);
+    const searchEl = $('userSearch');
+    const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    if (q) data = data.filter(u => [u.display_name, u.email, u.emp_id].some(v => (v || '').toLowerCase().includes(q)));
+  }
+
+  // ---- generic sort (ยกเว้น app_release_schedule ที่มีระบบ sort/ตัวกรองของตัวเองอยู่แล้ว) ----
+  if (table !== 'app_release_schedule') data = applySortGeneric(table, data);
 
   if (!data.length) {
     if (table === 'app_release_schedule') { renderReleaseScheduleSubtabs(); renderReleaseScheduleYearSubtabs(); }

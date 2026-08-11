@@ -302,6 +302,15 @@ a {
   font-size: 13px;
 }
 
+.toolbar select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dk-border-s);
+  font-size: 13px;
+  background: #fff;
+  color: var(--dk-text);
+}
+
 /* ============ TABLE ============ */
 .table-wrap {
   background: #fff;
@@ -340,12 +349,16 @@ tbody tr:hover {
   background: var(--dk-hover);
 }
 
+/* min-width + text-align:center กันเส้น pill ยาวไม่เท่ากันตามความยาวข้อความ
+   (ใช้ร่วมกันทั้ง Admin > Project Status "ตัวอย่าง" และ Admin > Projects คอลัมน์ Status) */
 .status-pill {
   display: inline-block;
+  min-width: 96px;
   padding: 2px 9px;
   border-radius: 12px;
   font-size: 11.5px;
   font-weight: 600;
+  text-align: center;
 }
 
 /* จุดสถานะแบบย่อ (ใช้ในคอลัมน์ Status ของ Gantt) — hover แล้วขึ้น tooltip */
