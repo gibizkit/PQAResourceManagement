@@ -381,7 +381,7 @@
 
       <div class="section-title">Lead</div>
       <div class="field">
-        <label>Main Lead</label>
+        <label>Main Lead <span style="color:var(--danger)">*</span></label>
         <select id="fMainLead"><option value="">— เลือก Lead —</option></select>
         <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้</span>
       </div>
@@ -1749,6 +1749,7 @@ window.saveProj = async function(){
   if (!/^[PU][0-9]{10}$/.test(key)){ err.textContent='Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก'; return; }
   if (!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
   if (!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
+  if (!$('fMainLead').value){ err.textContent='กรุณาเลือก Main Lead'; return; }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
   const uatStartRow = document.querySelector('#phaseRows .phase-row[data-phase="UAT"] .ph-start');
   if (!uatStartRow || !uatStartRow.value){ err.textContent='กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project'; return; }

@@ -594,7 +594,7 @@
 
       <div class="section-title">Lead</div>
       <div class="field">
-        <label>Main Lead</label>
+        <label>Main Lead <span style="color:var(--danger)">*</span></label>
         <select id="pfMainLead"><option value="">— เลือก Lead —</option></select>
         <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้า Gantt</span>
       </div>
@@ -1159,6 +1159,10 @@ window.saveProject = async function() {
   }
   if (!app && !otherApp) {
     err.textContent = 'ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง';
+    return;
+  }
+  if (!$('pfMainLead').value) {
+    err.textContent = 'กรุณาเลือก Main Lead';
     return;
   }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า

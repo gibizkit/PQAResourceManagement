@@ -612,6 +612,11 @@ tbody tr:hover {
   padding: 6px 6px;
 }
 
+/* ช่องยังไม่กรอก (โชว์ dd/mm/yyyy) ให้จางกว่าตอนมีค่าแล้ว ลดความเด่น */
+.phase-row input[type="date"]:placeholder-shown {
+  color: rgba(34, 28, 21, 0.28);
+}
+
 .phase-row .ph-calc {
   padding: 7px 4px;
   font-size: 12.5px;
