@@ -368,6 +368,16 @@ tbody tr:hover {
 /* จุดสถานะแบบย่อ (ใช้ในคอลัมน์ Status ของ Gantt) — hover แล้วขึ้น tooltip
    สีพื้น = pill_bg (สีเดียวกับพื้นหลัง pill เต็มๆ ใน Admin > Project Status "ตัวอย่าง")
    ขนาดใหญ่ขึ้น (6px → 10px) + ขอบวงแหวนบางๆ กันจุดที่สีอ่อน (เช่น Cancelled No MD) จมกับพื้นขาว */
+/* สี่เหลี่ยมเล็กพรีวิวสี — ใช้ในตาราง Admin > Phase / Release App คอลัมน์ Color
+   (ค่าจริงมาจาก pqa.phase.color / pqa.release_app.color — แก้ได้จากฟอร์ม input[type=color]) */
+.color-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(34,28,21,.18);
+}
+
 .status-dot {
   display: inline-block;
   width: 10px;

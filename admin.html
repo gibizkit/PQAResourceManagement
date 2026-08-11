@@ -401,12 +401,13 @@
             <tr>
               <th class="sortable" data-table="release_app" data-key="app_code" onclick="sortAdminTable(this)">App Code<span class="sort-ico"></span></th>
               <th class="sortable" data-table="release_app" data-key="app_name" onclick="sortAdminTable(this)">App Name<span class="sort-ico"></span></th>
+              <th>Color</th>
               <th class="sortable" data-table="release_app" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
               <th class="sortable" data-table="release_app" data-key="is_active" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
-          <tbody id="rows-release_app"><tr><td colspan="5" class="loading">กำลังโหลด...</td></tr></tbody>
+          <tbody id="rows-release_app"><tr><td colspan="6" class="loading">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -452,13 +453,14 @@
             <tr>
               <th class="sortable" data-table="phase" data-key="phase_code" onclick="sortAdminTable(this)">Phase Code<span class="sort-ico"></span></th>
               <th class="sortable" data-table="phase" data-key="phase_name" onclick="sortAdminTable(this)">Phase Name<span class="sort-ico"></span></th>
+              <th>Color</th>
               <th class="sortable" data-table="phase" data-key="sort_order" onclick="sortAdminTable(this)">Sort Order<span class="sort-ico"></span></th>
               <th class="sortable" data-table="phase" data-key="is_billable" onclick="sortAdminTable(this)">Billable<span class="sort-ico"></span></th>
               <th class="sortable" data-table="phase" data-key="is_active" onclick="sortAdminTable(this)">Status<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
-          <tbody id="rows-phase"><tr><td colspan="6" class="loading">กำลังโหลด...</td></tr></tbody>
+          <tbody id="rows-phase"><tr><td colspan="7" class="loading">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1592,6 +1594,7 @@ function renderRows(table, data) {
       <tr>
         <td><b>${esc(a.app_code)}</b></td>
         <td>${esc(a.app_name)}</td>
+        <td><span class="color-swatch" style="background:${esc(a.color || '#c07f56')}" title="${esc(a.color || '')}"></span></td>
         <td>${a.sort_order ?? '—'}</td>
         <td><span class="is-active-pill ${a.is_active ? 'yes' : 'no'}">${a.is_active ? 'Y' : 'N'}</span></td>
         <td class="center">
@@ -1635,6 +1638,7 @@ function renderRows(table, data) {
       <tr>
         <td><b>${esc(p.phase_code)}</b></td>
         <td>${esc(p.phase_name)}</td>
+        <td><span class="color-swatch" style="background:${esc(p.color || '#b79a78')}" title="${esc(p.color || '')}"></span></td>
         <td>${p.sort_order ?? '—'}</td>
         <td>${p.is_billable ? 'Y' : 'N'}</td>
         <td><span class="is-active-pill ${p.is_active ? 'yes' : 'no'}">${p.is_active ? 'Y' : 'N'}</span></td>
@@ -1797,6 +1801,7 @@ function renderForm(table, data) {
       ` : ''}
     `;
   } else if (table === 'release_app') {
+    const releaseAppColorVal = STATE.editingMode && data ? (data.color || '#c07f56') : '#c07f56';
     html = `
       <div class="field">
         <label>App Code *</label>
@@ -1806,6 +1811,10 @@ function renderForm(table, data) {
       <div class="field">
         <label>App Name *</label>
         <input type="text" id="f-app_name" placeholder="App name" value="${STATE.editingMode && data ? esc(data.app_name) : ''}">
+      </div>
+      <div class="field">
+        <label>สีที่ใช้ใน Gantt (Release Schedule)</label>
+        <input type="color" id="f-color" value="${esc(releaseAppColorVal)}">
       </div>
       <div class="field">
         <label>Sort Order</label>
@@ -1867,6 +1876,7 @@ function renderForm(table, data) {
       ` : ''}
     `;
   } else if (table === 'phase') {
+    const phaseColorVal = STATE.editingMode && data ? (data.color || '#b79a78') : '#b79a78';
     html = `
       <div class="field">
         <label>Phase Code *</label>
@@ -1875,6 +1885,10 @@ function renderForm(table, data) {
       <div class="field">
         <label>Phase Name *</label>
         <input type="text" id="f-phase_name" placeholder="Phase name" value="${STATE.editingMode && data ? esc(data.phase_name) : ''}">
+      </div>
+      <div class="field">
+        <label>สีที่ใช้ใน Gantt</label>
+        <input type="color" id="f-color" value="${esc(phaseColorVal)}">
       </div>
       <div class="field">
         <label>Sort Order *</label>
@@ -2033,6 +2047,7 @@ function readFormData(table) {
   } else if (table === 'release_app') {
     payload.app_code = $('f-app_code').value.trim();
     payload.app_name = $('f-app_name').value.trim();
+    payload.color = $('f-color').value;
     payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : null;
     payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;
   } else if (table === 'app_release_schedule') {
@@ -2050,6 +2065,7 @@ function readFormData(table) {
   } else if (table === 'phase') {
     payload.phase_code = $('f-phase_code').value.trim();
     payload.phase_name = $('f-phase_name').value.trim();
+    payload.color = $('f-color').value;
     payload.sort_order = $('f-sort_order').value ? parseInt($('f-sort_order').value) : 0;
     payload.is_billable = $('f-is_billable') ? $('f-is_billable').checked : false;
     payload.is_active = $('f-is_active') ? $('f-is_active').checked : true;

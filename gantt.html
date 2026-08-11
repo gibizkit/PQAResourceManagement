@@ -570,7 +570,9 @@ function phaseRowLabel(ph){
   const lbl  = String(ph.phase_label || '').trim();
   return (!lbl || lbl.toLowerCase() === name.toLowerCase()) ? esc(name) : esc(name) + ' • ' + esc(lbl);
 }
-function phaseColor(code){ return (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
+// สีเฟส config ได้จาก Admin > Phase (pqa.phase.color) — fallback เป็น PHASE_META เดิม
+// ถ้ายังโหลดไม่ทัน/ไม่มีค่า (กันหน้า Gantt พังถ้า master โหลดพลาด)
+function phaseColor(code){ return (S.phaseColorOverride && S.phaseColorOverride[code]) || (PHASE_META[code] || {}).color || 'var(--ph-extra)'; }
 function phaseOrder(code){ return (PHASE_META[code] || {}).order || 90; }
 // ใช้กับ Order = Phase — sort_order จาก master pqa.phase (แก้ได้จากหน้า Admin) fallback เป็น PHASE_META.order ถ้าโหลดไม่ทัน
 function phaseMasterOrder(code){
@@ -622,6 +624,7 @@ const S = {
   collapsed: {},
   appOrder: {},
   phaseSortOrder: {},   // master pqa.phase.sort_order (phase_code -> number) ใช้กับ Order = Phase
+  phaseColorOverride: {},   // master pqa.phase.color (phase_code -> hex) — config ได้จาก Admin, ใช้ใน phaseColor()
   releaseAppsAll: [],    // master pqa.release_app (is_active), เรียง sort_order แล้วจาก query
   releaseSchedule: [],   // pqa.app_release_schedule (is_active) ทั้งก้อน — filter ตาม app ที่เลือกตอน render
   releaseRows: new Set(),   // app_code ที่เลือกให้โชว์เป็นแถว pinned Release Schedule ใน thead
@@ -761,8 +764,8 @@ async function loadAll(){
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
-      supabase.from('phase').select('phase_code,sort_order'),   // master order สำหรับ Order = Phase
-      supabase.from('release_app').select('app_code,app_name,sort_order').eq('is_active', true).order('sort_order', { ascending: true }),
+      supabase.from('phase').select('phase_code,sort_order,color'),   // master order + สี (config ได้จาก Admin) สำหรับ Order = Phase
+      supabase.from('release_app').select('app_code,app_name,sort_order,color').eq('is_active', true).order('sort_order', { ascending: true }),
       supabase.from('app_release_schedule').select('release_id,app_code,submitted_fe,app_version,platform,submitted_date,regression_start,regression_end').eq('is_active', true),
     ]);
 
@@ -771,8 +774,12 @@ async function loadAll(){
     }
 
     S.phaseSortOrder = {};
+    S.phaseColorOverride = {};
     if (phaseMasterRes.error) console.warn('phase master (sort_order) load error', phaseMasterRes.error);
-    else (phaseMasterRes.data || []).forEach(ph => { S.phaseSortOrder[ph.phase_code] = ph.sort_order; });
+    else (phaseMasterRes.data || []).forEach(ph => {
+      S.phaseSortOrder[ph.phase_code] = ph.sort_order;
+      if (ph.color) S.phaseColorOverride[ph.phase_code] = ph.color;
+    });
 
     S.noteMap = {};
     if (noteRes.error) console.warn('project_comment (notes) load error', noteRes.error);
@@ -1007,8 +1014,12 @@ function releaseAppsWithData(){
   const codes = new Set(S.releaseSchedule.map(r => r.app_code));
   return S.releaseAppsAll.filter(a => codes.has(a.app_code));
 }
+// สี config ได้จาก Admin > Release App (pqa.release_app.color) — fallback เป็นการไล่สีเดิม
+// จาก RELEASE_COLORS ถ้าแถวนั้นยังไม่มีค่าสี (กันเคส master โหลดพลาด/ยังไม่ได้รัน patch)
 function releaseAppColor(appCode){
   const list = releaseAppsWithData();
+  const found = list.find(a => a.app_code === appCode);
+  if (found && found.color) return found.color;
   const idx = list.findIndex(a => a.app_code === appCode);
   return RELEASE_COLORS[(idx < 0 ? 0 : idx) % RELEASE_COLORS.length];
 }
