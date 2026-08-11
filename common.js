@@ -512,8 +512,7 @@ export function statusDot(status) {
 
   const s  = STATUS_CACHE.find(x => x.status_code === status);
   const fg = safeColor(s && s.pill_fg) || LEGACY_STATUS_DOT[status] || '#9a8f80';
-  const bg = safeColor(s && s.pill_bg) || '#ffffff';
-  return `<span class="status-dot" style="background:${fg};box-shadow:0 0 0 1.5px ${bg}"`
+  return `<span class="status-dot" style="background:${fg}"`
        + ` title="${esc(status)}" aria-label="${esc(status)}"></span>`;
 }
 
