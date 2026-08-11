@@ -397,7 +397,7 @@
       <div class="section-title">Signoff & Deploy</div>
       <div class="grid2">
         <div class="field">
-          <label>Signoff Date</label>
+          <label>Signoff Date <span style="color:var(--danger)">*</span></label>
           <input id="fSignoff" type="date">
         </div>
         <div class="field">
@@ -1742,6 +1742,8 @@ window.saveProj = async function(){
   if (!/^[PU][0-9]{10}$/.test(key)){ err.textContent='Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก'; return; }
   if (!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
   if (!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
+  // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ Signoff Date เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
+  if (!$('fSignoff').value){ err.textContent='กรุณาระบุ Signoff Date — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project'; return; }
 
   const btn=$('projSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
 

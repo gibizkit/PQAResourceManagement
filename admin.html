@@ -556,7 +556,7 @@
       <div class="section-title">Signoff & Deploy</div>
       <div class="grid2">
         <div class="field">
-          <label>Signoff Date</label>
+          <label>Signoff Date <span style="color:var(--danger)">*</span></label>
           <input id="pfSignoff" type="date">
         </div>
         <div class="field">
@@ -847,12 +847,20 @@ function buildProjectPhaseRows(data) {
   });
 }
 
-function suggestProjectKey() {
+async function suggestProjectKey() {
   const now = new Date();
   const ym = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
   const prefix = 'P' + ym;
+  // เหมือน gantt.html suggestKey() (§5.30) — ต้องเช็คกับ project_key ทั้งหมดสดจาก DB
+  // ไม่ใช่ allProjects ที่ cache ไว้ตอนโหลดแท็บครั้งล่าสุด ไม่งั้นถ้ามีคนสร้าง Project ใหม่
+  // (โดยเฉพาะแบบไม่มีวันที่เลย เพราะสร้างเร็วที่สุด) หลังจาก cache โหลดไปแล้ว จะเสนอเลขซ้ำ
+  // → insert ชน primary key
   let max = 0;
-  allProjects.forEach(p => {
+  const { data, error } = await supabase.from('project').select('project_key')
+    .like('project_key', prefix + '%');
+  const rows = error ? allProjects : (data || []);
+  if (error) console.warn('suggestProjectKey: query all projects failed, fallback to cached list', error);
+  rows.forEach(p => {
     if (p.project_key && p.project_key.startsWith(prefix)) {
       const n = parseInt(p.project_key.slice(prefix.length), 10);
       if (!isNaN(n) && n > max) max = n;
@@ -950,10 +958,10 @@ function readProjectLeadPicker() {
   };
 }
 
-window.openAddProject = function() {
+window.openAddProject = async function() {
   editingProjectKey = null;
   existingProjectPhases = {};
-  const key = suggestProjectKey();
+  const key = await suggestProjectKey();
   $('projModalTitle').textContent = 'New Project : ' + key;
   $('pfKey').value = key;
   $('pfKey').disabled = false;
@@ -1051,6 +1059,11 @@ window.saveProject = async function() {
   }
   if (!app && !otherApp) {
     err.textContent = 'ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง';
+    return;
+  }
+  // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ Signoff Date เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
+  if (!$('pfSignoff').value) {
+    err.textContent = 'กรุณาระบุ Signoff Date — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project';
     return;
   }
 
