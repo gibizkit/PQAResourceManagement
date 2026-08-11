@@ -511,8 +511,8 @@ export function statusDot(status) {
   if (!status) return '<span class="status-dot status-dot-none" title="— ไม่ระบุสถานะ —"></span>';
 
   const s  = STATUS_CACHE.find(x => x.status_code === status);
-  const fg = safeColor(s && s.pill_fg) || LEGACY_STATUS_DOT[status] || '#9a8f80';
-  return `<span class="status-dot" style="background:${fg}"`
+  const bg = safeColor(s && s.pill_bg) || LEGACY_STATUS_DOT[status] || '#9a8f80';
+  return `<span class="status-dot" style="background:${bg}"`
        + ` title="${esc(status)}" aria-label="${esc(status)}"></span>`;
 }
 
