@@ -621,6 +621,8 @@ const S = {
   leadsByProject: {},
   leads: [],
   bookings: [],
+  leaveDaily: [],   // v_leave_daily (resource_id, leave_date, leave_md) — ใช้หัก Booked MD แบบปันส่วน (§5.38)
+  effFactorByResDay: {},   // 'resource_id|yyyy-mm-dd' -> factor 0..1 หลังหักวันลา, build ครั้งเดียวหลังโหลดข้อมูลเสร็จ
   resourceMap: {},
   outsourceList: [],
   apps: [],
@@ -758,7 +760,7 @@ function saveFilterPrefs(){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes, releaseAppRes, releaseSchedRes] = await Promise.all([
+    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes, releaseAppRes, releaseSchedRes, leaveRes] = await Promise.all([
       loadHolidaysSafe(),
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
@@ -772,6 +774,7 @@ async function loadAll(){
       supabase.from('phase').select('phase_code,sort_order,color'),   // master order + สี (config ได้จาก Admin) สำหรับ Order = Phase
       supabase.from('release_app').select('app_code,app_name,sort_order,color').eq('is_active', true).order('sort_order', { ascending: true }),
       supabase.from('app_release_schedule').select('release_id,app_code,submitted_fe,app_version,platform,submitted_date,regression_start,regression_end').eq('is_active', true),
+      supabase.from('v_leave_daily').select('resource_id,leave_date,leave_md'),   // §5.38 — หัก Booked MD แบบปันส่วนเหมือน Dashboard
     ]);
 
     for (const r of [projRes, phaseRes, plRes, leadRes, bkRes, resRes]) {
@@ -799,6 +802,10 @@ async function loadAll(){
     S.holidays = holidays;
     S.projects = projRes.data || [];
     S.bookings = bkRes.data || [];
+    // §5.38 — โหลด leave ไม่ fatal (ฟีเจอร์เสริม หักลาผิดพลาด ≠ หน้าเว็บพัง) fallback = ไม่หักลาเลย (factor 1 ทุกวัน)
+    S.leaveDaily = leaveRes.error ? [] : (leaveRes.data || []);
+    if (leaveRes.error) console.warn('v_leave_daily load error', leaveRes.error);
+    buildEffFactorMap();   // ต้องมาหลัง S.bookings/S.holidays/S.leaveDaily พร้อมแล้ว, ก่อน render ตัวเลข MD ใดๆ
     S.leads    = leadRes.data || [];
     S.apps     = appRes.error ? [] : (appRes.data || []);
     S.appOrder = {};
@@ -1412,7 +1419,7 @@ function summaryRow(p, days){
   const totals = projectTotalMD(pk);
   const totalBookedDisp = fmtMD(totals.booked);
   const totalPlanDisp = totals.plan == null ? '–' : fmtMD(totals.plan);
-  const mdBadgeTitle = esc(`Total Booked MD = ${totalBookedDisp}, Total Required MD = ${totalPlanDisp}`);
+  const mdBadgeTitle = esc(`Total Booked MD (หักวันลาแล้ว) = ${totalBookedDisp}, Total Required MD = ${totalPlanDisp}`);
   const mdBadge = `<span class="p-md-badge" title="${mdBadgeTitle}">(${totalBookedDisp}/${totalPlanDisp})</span>`;
 
   // req 12 + 14: collapse/expand toggle lives in the Phase/Booked column, next to the
@@ -1469,7 +1476,7 @@ function phaseRow(p, ph, days){
         const planDisp = planMD == null ? '–' : fmtMD(planMD);
         return `${fmtMD(bookedMD)}/${planDisp}`;
       })();
-  const mdTitle = ph.phase_code === 'SIT' ? 'SIT ไม่มี Booking MD' : 'Booked MD / Plan MD';
+  const mdTitle = ph.phase_code === 'SIT' ? 'SIT ไม่มี Booking MD' : 'Booked MD (หักวันลาแล้ว) / Plan MD';
 
   // Project column (.c0) ของแถว phase = ช่วงวันที่เริ่ม-จบ + WD ของเฟสนี้ (static text
   // อ่านอย่างเดียว — แก้วันที่จริงต้องผ่าน Project modal) ต่อท้ายด้วยเลข Booked MD / Plan MD
@@ -1523,12 +1530,49 @@ function phasePlanMD(ph){
   if (!ph || ph.resource_count == null || !ph.start_date || !ph.end_date) return null;
   return calcWD(ph.start_date, ph.end_date) * Number(ph.resource_count);
 }
-// Booked MD ของเฟส = sum ทุก booking ใน project+phase นั้นของ (จำนวนวันทำงานเต็มช่วง booking) × booking.md
-// ใช้ช่วงเต็มของ booking เอง ไม่ตัดตาม filter Start–End ของหน้าจอ (S.bookings โหลดมาทั้งหมดอยู่แล้ว, ไม่ผ่าน filter)
+// §5.38 — Effective MD: หักวันลาแบบ "ปันส่วนตามสัดส่วน" ต่อ resource+วัน เหมือนนิยาม Dashboard
+// (§5.20) เป๊ะ — ถ้า resource คนหนึ่งถูกจองหลาย project/phase วันเดียวกัน แล้วลาวันนั้นด้วย
+// (เต็ม/ครึ่งวัน) วันลาจะถูกหักเฉลี่ยตามสัดส่วน MD ที่จองไว้วันนั้นทั้งหมด ไม่ใช่หัก project/phase
+// แรกจนหมด — ต่างจาก Dashboard ตรงที่ factor คำนวณจาก **booking ทั้งระบบ ไม่ผ่าน filter หน้าจอ**
+// (เหมือนที่ phaseBookedMD เดิมก็ไม่เคยตัดตาม filter Start–End อยู่แล้ว §5.9) เพราะ Gantt ไม่มี
+// แนวคิด "ค้นหา Project" แบบ Dashboard ที่ต้อง restrict ชุดข้อมูลให้ตรงกับ Period ที่เลือก
+// จึงไม่มี edge-case แบบที่ Dashboard ต้องยอมรับไว้ (คนถูกจองคาบเกี่ยว matched/ไม่ matched project)
+S.effFactorByResDay = {};   // 'resource_id|yyyy-mm-dd' -> factor 0..1, build ครั้งเดียวหลังโหลดข้อมูลเสร็จ
+function buildEffFactorMap(){
+  const bookedByResDay = {};
+  S.bookings.forEach(b => {
+    eachDay(b.start_date, b.end_date).filter(ds => !isWkndStr(ds)).forEach(ds => {
+      const k = b.resource_id + '|' + ds;
+      bookedByResDay[k] = (bookedByResDay[k] || 0) + Number(b.md);
+    });
+  });
+  // ตามแพทเทิร์นเดียวกับ dashboard.html computeAgg(): 1 resource+วัน = 1 ค่า leave_md
+  // (ไม่ sum หลายแถว — v_leave_daily คืนแถวเดียวต่อ resource+วันอยู่แล้วตามที่ dashboard สมมติไว้)
+  const leaveByResDay = {};
+  S.leaveDaily.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
+
+  const factorMap = {};
+  Object.keys(bookedByResDay).forEach(k => {
+    const booked = bookedByResDay[k];
+    const eff = Math.max(0, booked - (leaveByResDay[k] || 0));
+    factorMap[k] = booked > 0 ? eff / booked : 0;
+  });
+  S.effFactorByResDay = factorMap;
+}
+// Booked MD ของเฟส = sum ทุก booking ใน project+phase นั้นของ (แต่ละวันทำงานเต็มช่วง booking × booking.md
+// × factor หักลาของวันนั้น) ใช้ช่วงเต็มของ booking เอง ไม่ตัดตาม filter Start–End ของหน้าจอ
+// (S.bookings โหลดมาทั้งหมดอยู่แล้ว, ไม่ผ่าน filter) — factor ไม่มีค่า (resource ไม่เคยถูกจองวันนั้น
+// ตามชุดข้อมูลที่ build ไว้ — ไม่ควรเกิดขึ้นจริงเพราะ booking นี้เองก็ถูกนับใน buildEffFactorMap()
+// แล้ว) fallback เป็น 1 (ไม่หักอะไร) กันหน้าเว็บพัง
 function phaseBookedMD(pk, phaseCode){
   let total = 0;
   S.bookings.forEach(b => {
-    if (b.project_key===pk && b.phase_code===phaseCode) total += calcWD(b.start_date, b.end_date) * Number(b.md);
+    if (b.project_key===pk && b.phase_code===phaseCode) {
+      eachDay(b.start_date, b.end_date).filter(ds => !isWkndStr(ds)).forEach(ds => {
+        const factor = S.effFactorByResDay[b.resource_id + '|' + ds];
+        total += Number(b.md) * (factor === undefined ? 1 : factor);
+      });
+    }
   });
   return total;
 }
@@ -2070,7 +2114,7 @@ function isPermErr(e){ return e && /ไม่มีสิทธิ์/.test(e.me
 async function afterBookingSave(msg){
   const { data, error } = await supabase.from('booking')
     .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true);
-  if (!error) S.bookings = data || [];
+  if (!error) { S.bookings = data || []; buildEffFactorMap(); }   // §5.38 — booking เปลี่ยน ต้อง rebuild factor map ด้วย ไม่งั้น Effective MD ค้างค่าเก่า
   toast(msg);
   showArea('list');
   renderBkRows();
