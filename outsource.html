@@ -913,19 +913,21 @@ function matchesFilters(p) {
   return true;
 }
 
+// 2026-08-12: ตัด leave ออกจากเงื่อนไข conflict แล้ว (ทีมขอ) — Book OS คร่อมช่วงที่มี
+// Leave ได้โดยไม่ต้องแจ้งเตือน เพราะตอนคำนวณ MD จริงของ Project Phase (Effective MD,
+// §5.20/§5.38) จะหักวันลาออกจาก Booked MD ให้เองอยู่แล้ว ที่นี่จึงเหลือเช็คแค่
+// "double-booking" จริง (คนเดียวถูกจองสอง project/phase ทับกันจนเกิน 1.0 ต่อวัน)
+// ตรงกับ fn_validate_md / fn_save_bookings_batch ฝั่ง RPC ที่แก้พร้อมกัน
 function computeConflictMap(days) {
   const map = {};
   S.osStaff.forEach(p => {
     const bk = S.bookingsByResource[p.resourceId] || [];
-    const lv = S.leavesByResource[p.resourceId] || [];
-    if (!bk.length && !lv.length) return;
+    if (!bk.length) return;
     const bad = [];
     days.forEach(ds => {
       const bkMD = bk.filter(b => ds >= b.start_date && ds <= b.end_date)
         .reduce((s, b) => s + Number(b.md), 0);
-      const lvRow = lv.find(l => ds >= l.start_date && ds <= l.end_date);
-      const lvMD = lvRow ? Number(lvRow.md) : 0;
-      if (bkMD + lvMD > 1.0) bad.push(ds);
+      if (bkMD > 1.0) bad.push(ds);
     });
     if (bad.length) map[p.resourceId] = bad;
   });
