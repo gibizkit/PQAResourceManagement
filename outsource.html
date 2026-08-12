@@ -11,6 +11,13 @@
   /* ============ PAGE-LOCAL VARS (ยังไม่มีใน theme.css — เสนอย้ายเข้า common ทีหลัง) ============ */
   :root {
     --os-skill: #d6b878;   /* golden yellow — Skills column text, ตาม Color Reference */
+
+    /* Grid cell colors — scoped to this page only (ไม่แก้ theme.css shared vars เพราะ
+       --cell-wknd-hol ถูกใช้ร่วมกับ calendar.html ที่ยังใช้ตัวหนังสือสีขาวบนพื้นเข้มอยู่) */
+    --os-cell-full: #CBA25E;   /* Booked 1 MD */
+    --os-cell-half: #F99494;   /* Booked 0.5 MD */
+    --os-cell-wknd: #F5EDE1;   /* Weekend / Holiday */
+    --os-cell-leave: #8FA6B0;  /* Leave — ไม่ได้ระบุสีมา เลือกโทนฟ้าอมเทาให้แยกจาก 3 สีข้างต้นชัดเจน */
   }
 
   /* ============ TOPBAR NAV ============ */
@@ -72,12 +79,23 @@
     font-size: 13px;
   }
   .toolbar .date-input, .filters .date-input {
-    width: 118px;
+    width: 145px;
     padding: 8px 10px;
     border-radius: 8px;
     border: 1px solid var(--dk-border-s);
     font-size: 13px;
   }
+  .filters select {
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid var(--dk-border-s);
+    font-size: 13px;
+    background: #fff;
+    color: var(--dk-text);
+    font-weight: 600;
+    min-width: 160px;
+  }
+  .filters select:focus { outline: none; border-color: var(--dk-accent); }
   .chk {
     display: flex;
     align-items: center;
@@ -201,8 +219,8 @@
   .main { max-width: none; }
 
   .th-day.wknd, .th-count.wknd, .td-day.wknd {
-    background: var(--cell-wknd-hol) !important;
-    color: #fff !important;
+    background: var(--os-cell-wknd) !important;
+    color: var(--dk-text) !important;
   }
   .th-day.today-col {
     outline: 2px solid var(--today);
@@ -215,9 +233,9 @@
     cursor: pointer;
     color: var(--dk-text);
   }
-  .td-day.full  { background: var(--cell-book-full); color: #fff; }
-  .td-day.half  { background: var(--cell-book-half); color: #fff; font-size: 10px; }
-  .td-day.leave { background: var(--cell-leave); color: #fff; font-weight: 700; font-size: 10px; }
+  .td-day.full  { background: var(--os-cell-full); color: var(--dk-text); font-weight: 700; }
+  .td-day.half  { background: var(--os-cell-half); color: var(--dk-text); font-weight: 700; font-size: 10px; }
+  .td-day.leave { background: var(--os-cell-leave); color: #fff; font-weight: 700; font-size: 10px; }
 
   tr.grp-sep td {
     background: var(--dk-hover);
@@ -355,15 +373,22 @@
       </div>
       <div class="fld">
         <label>Start Date</label>
-        <input class="date-input" id="fStart" placeholder="dd/mm/yyyy" maxlength="10">
+        <input type="date" class="date-input" id="fStart">
       </div>
       <div class="fld">
         <label>End Date</label>
-        <input class="date-input" id="fEnd" placeholder="dd/mm/yyyy" maxlength="10">
+        <input type="date" class="date-input" id="fEnd">
       </div>
       <button class="btn" id="applyBtn">แสดง</button>
-      <label class="chk"><input type="checkbox" id="chkGroupBy" checked> Group by Booked &amp; Vacant Resource</label>
-      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ แสดงเฉพาะ Booking Conflict</label>
+      <div class="fld">
+        <label>Group By</label>
+        <select id="selGroupBy">
+          <option value="booked" selected>Booked</option>
+          <option value="project">Project</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ Only Conflict</label>
     </div>
 
     <div class="os-scroll-wrap" id="osScrollWrap">
@@ -710,13 +735,13 @@ function restoreFilterPrefs() {
   if (typeof p.start === 'string' && typeof p.end === 'string' &&
       dateRe.test(p.start) && dateRe.test(p.end) && p.start <= p.end) {
     S.range = { s: p.start, e: p.end };
-    $('fStart').value = dDisp(p.start);
-    $('fEnd').value   = dDisp(p.end);
+    $('fStart').value = p.start;
+    $('fEnd').value   = p.end;
   }
 
   if (typeof p.name === 'string')   $('fName').value = p.name;
   if (typeof p.skills === 'string') $('fSkills').value = p.skills;
-  if (typeof p.groupBy === 'boolean')  $('chkGroupBy').checked  = p.groupBy;
+  if (['booked', 'project', 'none'].includes(p.groupByMode)) $('selGroupBy').value = p.groupByMode;
   if (typeof p.conflict === 'boolean') $('chkConflict').checked = p.conflict;
 
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
@@ -729,7 +754,7 @@ function saveFilterPrefs() {
     skills: $('fSkills').value,
     start: S.range.s,
     end: S.range.e,
-    groupBy: $('chkGroupBy').checked,
+    groupByMode: $('selGroupBy').value,
     conflict: $('chkConflict').checked,
     panelOpen: !$('filterPanel').classList.contains('hidden'),
   });
@@ -743,8 +768,8 @@ function setDefaultRangeIfEmpty() {
     s: d2s(addDaysToDate(today, -10)),
     e: defaultFilterEndStr()
   };
-  $('fStart').value = dDisp(S.range.s);
-  $('fEnd').value = dDisp(S.range.e);
+  $('fStart').value = S.range.s;
+  $('fEnd').value = S.range.e;
 }
 
 async function loadAll() {
@@ -934,10 +959,13 @@ function computeConflictMap(days) {
   return map;
 }
 
-function buildDayCell(p, ds) {
+// projectKey: ถ้าระบุ (ใช้ตอนโหมด Group by Project) จะกรองเฉพาะ booking ของ project นั้น
+// ให้เห็นมิติ "คนคนนี้ทำงานอะไรให้ project นี้" แยกเป็นรายบรรทัด ไม่ปนกับ project อื่น
+function buildDayCell(p, ds, projectKey) {
   const d = new Date(ds + 'T00:00:00');
   const wknd = isWknd(d, S.holidays);
-  const bk = (S.bookingsByResource[p.resourceId] || []).filter(b => ds >= b.start_date && ds <= b.end_date);
+  let bk = (S.bookingsByResource[p.resourceId] || []).filter(b => ds >= b.start_date && ds <= b.end_date);
+  if (projectKey) bk = bk.filter(b => b.project_key === projectKey);
   const bkMD = bk.reduce((s, b) => s + Number(b.md), 0);
   const leave = (S.leavesByResource[p.resourceId] || []).find(l => ds >= l.start_date && ds <= l.end_date);
   const lvMD = leave ? Number(leave.md) : 0;
@@ -972,7 +1000,7 @@ function buildDayCell(p, ds) {
   return `<td class="${cls}"${titleAttr}${onclick}>${content}</td>`;
 }
 
-function buildRow(p, days, conflictMap) {
+function buildRow(p, days, conflictMap, projectKey) {
   const conflictDates = conflictMap[p.resourceId] || [];
   const isConflict = conflictDates.length > 0;
   const roleName = roleLabel(p.roleCode);
@@ -982,7 +1010,7 @@ function buildRow(p, days, conflictMap) {
     ? ` title="มีวันที่ Book เกิน MD: ${esc(conflictDates.map(dDispShort).join(', '))}"`
     : '';
   const nameCls = isConflict ? 'os-name conflict' : 'os-name';
-  const dayCells = days.map(ds => buildDayCell(p, ds)).join('');
+  const dayCells = days.map(ds => buildDayCell(p, ds, projectKey)).join('');
 
   return `<tr>
     <td class="col-name sticky-l0">
@@ -999,6 +1027,46 @@ function buildRow(p, days, conflictMap) {
   </tr>`;
 }
 
+function toMeta(p) {
+  return {
+    p,
+    rank: (S.roleMap[p.roleCode] || {}).rank ?? 99,
+    booked: !!(S.bookingsByResource[p.resourceId] && S.bookingsByResource[p.resourceId].length)
+  };
+}
+function sortFn(a, b) {
+  return (a.rank - b.rank) || (a.p.nicknameName || '').localeCompare(b.p.nicknameName || '');
+}
+
+// Group by Project: section header = ชื่อ Project, แถวข้างใต้ = คนที่ถูกจองใน project นั้น
+// (ในช่วงวันที่ที่เลือก) — คนคนเดียวกันจะมีหลายบรรทัดได้ถ้าถูกจองมากกว่า 1 project ในช่วงนี้
+// (แต่ละบรรทัดโชว์เฉพาะ booking ของ project นั้นๆ ผ่าน projectKey ที่ส่งให้ buildDayCell)
+function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
+  const metaByResId = {};
+  withMeta.forEach(x => { metaByResId[x.p.resourceId] = x; });
+
+  const groups = {}; // project_key -> Map(resourceId -> meta)
+  S.bookings.forEach(b => {
+    const meta = metaByResId[b.resource_id];
+    if (!meta) return;
+    if (!S.projMap[b.project_key]) return; // เฉพาะ project ที่ active (มีชื่อให้แสดง)
+    (groups[b.project_key] = groups[b.project_key] || new Map()).set(b.resource_id, meta);
+  });
+
+  let html = '';
+  const uniqueRes = new Set();
+  S.projectsActive.forEach(proj => {
+    const m = groups[proj.project_key];
+    if (!m || !m.size) return;
+    const rows = Array.from(m.values()).sort(sortFn);
+    rows.forEach(x => uniqueRes.add(x.p.resourceId));
+    html += `<tr class="grp-sep"><td colspan="${colspan}">📁 ${esc(proj.project_name)} (${rows.length} คน)</td></tr>`;
+    html += rows.map(x => buildRow(x.p, days, conflictMap, proj.project_key)).join('');
+  });
+
+  return { html, uniqueCount: uniqueRes.size };
+}
+
 function renderTbody(days) {
   const conflictMap = computeConflictMap(days);
   let list = S.osStaff.filter(matchesFilters);
@@ -1006,18 +1074,17 @@ function renderTbody(days) {
   const chkConflict = $('chkConflict').checked;
   if (chkConflict) list = list.filter(p => (conflictMap[p.resourceId] || []).length > 0);
 
-  const withMeta = list.map(p => ({
-    p,
-    rank: (S.roleMap[p.roleCode] || {}).rank ?? 99,
-    booked: !!(S.bookingsByResource[p.resourceId] && S.bookingsByResource[p.resourceId].length)
-  }));
-
-  const sortFn = (a, b) => (a.rank - b.rank) || (a.p.nicknameName || '').localeCompare(b.p.nicknameName || '');
-  const groupBy = $('chkGroupBy').checked;
+  const withMeta = list.map(toMeta);
+  const groupMode = $('selGroupBy').value; // 'booked' | 'project' | 'none'
   const colspan = 2 + days.length;
   let html = '';
+  let shownCount = list.length;
 
-  if (groupBy) {
+  if (groupMode === 'project') {
+    const built = renderByProjectGroups(withMeta, days, conflictMap, colspan);
+    html = built.html;
+    shownCount = built.uniqueCount;
+  } else if (groupMode === 'booked') {
     const bookedList = withMeta.filter(x => x.booked).sort(sortFn);
     const vacantList = withMeta.filter(x => !x.booked).sort(sortFn);
     if (bookedList.length) {
@@ -1039,13 +1106,13 @@ function renderTbody(days) {
   }
 
   $('osTbody').innerHTML = html;
-  $('osCount').textContent = list.length;
+  $('osCount').textContent = shownCount;
 }
 
 /* ============ TOOLBAR EVENTS ============ */
 $('fName').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
 $('fSkills').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
-$('chkGroupBy').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
+$('selGroupBy').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
 $('chkConflict').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
 
 async function onRangeChange() {
