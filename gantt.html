@@ -174,9 +174,14 @@
   .p-name-row .status-dot { flex:0 0 auto; align-self:center; margin-left:2px; }
   .p-name { font-weight:700; color:var(--dk-text); font-size:13px; line-height:1.25;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-  .p-meta { font-size:11px; color:var(--dk-text3); margin-top:2px;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .p-meta { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--dk-text3); margin-top:2px;
+    min-width:0; }
+  .p-meta-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
+  /* Total Booked/Plan MD badge — prepended to the summary row meta line (moved up from the
+     old Milestones row, see projectTotalMD() in the row-builder section) */
+  .p-md-badge { display:inline-flex; align-items:center; flex:0 0 auto; font-size:11px; font-weight:700;
+    color:var(--dk-accent); padding:3px 8px; border-radius:20px; background:var(--dk-surface); white-space:nowrap; }
 
   /* action icon buttons in the frozen Action column (.c2, 72px) */
   /* summary row = 2 ปุ่ม (edit + signoff) / phase row = ป้าย 👤 booked/required / milestone row = ว่าง */
@@ -1402,6 +1407,14 @@ function summaryRow(p, days){
   metaParts.push(lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —');
   const meta = metaParts.join(' · ');
 
+  // Total Booked/Plan MD ทั้งโปรเจกต์ (ไม่รวม SIT) — badge นำหน้า meta line
+  // (ย้ายขึ้นมาจากแถว Milestones เดิม ดู projectTotalMD() ด้านล่าง)
+  const totals = projectTotalMD(pk);
+  const totalBookedDisp = fmtMD(totals.booked);
+  const totalPlanDisp = totals.plan == null ? '–' : fmtMD(totals.plan);
+  const mdBadgeTitle = esc(`Total Booked MD = ${totalBookedDisp}, Total Required MD = ${totalPlanDisp}`);
+  const mdBadge = `<span class="p-md-badge" title="${mdBadgeTitle}">(${totalBookedDisp}/${totalPlanDisp})</span>`;
+
   // req 12 + 14: collapse/expand toggle lives in the Phase/Booked column, next to the
   // current-phase chip — shown BOTH when collapsed and when expanded.
   const toggleBtn = `<button class="ico toggle" onclick="toggleProject('${esc(pk)}')" title="ย่อ/ขยาย">${collapsed?'▶':'▼'}</button>`;
@@ -1414,7 +1427,7 @@ function summaryRow(p, days){
   return `<tr class="prow-sum">
     <td class="sticky-col c0" title="${esc(p.project_name)}">
       <div class="p-name-row">${p.status ? statusDot(p.status) : ''}<div class="p-name">${esc(p.project_name)}</div></div>
-      <div class="p-meta">${meta}</div>
+      <div class="p-meta">${mdBadge}<span class="p-meta-text">${meta}</span></div>
     </td>
     <td class="sticky-col c1">${c1inner}</td>
     <td class="sticky-col c2">
@@ -1487,13 +1500,10 @@ function milestoneRow(p, days){
     else if (ds===p.deploy_date) inner = `<span class="diamond" style="background:var(--ph-deploy)" title="Deploy ${dDisp(ds)}"></span>`;
     return `<td class="${cls}" style="text-align:center">${inner}</td>`;
   }).join('');
-  // req 3 (2026-08-04: อยู่ในคอลัมน์ Project .c0 — ไม่มีช่วงวันที่เดี่ยว/pill WD ให้ต่อท้ายเหมือน
-  // แถวเฟส เพราะเป็นผลรวมหลายเฟส จึงโชว์แค่ตัวเลขเปล่าๆ) = ผลรวม Total Booked MD / Total Plan MD
-  // ทั้งโปรเจกต์ (ไม่รวม SIT)
-  const totals = projectTotalMD(p.project_key);
-  const totalPlanDisp = totals.plan == null ? '–' : fmtMD(totals.plan);
+  // req 3 (2026-08-12: Total Booked/Plan MD ย้ายขึ้นไปเป็น badge ใน summaryRow แล้ว —
+  // คอลัมน์ Project (.c0) ของแถวนี้จึงว่างเปล่า ไม่มีอะไรให้โชว์)
   return `<tr>
-    <td class="sticky-col c0"><div class="c0-dates"><span class="ph-md" title="Total Booked MD / Total Plan MD">${fmtMD(totals.booked)}/${totalPlanDisp}</span></div></td>
+    <td class="sticky-col c0"></td>
     <td class="sticky-col c1"><div class="ph-label" style="color:var(--dk-text3)">Milestones</div></td>
     <td class="sticky-col c2"></td>
     ${cells}
@@ -1522,7 +1532,7 @@ function phaseBookedMD(pk, phaseCode){
   });
   return total;
 }
-// ผลรวมทั้งโปรเจกต์ (ไม่รวม SIT) — ใช้ในแถว Milestones
+// ผลรวมทั้งโปรเจกต์ (ไม่รวม SIT) — ใช้ในแถวสรุปโปรเจกต์ (summaryRow)
 function projectTotalMD(pk){
   let booked = 0, plan = 0, planHasData = false;
   (S.phasesByProject[pk]||[]).forEach(ph => {

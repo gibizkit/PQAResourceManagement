@@ -274,10 +274,14 @@
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
 
-      <!-- Custom Start–End range (compact inline "Period:") — dashboard always runs in this mode -->
+      <!-- Custom Start–End range (compact inline "ค้นหา Project:") — decides WHICH projects
+           show up in every tab (phase dates OR signoff_date overlap this window — see
+           projectMatchesRange()). It no longer restricts the MD numbers themselves: once a
+           project matches, its MD is its full/all-time Effective (Booked − Leave) total,
+           not clipped to this range — see recomputeAggregates(). -->
       <div class="period-controls" id="overallToolbar">
         <div class="filters filters-inline">
-          <span class="period-lbl">Period:</span>
+          <span class="period-lbl">ค้นหา Project:</span>
           <input type="date" id="ovStart">
           <span class="period-sep">–</span>
           <input type="date" id="ovEnd">
@@ -302,17 +306,18 @@
     <div class="dash-content is-loading" id="dashContent">
       <div class="dash-loading-overlay" id="dashLoadingOverlay"><span class="dash-spinner"></span>กำลังโหลดข้อมูล...</div>
 
-      <!-- ===== KPI (computed over the selected Period range, hidden on By Lead + Signoff) ===== -->
+      <!-- ===== KPI (computed over ALL projects matched by "ค้นหา Project", full/all-time
+           MD per matched project — hidden on By Lead + Signoff) ===== -->
       <div class="kpi-grid" id="kpiGrid">
         <div class="kpi-card kc-teal">
-          <div class="kpi-label">Total MD (Period)</div>
+          <div class="kpi-label">Total MD</div>
           <div class="kpi-value" id="kpiTotalMD">0</div>
           <div class="kpi-sub">Effective MD = Booked − Leave</div>
         </div>
         <div class="kpi-card kc-purple">
           <div class="kpi-label">Total Booked OS</div>
           <div class="kpi-value" id="kpiBookedOs">0</div>
-          <div class="kpi-sub">คนที่ถูกจองในช่วง Period นี้</div>
+          <div class="kpi-sub">คนที่ถูกจองใน Project ที่ค้นพบ</div>
         </div>
         <div class="kpi-card kc-blue">
           <div class="kpi-label">Active Projects</div>
@@ -419,16 +424,22 @@ const S = {
   projectLeadRows: [],          // project_lead rows (project_key, pqa_emp_id, is_main)
   phasesByProject: {},           // project_key -> [{phase_code,phase_label,start_date,end_date,sort_order}]
 
-  // shared period state — dashboard always runs in "overall" custom Start–End range mode
+  // shared period state — dashboard always runs in "overall" custom Start–End range mode.
+  // NOTE (2026-08-12): S.overallRange ("ค้นหา Project") is now a project-search/discovery
+  // filter ONLY — it decides which projects are included (see projectMatchesRange()). It no
+  // longer date-restricts the booking/leave data itself; S.bookingDaily/S.leaveDaily are the
+  // FULL unrestricted history, fetched once (see bookingLeaveLoaded) and re-aggregated
+  // in-memory (recomputeAggregates()) whenever the search range or the matched project set
+  // changes — see §5.37 in CLAUDE.md.
   dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
   chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
-  overallRange: { s:'', e:'' }, // selected Start/End
-  periodCacheKey: '',           // identifies the currently-loaded period (start|end range), '' = not loaded
-  bookingDaily: [],             // v_booking_daily rows for the current period
-  leaveDaily: [],                // v_leave_daily rows for the current period
-  periodAgg: null,                // computed aggregates for the current period (see computeAgg)
-  periodAggActiveOnly: null,      // same, but bookings restricted to is_active=true projects (By OS view)
+  overallRange: { s:'', e:'' }, // selected Start/End — "ค้นหา Project" search window (project match only, NOT an MD date filter)
+  bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
+  bookingDaily: [],             // v_booking_daily rows — ALL rows, unrestricted by S.overallRange
+  leaveDaily: [],                // v_leave_daily rows — ALL rows, unrestricted by S.overallRange
+  periodAgg: null,                // aggregates over projects matching "ค้นหา Project" (see recomputeAggregates)
+  periodAggActiveOnly: null,      // same, but further restricted to is_active=true projects (By OS view)
 
   // sort state for the sortable subview tables
   projectSort: { key:'uatPeriod', dir:'asc' },
@@ -493,9 +504,10 @@ function showLogin(){
 let sessionBooted = false;
 
 /* จำ Applied filter/มุมมองตอนสลับหน้า (sessionStorage ผ่าน common.js) — restore ต้องเกิด
-   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange เป็นตัวกำหนด query (periodCacheKey) ค่าที่อ่านจาก
-   storage ไม่น่าไว้ใจ → validate ชนิด/ช่วงก่อนใช้เสมอ เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ
-   (ensureOverallRangeDefaults จะไม่ทับถ้า overallRange ถูก set ไว้แล้วจากตรงนี้) */
+   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange (ค้นหา Project) เป็นตัวกำหนดว่า project ไหนถูกนับใน
+   recomputeAggregates() ค่าที่อ่านจาก storage ไม่น่าไว้ใจ → validate ชนิด/ช่วงก่อนใช้เสมอ
+   เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ (ensureOverallRangeDefaults จะไม่ทับถ้า overallRange
+   ถูก set ไว้แล้วจากตรงนี้) */
 function restoreDashPrefs(){
   const p = loadPrefs(PAGE);
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -607,9 +619,10 @@ async function loadMasterData(){
 }
 
 /* =====================================================================
-   PERIOD (custom Start–End "overall" range — the dashboard's only mode) DATA + AGGREGATION
+   PERIOD ("ค้นหา Project" custom Start–End range — the dashboard's only mode)
+   DATA LOADING + AGGREGATION
    ===================================================================== */
-/** Currently active period range as {first,last} 'yyyy-MM-dd'. */
+/** Currently selected "ค้นหา Project" search range as {first,last} 'yyyy-MM-dd'. */
 function currentRange(){
   return { first: S.overallRange.s, last: S.overallRange.e };
 }
@@ -621,30 +634,32 @@ function currentProjMap(){
   return S.allProjMap;
 }
 
+/**
+ * Fetch v_booking_daily / v_leave_daily (FULL, unrestricted history — NOT date-filtered by
+ * S.overallRange, §5.37) only when needed (first boot, or force=true), then always recompute
+ * the search-matched aggregates + re-render. Booking/leave data no longer depends on the
+ * selected "ค้นหา Project" range, so re-querying Supabase on every "แสดง" (Apply) click would
+ * be wasteful — only recomputeAggregates() (cheap, in-memory, no network) needs to run then.
+ */
 async function loadPeriod(force){
   const { first, last } = currentRange();
-  if (!first || !last) return; // overall range not resolved yet
-  const key = `${first}|${last}`;
-  if (!force && S.periodCacheKey === key) { renderAll(); return; }
+  if (!first || !last) return; // search range not resolved yet
 
   showDashLoading();
   try {
-    const [bkRes, lvRes] = await Promise.all([
-      supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
-        .gte('work_date', first).lte('work_date', last),
-      supabase.from('v_leave_daily').select('leave_id,resource_id,leave_date,leave_slot,leave_md')
-        .gte('leave_date', first).lte('leave_date', last),
-    ]);
-    if (bkRes.error) throw bkRes.error;
-    if (lvRes.error) throw lvRes.error;
+    if (force || !S.bookingLeaveLoaded) {
+      const [bkRes, lvRes] = await Promise.all([
+        supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day'),
+        supabase.from('v_leave_daily').select('leave_id,resource_id,leave_date,leave_slot,leave_md'),
+      ]);
+      if (bkRes.error) throw bkRes.error;
+      if (lvRes.error) throw lvRes.error;
 
-    S.bookingDaily = bkRes.data || [];
-    S.leaveDaily = lvRes.data || [];
-    S.periodCacheKey = key;
-    // overall mode: count everything (historical/completed projects included too).
-    S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, currentProjMap(), { restrict: false });
-    // By OS view (§6): count MD only on bookings whose project is_active = true.
-    S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, S.activeProjMap, { restrict: true });
+      S.bookingDaily = bkRes.data || [];
+      S.leaveDaily = lvRes.data || [];
+      S.bookingLeaveLoaded = true;
+    }
+    recomputeAggregates();
     // render FIRST (while still hidden behind the overlay — charts get a real canvas
     // size because the content uses visibility:hidden, not display:none), THEN reveal.
     renderAll();
@@ -654,6 +669,38 @@ async function loadPeriod(force){
     $('viewContainer').innerHTML = `<div class="empty-state" style="color:var(--danger)">โหลดข้อมูลไม่สำเร็จ: ${esc(err.message||String(err))}</div>`;
     hideDashLoading();
   }
+}
+
+/**
+ * Recompute S.periodAgg / S.periodAggActiveOnly from the FULL (unrestricted) booking/leave
+ * history, scoped to only the projects that match the current "ค้นหา Project" search window
+ * (S.overallRange) — see projectMatchesRange(). Cheap + synchronous (no network), so this runs
+ * on every search-Apply click without re-fetching from Supabase.
+ *
+ * `restrict:true` (both calls) makes computeAgg only count booking rows whose project_key is a
+ * key of the map we pass — i.e. only projects that matched the "ค้นหา Project" search. Because
+ * S.bookingDaily/S.leaveDaily are the FULL unrestricted history (§5.37), the MD each matched
+ * project gets is its true full-span Booked-minus-Leave total, not clipped to the search
+ * window — exactly the desired "Booked MD เต็มช่วงของ Phase" behavior (same definition as
+ * Gantt's Booked MD, §5.9/§5.8).
+ *
+ * NOTE (deliberate simplification, documented so nobody "fixes" this later without knowing
+ * why): computeAgg's leave-apportionment (pass 1, effFactorByResDay) is computed ONLY from the
+ * rows that survive the `restrict` filter — i.e. only from bookings on MATCHED projects. If a
+ * resource is booked on both a matched and a non-matched project on the same day and also
+ * takes leave that day, the leave gets fully apportioned against the matched-project
+ * booking(s) only, not shared with the excluded project. This is an accepted edge-case
+ * tradeoff for keeping one aggregation codepath instead of two; it only matters when the same
+ * person has bookings split across matched and non-matched projects on the exact same day.
+ */
+function recomputeAggregates(){
+  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+  const matchedAll = {};
+  Object.keys(S.allProjMap).forEach(pk => { if (projectMatchesRange(pk, rangeS, rangeE)) matchedAll[pk] = S.allProjMap[pk]; });
+  const matchedActive = {};
+  Object.keys(S.activeProjMap).forEach(pk => { if (projectMatchesRange(pk, rangeS, rangeE)) matchedActive[pk] = S.activeProjMap[pk]; });
+  S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true });
+  S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActive, { restrict: true });
 }
 
 /**
@@ -681,11 +728,17 @@ async function loadPeriod(force){
  *    ⇒ sum ของทุกตารางย่อย = kpiEffectiveMD โดยนิยาม
  *  - วันที่มี leave แต่ไม่มี booking ไม่นับ (ไม่มีแถวใน bookingRows ให้หัก)
  *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped.
- *    เรียก 2 ชุด: `S.periodAgg` ใช้ `restrict:false` (ทุก booking นับหมด รวมโปรเจกต์เก่า/ปิดแล้ว
- *    — `projMap` ใช้แค่ resolve ชื่อ App) และ `S.periodAggActiveOnly` ใช้ `restrict:true`
- *    สำหรับแท็บ By OS (นับเฉพาะ booking ของโปรเจกต์ที่ยัง is_active)
+ *    ⚠️ (อัปเดต 2026-08-12, §5.37) `recomputeAggregates()` เรียก computeAgg() ทั้ง 2 ชุดด้วย
+ *    `restrict:true` เสมอตอนนี้ — ต่างกันแค่ `projMap` ที่ส่งเข้าไป: `S.periodAgg` ใช้ projects
+ *    ทั้งหมด (`S.allProjMap`) ที่ผ่าน `projectMatchesRange()` (ตรงกับ "ค้นหา Project" ที่เลือก)
+ *    ส่วน `S.periodAggActiveOnly` ใช้เฉพาะ `S.activeProjMap` ที่ผ่านเงื่อนไขเดียวกัน (สำหรับแท็บ
+ *    By OS) — `bookingRows`/`leaveRows` ที่ส่งเข้ามาเป็นประวัติ**ทั้งหมดแบบไม่กรองวันที่**แล้ว
+ *    (S.bookingDaily/S.leaveDaily ไม่ได้ query ด้วย .gte/.lte ช่วง Period อีกต่อไป) ดังนั้น MD
+ *    ที่ project หนึ่งได้คือ MD **เต็มช่วงจริง** ของทุก booking ของ project นั้น ไม่ถูกตัดตาม
+ *    ช่วงวันที่ที่เลือกในกล่องค้นหา
  *    ⚠️ factor คำนวณจากแถวที่ "ผ่าน restrict แล้ว" เท่านั้น (เหมือนพฤติกรรมเดิมของ
- *       kpiEffectiveMD) — ชุด restricted จึงหัก leave ตามสัดส่วนของ booking ที่นับอยู่
+ *       kpiEffectiveMD) — ชุด restricted จึงหัก leave ตามสัดส่วนของ booking ที่นับอยู่เท่านั้น
+ *       (รายละเอียด edge-case ดู comment ใน recomputeAggregates())
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
@@ -926,6 +979,29 @@ function leadCellHTML(mainLead, subLeads){
   return `${main}${subHtml}`;
 }
 
+/** Whether project `pk`'s overall span (all its project_phase rows, exactly like the
+ *  existing per-phase min-start/max-end scan — SIT included, nothing filtered out —
+ *  PLUS project.signoff_date as one more candidate date on both ends) overlaps the given
+ *  [rangeS, rangeE] "ค้นหา Project" search window. Same §4.1 standard: start ≤ End &&
+ *  end ≥ Start (yyyy-mm-dd string compare). Shared by buildProjectRows() (decides which
+ *  rows show in the By Project table) and recomputeAggregates() (decides which projects'
+ *  bookings count toward the MD totals shown everywhere) — see §5.37. */
+function projectMatchesRange(pk, rangeS, rangeE){
+  const phases = S.phasesByProject[pk] || [];
+  const proj = S.allProjMap[pk];
+  const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
+  const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+  let periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
+  let maxEnd = null;
+  phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+  if (proj && proj.signoff_date) {
+    if (!periodStart || proj.signoff_date < periodStart) periodStart = proj.signoff_date;
+    if (!maxEnd || proj.signoff_date > maxEnd) maxEnd = proj.signoff_date;
+  }
+  const periodEnd = maxEnd || periodStart;
+  return !!periodStart && !!rangeS && !!rangeE && periodStart <= rangeE && periodEnd >= rangeS;
+}
+
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
@@ -950,7 +1026,10 @@ function buildProjectRows(){
     let other1 = 0, other2 = 0;
     otherSorted.forEach((c, i) => { const v = pAgg[c] || 0; if (i === 0) other1 += v; else other2 += v; });
 
-    // UAT period = TC Prep phase start_date through the max end_date across all phases
+    // Project Period (DISPLAY column only) = TC Prep phase start_date through the max
+    // end_date across all phases — kept exactly as before, NOT signoff_date-extended.
+    // The show/hide MATCH decision below uses projectMatchesRange() instead, which is a
+    // separate (signoff_date-extended) calculation — see that function's doc comment.
     const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
     let maxEnd = null;
     phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
@@ -959,16 +1038,15 @@ function buildProjectRows(){
     const uatPeriodDisp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
       : periodStart ? dDisp(periodStart) : '—';
 
-    /* §5.23 แสดงเฉพาะโปรเจกต์ที่ Project Period "คาบเกี่ยว" ช่วง Period ที่เลือก
-       (มาตรฐานเดียวกับ §4.1: start ≤ End && end ≥ Start — วันที่เป็น 'yyyy-mm-dd'
-       เทียบเป็น string ได้ตรงกับเทียบเป็นวันที่)
-       - ไม่มีวันที่เฟสเลย (periodStart = null) → ซ่อน
-       - ข้อยกเว้น: ถ้า totalMD > 0 ต้องแสดงเสมอ ไม่งั้นผลรวมท้ายตารางจะไม่เท่ากับ KPI
-         (invariant ตาม §5.20 — booking อาจอยู่นอกช่วงวันที่ของเฟส) */
-    const periodEnd = maxEnd || periodStart;
-    const inRange = !!periodStart && !!rangeS && !!rangeE
-      && periodStart <= rangeE && periodEnd >= rangeS;
-    if (!inRange && !(totalMD > 0)) return null;
+    /* §5.37 (2026-08-12): แสดงเฉพาะโปรเจกต์ที่ "ตรงกับคำค้นหา" — phase dates (ทุกเฟส รวม SIT)
+       หรือ signoff_date คาบเกี่ยวช่วง "ค้นหา Project" ที่เลือก (projectMatchesRange(), มาตรฐาน
+       เดียวกับ §4.1: start ≤ End && end ≥ Start) — เดิม §5.23 มีข้อยกเว้น "MD มากกว่าศูนย์ต้อง
+       แสดงเสมอ" เพราะตอนนั้น MD ยังถูกตัดตามช่วง Period ที่เลือก ทำให้ MD มากกว่าศูนย์ได้แม้ phase
+       จะไม่คาบเกี่ยว ตอนนี้ MD เป็นค่าเต็มช่วง (full-span) ของ**เฉพาะ**โปรเจกต์ที่ผ่านการค้นหา
+       แล้วเท่านั้น (recomputeAggregates() ใช้ projectMatchesRange() ตัวเดียวกันนี้กรอง projMap
+       ก่อนเข้า computeAgg) ⇒ โปรเจกต์ที่ไม่ผ่านการค้นหาจะมี MD เป็นศูนย์เสมอโดยธรรมชาติ —
+       เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ */
+    if (!projectMatchesRange(pk, rangeS, rangeE)) return null;
 
     return {
       app: p.app || p.other_app || '— ไม่มี App —',
@@ -1111,27 +1189,30 @@ function roleLabelFor(code){
 }
 
 /* ---- By Lead (matrix: Lead x App) ----
-   Source of truth: project_lead + pqa_lead (both main & additional leads), scoped
-   to the current project set (active only in monthly mode; all projects in overall
-   mode) — NOT time/day-bound (it's a coverage matrix, not an MD report), matching
-   the simpler of the two allowed paths in the task spec.
-   Each cell = COUNT of distinct projects that Lead owns under that App (not just
-   a 0/1 coverage flag) — a Lead with 2 projects under the same App shows "2".
+   Source of truth: project_lead + pqa_lead (both main & additional leads), scoped to
+   projects that match the current "ค้นหา Project" search window (projectMatchesRange(),
+   §5.37) — same matched-project set the By Project tab uses. (Before §5.37 this matrix
+   was described as "NOT time/day-bound"; now it's filtered by the same search the other
+   tabs use, for consistency — a Lead with zero matched projects simply gets no row.)
+   Each cell = COUNT of distinct matched projects that Lead owns under that App (not just
+   a 0/1 coverage flag) — a Lead with 2 matched projects under the same App shows "2".
 
-   Total MD column (task 3): sum of MD for every project where this lead is the
-   MAIN lead (project_lead.is_main = true). Reuses S.periodAgg.byProject — the exact
-   same "Booked MD" aggregate (sum of v_booking_daily.md_per_day over the selected
-   Period range) that the By Project tab's "Total MD" column already uses, so the
+   Total MD column (task 3): sum of MD for every MATCHED project where this lead is the
+   MAIN lead (project_lead.is_main = true). Reuses S.periodAgg.byProject — the same
+   full-span Effective "Booked MD" aggregate (§5.37) that the By Project tab's "Total MD"
+   column already uses, computed only over projects that matched the search — so the
    number is consistent with the rest of the page. Projects with no main lead simply
    never get added to any lead's total (no double counting, no orphan bucket). */
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
+  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
   const leadCoverage = {};     // emp_id -> { app -> Set(project_key) }
   const leadMainProjects = {}; // emp_id -> Set(project_key) where this lead is_main = true
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
+    if (!projectMatchesRange(pl.project_key, rangeS, rangeE)) return;   // §5.37: search-matched only
     const app = proj.app || proj.other_app || '— ไม่มี App —';
     const byApp = (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || {});
     (byApp[app] = byApp[app] || new Set()).add(pl.project_key);
@@ -1285,7 +1366,9 @@ function wireToolbar(){
     if (s > e) { toast('End ต้องไม่ก่อน Start', true); return; }
     S.overallRange = { s, e };
     savePrefs(PAGE, { rangeS: s, rangeE: e });
-    loadPeriod(true);
+    // range เปลี่ยน = เปลี่ยนแค่ "ค้นหา Project" ไหนถูกนับ — booking/leave data ไม่ต้อง fetch ใหม่
+    // (ไม่ขึ้นกับช่วงวันที่แล้ว) → force=false ให้ loadPeriod แค่ recompute+render จาก cache
+    loadPeriod(false);
   });
 }
 
