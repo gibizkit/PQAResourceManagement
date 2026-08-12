@@ -684,14 +684,20 @@ async function loadPeriod(force){
  * window — exactly the desired "Booked MD เต็มช่วงของ Phase" behavior (same definition as
  * Gantt's Booked MD, §5.9/§5.8).
  *
- * NOTE (deliberate simplification, documented so nobody "fixes" this later without knowing
- * why): computeAgg's leave-apportionment (pass 1, effFactorByResDay) is computed ONLY from the
- * rows that survive the `restrict` filter — i.e. only from bookings on MATCHED projects. If a
- * resource is booked on both a matched and a non-matched project on the same day and also
- * takes leave that day, the leave gets fully apportioned against the matched-project
- * booking(s) only, not shared with the excluded project. This is an accepted edge-case
- * tradeoff for keeping one aggregation codepath instead of two; it only matters when the same
- * person has bookings split across matched and non-matched projects on the exact same day.
+ * 🔴 FIXED 2026-08-12 (§5.39): computeAgg's leave-apportionment (pass 1, effFactorByResDay) is
+ * now computed from ALL bookingRows SYSTEM-WIDE, regardless of `restrict` — the exact same
+ * scope as Gantt's `buildEffFactorMap()` in gantt.html (§5.38, sums from `S.bookings` with no
+ * filter at all). `restrict` now controls ONLY pass 2 (which projects' bookings get distributed
+ * into byProject/byProjectPhase/byAppPhase/phaseTotals/byOsApp/byOsTotal — i.e. what shows in
+ * the tables), never the leave-proration factor. Previously (before this fix) the factor was
+ * computed only from bookings on MATCHED projects, so a resource booked on both a matched and a
+ * non-matched project on the same day, who also took leave that day, had the leave fully
+ * apportioned against the matched-project booking(s) only — understating that project's MD
+ * relative to Gantt, which always used the system-wide denominator. This was the root cause of
+ * Gantt vs Dashboard showing different Booked MD for the same project/phase (reported: "Lotto
+ * N3 MVP 6.1", app 422_GLO Lotto, phase UAT 20/07–21/08/2026 — Gantt 76 vs Dashboard 65 with
+ * search range 01/08–31/08/2026). Now that both pages prorate leave over the same system-wide
+ * denominator, the two pages are guaranteed to agree for the same underlying data.
  */
 function recomputeAggregates(){
   const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
@@ -721,24 +727,30 @@ function recomputeAggregates(){
  *    (ก่อน 2026-08-04 มีแต่ KPI ที่หัก leave ตารางใช้ booked ดิบ → ต่างกันเมื่อมีวันลา
  *     ทับวันที่ถูกจอง เช่น KPI 339 vs ตาราง 340)
  *  - วิธีหัก: ทำเป็น 2 pass ต่อ resource+วัน
- *      pass 1 — รวม booked md ของ resource นั้นในวันนั้น (ทุก project/phase)
- *      pass 2 — factor = max(0, booked − leave) / booked แล้วคูณ md ของทุกแถวในวันนั้น
- *    ⇒ วันลาถูก **ปันส่วนตามสัดส่วน** ให้ทุก project/phase ที่จองคนคนนั้นในวันเดียวกัน
- *      (ลาครึ่งวัน + จอง 2 project วันเดียวกัน → หักคนละครึ่งของครึ่งวัน ไม่ใช่หัก project แรกหมด)
- *    ⇒ sum ของทุกตารางย่อย = kpiEffectiveMD โดยนิยาม
+ *      pass 1 — รวม booked md ของ resource นั้นในวันนั้น จาก **bookingRows ทั้งหมดแบบไม่กรอง
+ *               (ทุก project/phase ทั้งระบบ ไม่ว่า `restrict` จะเป็น true/false ก็ตาม)**
+ *      pass 2 — factor = max(0, booked − leave) / booked แล้วคูณ md ของทุกแถวที่ผ่าน `restrict`
+ *               filter แล้วเท่านั้น (นี่คือจุดเดียวที่ `restrict` มีผล — ดูหัวข้อ `restrict` ด้านล่าง)
+ *    ⇒ วันลาถูก **ปันส่วนตามสัดส่วนของ booking ทั้งหมดในวันนั้นทั้งระบบ** ไม่ใช่แค่ project/phase
+ *      ที่ผ่าน filter (ลาครึ่งวัน + จอง 2 project วันเดียวกัน → หักคนละครึ่งของครึ่งวัน ไม่ใช่หัก
+ *      project แรกหมด — เหมือนเดิม แต่ตอนนี้ "2 project" นับรวม project ที่ไม่ผ่าน restrict ด้วย)
+ *    ⇒ sum ของทุกตารางย่อย (ที่กระจายใน pass 2) = kpiEffectiveMD โดยนิยาม (kpiEffectiveMD สะสม
+ *      ใน pass 2 พร้อมกับตารางอื่น ไม่ใช่ pass 1 อีกต่อไป — ดู §5.39)
  *  - วันที่มี leave แต่ไม่มี booking ไม่นับ (ไม่มีแถวใน bookingRows ให้หัก)
- *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped.
- *    ⚠️ (อัปเดต 2026-08-12, §5.37) `recomputeAggregates()` เรียก computeAgg() ทั้ง 2 ชุดด้วย
- *    `restrict:true` เสมอตอนนี้ — ต่างกันแค่ `projMap` ที่ส่งเข้าไป: `S.periodAgg` ใช้ projects
- *    ทั้งหมด (`S.allProjMap`) ที่ผ่าน `projectMatchesRange()` (ตรงกับ "ค้นหา Project" ที่เลือก)
- *    ส่วน `S.periodAggActiveOnly` ใช้เฉพาะ `S.activeProjMap` ที่ผ่านเงื่อนไขเดียวกัน (สำหรับแท็บ
- *    By OS) — `bookingRows`/`leaveRows` ที่ส่งเข้ามาเป็นประวัติ**ทั้งหมดแบบไม่กรองวันที่**แล้ว
- *    (S.bookingDaily/S.leaveDaily ไม่ได้ query ด้วย .gte/.lte ช่วง Period อีกต่อไป) ดังนั้น MD
- *    ที่ project หนึ่งได้คือ MD **เต็มช่วงจริง** ของทุก booking ของ project นั้น ไม่ถูกตัดตาม
+ *  - `restrict`: when true, bookings whose project isn't in `projMap` are skipped — **ตั้งแต่
+ *    §5.39 (2026-08-12) มีผลแค่กับ pass 2 เท่านั้น** (ตัดสินว่า project ไหนโผล่ใน
+ *    byProject/byProjectPhase/byAppPhase/phaseTotals/byOsApp/byOsTotal/kpiEffectiveMD) —
+ *    **ไม่มีผลกับ pass 1 อีกต่อไป** pass 1 สะสม dailyBookedByResDay จาก bookingRows ทั้งหมดเสมอ
+ *    เพื่อให้ factor การหักวันลาคำนวณจาก scope เดียวกับ Gantt's `buildEffFactorMap()`
+ *    (`gantt.html`, §5.38 — sum จาก `S.bookings` ทั้งระบบไม่กรองอะไรเลย) ทุกประการ — การันตีว่า
+ *    Booked MD ของ project/phase เดียวกันจะตรงกันระหว่าง Gantt กับ Dashboard เสมอ (ก่อนหน้านี้
+ *    factor คำนวณจากแถวที่ผ่าน restrict แล้วเท่านั้น ทำให้ project ที่คนถูกจองคาบเกี่ยวกับ
+ *    project อื่นที่ไม่ผ่าน filter ในวันเดียวกันแล้วมีวันลาด้วย จะโดนหักวันลาเกินจริง เทียบกับ Gantt
+ *    ที่หักตาม booking ทั้งระบบ — ดู comment เหนือ `recomputeAggregates()` สำหรับเคสที่รายงานจริง)
+ *    ⚠️ `bookingRows`/`leaveRows` ที่ส่งเข้ามาเป็นประวัติ**ทั้งหมดแบบไม่กรองวันที่**แล้ว
+ *    (S.bookingDaily/S.leaveDaily ไม่ได้ query ด้วย .gte/.lte ช่วง Period อีกต่อไป, §5.37) ดังนั้น
+ *    MD ที่ project หนึ่งได้คือ MD **เต็มช่วงจริง** ของทุก booking ของ project นั้น ไม่ถูกตัดตาม
  *    ช่วงวันที่ที่เลือกในกล่องค้นหา
- *    ⚠️ factor คำนวณจากแถวที่ "ผ่าน restrict แล้ว" เท่านั้น (เหมือนพฤติกรรมเดิมของ
- *       kpiEffectiveMD) — ชุด restricted จึงหัก leave ตามสัดส่วนของ booking ที่นับอยู่เท่านั้น
- *       (รายละเอียด edge-case ดู comment ใน recomputeAggregates())
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
@@ -751,9 +763,13 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   const bookedOsSet = new Set();
   const dailyBookedByResDay = {}; // 'resId|date' -> md sum (raw booked, ก่อนหัก leave)
 
-  // ---- pass 1: รวม booked md ต่อ resource+วัน (เฉพาะแถวที่จะถูกนับจริง) ----
-  const rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
-  rows.forEach(row => {
+  // ---- pass 1: รวม booked md ต่อ resource+วัน จาก bookingRows "ทั้งหมด" เสมอ (ไม่ผ่าน restrict
+  // filter) — ตั้งแต่ §5.39 (2026-08-12) เพื่อให้ factor หักวันลาคำนวณจาก scope เดียวกับ Gantt's
+  // buildEffFactorMap() (sum จาก S.bookings ทั้งระบบ ไม่กรองอะไรเลย) restrict ไม่มีผลกับ pass นี้
+  // อีกต่อไป (ก่อนหน้านี้ pass 1 กรองด้วย restrict เหมือน pass 2 ทำให้ project ที่คนถูกจองคาบเกี่ยว
+  // กับ project อื่นที่ไม่ผ่าน filter ในวันเดียวกัน โดนหักวันลาเกินจริงเทียบกับ Gantt — ดู comment
+  // เหนือ recomputeAggregates()) ----
+  bookingRows.forEach(row => {
     const dayKey = row.resource_id + '|' + row.work_date;
     dailyBookedByResDay[dayKey] = (dailyBookedByResDay[dayKey] || 0) + (Number(row.md_per_day) || 0);
   });
@@ -762,21 +778,26 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   const leaveByResDay = {};
   leaveRows.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
 
-  // factor ต่อ resource+วัน = สัดส่วน MD ที่เหลือหลังหักวันลา (0..1)
+  // factor ต่อ resource+วัน = สัดส่วน MD ที่เหลือหลังหักวันลา (0..1) — คำนวณจาก booked ทั้งระบบ
+  // (pass 1 ข้างบน) เทียบกับ leave ของวันนั้น ไม่ขึ้นกับ restrict
   const effFactorByResDay = {};
-  let kpiEffectiveMD = 0;
   Object.keys(dailyBookedByResDay).forEach(k => {
     const booked = dailyBookedByResDay[k];
     const eff = Math.max(0, booked - (leaveByResDay[k] || 0));
     effFactorByResDay[k] = booked > 0 ? eff / booked : 0;
-    kpiEffectiveMD += eff;
   });
 
-  // ---- pass 2: กระจาย MD (หัก leave ตามสัดส่วนแล้ว) ลงทุกมิติ ----
+  // ---- pass 2: กระจาย MD (หัก leave ตามสัดส่วนแล้ว) ลงทุกมิติ — เฉพาะแถวที่ผ่าน restrict filter
+  // เท่านั้น (restrict ตอนนี้มีผลแค่ตรงนี้ — ตัดสินว่า project ไหนโผล่ในตาราง ไม่เกี่ยวกับ factor
+  // ข้างบนอีกต่อไป) kpiEffectiveMD สะสมที่นี่ด้วย (ย้ายมาจาก pass 1 เดิม) เพื่อรักษา invariant
+  // sum(byProject) === kpiEffectiveMD ให้ยังเป็นจริงโดยนิยาม แม้ pass 1 จะไม่ผ่าน restrict แล้ว ----
+  const rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
+  let kpiEffectiveMD = 0;
   rows.forEach(row => {
     const proj = projMap[row.project_key];
     const factor = effFactorByResDay[row.resource_id + '|' + row.work_date];
     const md = (Number(row.md_per_day) || 0) * (factor === undefined ? 1 : factor);
+    kpiEffectiveMD += md;
     const app = proj ? (proj.app || proj.other_app || '— ไม่มี App —') : '— ไม่ทราบ App —';
 
     byAppPhase[app] = byAppPhase[app] || {};
