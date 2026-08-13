@@ -775,7 +775,7 @@ function saveFilterPrefs(){
 async function loadAll(){
   $('ganttScroll').innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes, releaseAppRes, releaseSchedRes, leaveRes] = await Promise.all([
+    const [holidays, , projRes, phaseRes, plRes, leadRes, bkRes, resRes, appRes, noteRes, phaseMasterRes, phasePillFgRes, releaseAppRes, releaseSchedRes, leaveRes] = await Promise.all([
       loadHolidaysSafe(),
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
@@ -786,7 +786,12 @@ async function loadAll(){
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
-      supabase.from('phase').select('phase_code,sort_order,color,pill_fg'),   // master order + สี (config ได้จาก Admin) สำหรับ Order = Phase
+      supabase.from('phase').select('phase_code,sort_order,color'),   // master order + สีพื้นหลังแท่ง (config ได้จาก Admin) สำหรับ Order = Phase
+      // pill_fg แยก query ต่างหาก — ตั้งใจไม่รวมกับ query ข้างบน: ถ้า patch_2026-08-13_phase_pill_fg.sql
+      // ยังไม่ได้รันบน Supabase จริง คอลัมน์นี้จะไม่มีอยู่ → select รวมกันจะ error ทั้งก้อน ทำให้
+      // sort_order/color (ที่ confirm แล้วว่ามีจริง) พังไปด้วยแบบไม่ตั้งใจ (นี่คือบั๊กที่ทำให้ pill
+      // ไม่ได้สีจาก Admin เลย ไม่ใช่แค่ pill_fg) — แยก query กันไว้ ไม่ fatal ถ้าโหลดพลาด
+      supabase.from('phase').select('phase_code,pill_fg'),
       supabase.from('release_app').select('app_code,app_name,sort_order,color').eq('is_active', true).order('sort_order', { ascending: true }),
       supabase.from('app_release_schedule').select('release_id,app_code,submitted_fe,app_version,platform,submitted_date,regression_start,regression_end').eq('is_active', true),
       supabase.from('v_leave_daily').select('resource_id,leave_date,leave_md'),   // §5.38 — หัก Booked MD แบบปันส่วนเหมือน Dashboard
@@ -799,10 +804,13 @@ async function loadAll(){
     S.phaseSortOrder = {};
     S.phaseColorOverride = {};
     S.phaseTextColorOverride = {};
-    if (phaseMasterRes.error) console.warn('phase master (sort_order) load error', phaseMasterRes.error);
+    if (phaseMasterRes.error) console.warn('phase master (sort_order/color) load error', phaseMasterRes.error);
     else (phaseMasterRes.data || []).forEach(ph => {
       S.phaseSortOrder[ph.phase_code] = ph.sort_order;
       if (ph.color) S.phaseColorOverride[ph.phase_code] = ph.color;
+    });
+    if (phasePillFgRes.error) console.warn('phase master (pill_fg) load error — patch_2026-08-13_phase_pill_fg.sql อาจยังไม่ได้รันบน Supabase จริง', phasePillFgRes.error);
+    else (phasePillFgRes.data || []).forEach(ph => {
       if (ph.pill_fg) S.phaseTextColorOverride[ph.phase_code] = ph.pill_fg;
     });
 
