@@ -209,6 +209,29 @@
     background:var(--dk-hover);
   }
 
+  /* ---- By Lead: frozen first 2 columns (2026-08-13, ตามที่ขอ) ----
+     Freeze is structural (nth-child), not per-column classes, because column 2's content
+     differs by role picked in #leadRoleSelect: "Total MD" for the Main Lead table, but
+     "Total Project" for Sub Lead / Executor (Main is the only role withMD — see
+     LEAD_ROLE_META). Column 2 is always the 2nd <th>/<td> regardless of which one it is,
+     so nth-child freezes the right cell either way without branching in JS. Same pattern
+     as #projectTable's App/Project Name freeze above, just column-count-agnostic. */
+  #leadTable { border-collapse:separate; border-spacing:0; }
+  #leadTable th:nth-child(1), #leadTable td:nth-child(1) {
+    position:sticky; left:0; width:140px; min-width:140px; max-width:140px;
+    background:var(--dk-card); z-index:5;
+  }
+  #leadTable th:nth-child(2), #leadTable td:nth-child(2) {
+    position:sticky; left:140px; width:90px; min-width:90px; max-width:90px; text-align:right;
+    background:var(--dk-card); z-index:5; box-shadow:2px 0 4px rgba(34,28,21,.08);
+  }
+  #leadTable thead th:nth-child(1), #leadTable thead th:nth-child(2) {
+    z-index:16; background:var(--dk-surface);
+  }
+  #leadTable tr.dash-total-row td:nth-child(1), #leadTable tr.dash-total-row td:nth-child(2) {
+    background:var(--dk-hover);
+  }
+
   .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
 
   /* ---- loading wrapper: KPI grid + chart-row + viewContainer (task 1) ----
@@ -428,12 +451,15 @@ const S = {
   holidays: {},                 // 'yyyy-MM-dd' -> desc (loaded once)
 
   // "master" data — loaded once at app start, re-fetched on Refresh
-  activeProjects: [],           // v_project_wide rows where is_active = true
-  activeProjMap: {},            // project_key -> row (used for the "Active Projects" KPI count)
-  allProjectsFull: [],           // v_project_wide rows for ALL projects (used everywhere else so
-                                 // completed / inactive projects still show up)
-  allProjMap: {},                // project_key -> row for ALL projects (so completed / inactive
-                                 // projects still get a proper App label)
+  activeProjects: [],           // v_project_wide rows where is_active = true — used by By Project,
+                                 // By Lead, Signoff (currentProjectsList/currentProjMap, §5.43) and
+                                 // the "Active Projects" KPI count
+  activeProjMap: {},            // project_key -> row, active only (see above)
+  allProjectsFull: [],           // v_project_wide rows for ALL projects incl. inactive — kept only
+                                 // for internal date lookups (projectMatchesRange) that need a
+                                 // project's dates to exist even after it's deactivated; NOT used
+                                 // to decide what renders in any subview anymore (§5.43)
+  allProjMap: {},                // project_key -> row, ALL projects (see above — internal lookup only)
   appList: [],                  // app table rows {app_code, app_name, sort_order}
   appOrder: {},                 // app_code -> sort_order (for consistent column/legend ordering)
   resourceMap: {},              // resource_id -> {nickname, full_name_en, role_code, resource_type}
@@ -650,12 +676,21 @@ async function loadMasterData(){
 function currentRange(){
   return { first: S.overallRange.s, last: S.overallRange.e };
 }
-/** Projects to show in the By Project / By Lead / Signoff subviews. */
+/** Projects to show in the By Project / By Lead / Signoff subviews.
+ * 2026-08-13 (confirmed by Gibb): counts like Project/OS/Lead must only ever count
+ * is_active=true records — By Lead and Signoff used to read S.allProjectsFull/S.allProjMap
+ * (ALL projects, including inactive) while By Project already used the active-only set.
+ * Switched both to the active-only set so all 3 subviews agree — a project you deactivate
+ * now disappears from By Lead's matrix and from the Signoff list, same as it already does
+ * on By Project. (projectMatchesRange()/recomputeAggregates() still look dates up via
+ * S.allProjMap internally — that's fine, each project's own MD total is independent of
+ * which other projects share the dict, so leaving those alone doesn't leak inactive rows
+ * back into what actually renders here.) */
 function currentProjectsList(){
-  return S.allProjectsFull;
+  return S.activeProjects;
 }
 function currentProjMap(){
-  return S.allProjMap;
+  return S.activeProjMap;
 }
 
 /**
@@ -1256,6 +1291,9 @@ function roleLabelFor(code){
    §5.37) — same matched-project set the By Project tab uses. (Before §5.37 this matrix
    was described as "NOT time/day-bound"; now it's filtered by the same search the other
    tabs use, for consistency — a Lead with zero matched projects simply gets no row.)
+   2026-08-13: `projByKey` now comes from currentProjMap() = S.activeProjMap (active-only,
+   §5.43) instead of S.allProjMap — an inactive project's leads/coverage no longer show up
+   here, same as they already didn't on By Project.
    Each cell = COUNT of distinct matched projects that Lead owns under that App (not just
    a 0/1 coverage flag) — a Lead with 2 matched projects under the same App shows "2".
 
@@ -1348,7 +1386,7 @@ function renderLeadView(container){
     return `
       <div class="section-title">${esc(title)}</div>
       <div class="dash-table-wrap">
-        <table class="dash-table">
+        <table class="dash-table" id="leadTable">
           <thead><tr><th>UAT Lead</th>${mdHeader}<th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
           <tbody>${bodyRows.join('') || `<tr><td colspan="${colspan}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
           <tfoot>${totalRow}</tfoot>

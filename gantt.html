@@ -233,7 +233,7 @@
   #projOverlay .modal { width:660px; }
   /* ---- sub lead rows (project modal) ---- */
   .sublead-row { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
-  .sublead-row select { flex:1; }
+  .sublead-row .lead-search-wrap { flex:1; }
   .sublead-row .btn { padding:6px 10px; }
 
   /* ---- booking popup ---- */
@@ -391,8 +391,8 @@
       <div class="section-title">Lead</div>
       <div class="field">
         <label>Main Lead <span style="color:var(--danger)">*</span></label>
-        <select id="fMainLead"><option value="">— เลือก Lead —</option></select>
-        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้</span>
+        <div class="lead-search-wrap"><input type="text" id="fMainLead" placeholder="พิมพ์ชื่อ Lead..."></div>
+        <span class="hint">โปรเจกต์มี Main Lead ได้คนเดียว — ใช้ตอนกรองด้วย Lead ในหน้านี้ (พิมพ์แล้วคลิกเลือกจาก list เท่านั้น)</span>
       </div>
       <div class="field">
         <label>Sub Lead (เพิ่มได้หลายคน)</label>
@@ -547,6 +547,7 @@
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
+         initLeadSearch, getLeadSearchValue, leadSearchHasUnresolvedText,
          loadProjectStatuses, statusOptionsHTML,
          loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
          getCachedRole, setCachedRole, paintNavAdmin } from './common.js';
@@ -1695,34 +1696,42 @@ function buildPhaseRows(data){
     if (resEl) resEl.addEventListener('input', recalc);
   });
 }
-/* ---- Lead pickers ในโมดัล Project (S.leads = pqa_lead ที่ active) ---- */
+/* ---- Lead pickers ในโมดัล Project (S.leads = pqa_lead ที่ active) ----
+ * 2026-08-13: เปลี่ยนจาก <select> เป็น input พิมพ์ค้นหา (initLeadSearch/getLeadSearchValue
+ * จาก common.js) ตามที่ขอ — ยังเลือกได้ทีละ 1 คนต่อช่อง/แถวเหมือนเดิม */
 function fillMainLeadOptions(selected){
-  $('fMainLead').innerHTML = leadOptionsHTML(S.leads, selected || '', '— ไม่ระบุ —');
+  initLeadSearch($('fMainLead'), S.leads, selected || '');
 }
 window.addSubLeadRow = function(selected){
   const row = document.createElement('div');
   row.className = 'sublead-row';
-  const sel = document.createElement('select');
-  sel.className = 'sub-lead';
-  sel.innerHTML = leadOptionsHTML(S.leads, selected || '', '— เลือก Lead —');
+  const wrap = document.createElement('div');
+  wrap.className = 'lead-search-wrap';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'sub-lead';
+  wrap.appendChild(inp);
+  initLeadSearch(inp, S.leads, selected || '');
   const del = document.createElement('button');
   del.type = 'button'; del.className = 'btn'; del.textContent = '✕';
   del.title = 'ลบ Sub Lead แถวนี้';
   del.onclick = () => row.remove();
-  row.appendChild(sel); row.appendChild(del);
+  row.appendChild(wrap); row.appendChild(del);
   $('fSubLeadRows').appendChild(row);
 };
 window.addExecutorRow = function(selected){
   const row = document.createElement('div');
   row.className = 'sublead-row';
-  const sel = document.createElement('select');
-  sel.className = 'executor-lead';
-  sel.innerHTML = leadOptionsHTML(S.leads, selected || '', '— เลือก Lead —');
+  const wrap = document.createElement('div');
+  wrap.className = 'lead-search-wrap';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'executor-lead';
+  wrap.appendChild(inp);
+  initLeadSearch(inp, S.leads, selected || '');
   const del = document.createElement('button');
   del.type = 'button'; del.className = 'btn'; del.textContent = '✕';
   del.title = 'ลบ Internal Executor แถวนี้';
   del.onclick = () => row.remove();
-  row.appendChild(sel); row.appendChild(del);
+  row.appendChild(wrap); row.appendChild(del);
   $('fExecutorRows').appendChild(row);
 };
 function buildLeadPicker(main, subs, executors){
@@ -1734,9 +1743,9 @@ function buildLeadPicker(main, subs, executors){
 }
 function readLeadPicker(){
   return {
-    main: $('fMainLead').value || null,
-    subs: [...document.querySelectorAll('#fSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean),
-    executors: [...document.querySelectorAll('#fExecutorRows .executor-lead')].map(s => s.value).filter(Boolean)
+    main: getLeadSearchValue($('fMainLead')) || null,
+    subs: [...document.querySelectorAll('#fSubLeadRows .sub-lead')].map(getLeadSearchValue).filter(Boolean),
+    executors: [...document.querySelectorAll('#fExecutorRows .executor-lead')].map(getLeadSearchValue).filter(Boolean)
   };
 }
 
@@ -1852,7 +1861,10 @@ window.saveProj = async function(){
   if (!/^[PU][0-9]{10}$/.test(key)){ err.textContent='Project Key ต้องเป็น P/U ตามด้วยตัวเลข 10 หลัก'; return; }
   if (!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
   if (!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
-  if (!$('fMainLead').value){ err.textContent='กรุณาเลือก Main Lead'; return; }
+  // req 2026-08-13: Main/Sub Lead/Executor เป็น input พิมพ์ค้นหาแล้ว — พิมพ์ค้างไว้โดยไม่คลิก
+  // เลือกจาก list ถือว่ายังไม่ได้เลือก ต้อง block ก่อนเช็คอย่างอื่น กันข้อมูลเพี้ยนแบบเงียบๆ
+  if (leadSearchHasUnresolvedText($('projOverlay'))){ err.textContent='ชื่อ Lead ไม่ถูกต้อง — กรุณาพิมพ์แล้วคลิกเลือกจาก list เท่านั้น'; return; }
+  if (!getLeadSearchValue($('fMainLead'))){ err.textContent='กรุณาเลือก Main Lead'; return; }
   // req 2026-08-13: Main Lead / Sub Lead / Internal Executor ห้ามเป็นคนเดียวกัน
   if (leadPickerHasDuplicates(readLeadPicker())){ err.textContent='Main Lead, Sub Lead, Internal Executor ต้องไม่ใช่คนเดียวกัน'; return; }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า

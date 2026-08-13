@@ -667,6 +667,128 @@ export function leadPickerHasDuplicates(picked){
   return new Set(all).size !== all.length;
 }
 
+/* ============ LEAD SEARCH INPUT (พิมพ์ค้นหา เลือกได้ทีละ 1 คน) ============
+ * แทนที่ <select> เดิมของ Main Lead / Sub Lead / Internal Executor (2026-08-13 ตามที่ขอ)
+ * ใช้ร่วมกันทั้ง gantt.html + admin.html (mirror pattern เดิม — ดู memory
+ * "pqa-gantt-admin-parallel-logic") — ทุกช่องยังเลือกได้ทีละ 1 คนเหมือนเดิม
+ * (Sub Lead / Executor ยังเพิ่มได้หลายแถว แค่ต่อแถวเป็น 1:1 เหมือนก่อนแก้)
+ *
+ * markup ที่คาดหวัง: <div class="lead-search-wrap"><input class="lead-search"></div>
+ * (แพนเนลแนะนำ position:absolute อิง .lead-search-wrap — ถ้าลืมห่อ wrap จะ fallback ไป
+ * parentElement ตรงๆ ไม่พังแต่ตำแหน่งอาจเพี้ยน)
+ *
+ * state เก็บที่ input.dataset.empId เอง ไม่มี hidden input แยก:
+ * - คลิกเลือกจาก list แล้ว = emp_id ของคนนั้น
+ * - พิมพ์เองแล้วยังไม่คลิกเลือก (หรือลบพิมพ์ใหม่หลังเคยเลือกไว้) = '' เสมอ — กันเซฟชื่อมั่วๆ
+ *   ที่ไม่ตรงใครใน list เงียบๆ (ต้องคลิกเลือกจาก list จริงเท่านั้น)
+ * - ลบช่องว่างเปล่า = '' (ไม่เลือกใครเลย ใช้ได้กับ Sub Lead/Executor ที่เป็น optional)
+ */
+
+/**
+ * ผูก behavior พิมพ์ค้นหาให้ input ตัวหนึ่ง — เรียกครั้งเดียวตอนสร้าง input (ทั้ง Main Lead
+ * ตัวเดียว และแต่ละแถวของ Sub Lead/Executor)
+ * @param {HTMLInputElement} inputEl
+ * @param {Array} leads — จาก loadPqaLeadOptions() (active เท่านั้น)
+ * @param {string|null} selectedEmpId — emp_id ที่เคยเลือกไว้ (ถ้ามี)
+ */
+export function initLeadSearch(inputEl, leads, selectedEmpId) {
+  if (!inputEl) return;
+  const list = leads || [];
+  inputEl.classList.add('lead-search');
+  inputEl.autocomplete = 'off';
+  inputEl.placeholder = inputEl.placeholder || 'พิมพ์ชื่อ Lead...';
+
+  const found = selectedEmpId ? list.find(l => l.emp_id === selectedEmpId) : null;
+  if (selectedEmpId && !found) {
+    // lead เดิมถูกปิดใช้งานไปแล้ว — โชว์ค้างไว้เหมือน leadOptionsHTML (กันหายเงียบๆ ตอนเซฟทับ)
+    inputEl.value = `${selectedEmpId} (inactive)`;
+    inputEl.dataset.empId = selectedEmpId;
+  } else if (found) {
+    inputEl.value = leadLabel(found);
+    inputEl.dataset.empId = found.emp_id;
+  } else {
+    inputEl.value = '';
+    inputEl.dataset.empId = '';
+  }
+  inputEl.classList.remove('invalid');
+
+  let panel = null;
+  const closePanel = () => { if (panel) { panel.remove(); panel = null; } };
+  const openPanel = (matches) => {
+    closePanel();
+    panel = document.createElement('div');
+    panel.className = 'lead-search-panel';
+    if (!matches.length) {
+      panel.innerHTML = `<div class="lead-search-empty">ไม่พบชื่อ</div>`;
+    } else {
+      matches.slice(0, 8).forEach(l => {
+        const opt = document.createElement('div');
+        opt.className = 'lead-search-opt';
+        opt.textContent = leadLabel(l);
+        // mousedown (ไม่ใช่ click) เพราะ blur ของ input ยิงก่อน click เสมอ — ไม่งั้นแพนเนลจะ
+        // ปิดไปก่อนที่ click จะทันจับ
+        opt.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          inputEl.value = leadLabel(l);
+          inputEl.dataset.empId = l.emp_id;
+          inputEl.classList.remove('invalid');
+          closePanel();
+          inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        panel.appendChild(opt);
+      });
+    }
+    const wrap = inputEl.closest('.lead-search-wrap') || inputEl.parentElement;
+    if (wrap && !wrap.style.position) wrap.style.position = 'relative';
+    wrap.appendChild(panel);
+  };
+  const runSearch = () => {
+    const q = inputEl.value.trim().toLowerCase();
+    if (!q) { closePanel(); return; }
+    const matches = list.filter(l =>
+      String(l.short_name || '').toLowerCase().includes(q) ||
+      String(l.nickname || '').toLowerCase().includes(q) ||
+      String(l.emp_id || '').toLowerCase().includes(q));
+    openPanel(matches);
+  };
+
+  inputEl.addEventListener('input', () => {
+    inputEl.dataset.empId = ''; // พิมพ์ใหม่ = ยกเลิกค่าที่เคยเลือกไว้จนกว่าจะคลิกเลือกใหม่จริง
+    inputEl.classList.remove('invalid');
+    runSearch();
+  });
+  inputEl.addEventListener('focus', runSearch);
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => {
+      closePanel();
+      if (inputEl.value.trim() && !inputEl.dataset.empId) inputEl.classList.add('invalid');
+      else inputEl.classList.remove('invalid');
+    }, 150); // delay ให้ mousedown ของ .lead-search-opt ทำงานก่อน blur ปิดแพนเนล
+  });
+}
+
+/**
+ * ค่า emp_id ที่ถูกเลือกจริงจาก lead-search input — คืน '' ถ้าพิมพ์ค้างไว้แต่ไม่เคยคลิกเลือก
+ * (ใช้แทนการอ่าน .value ตรงๆ แบบ <select> เดิมทุกจุด)
+ * @param {HTMLInputElement} inputEl
+ * @returns {string}
+ */
+export function getLeadSearchValue(inputEl) {
+  return (inputEl && inputEl.dataset.empId) || '';
+}
+
+/**
+ * true ถ้ามีช่อง .lead-search ตัวไหนใน container พิมพ์ข้อความค้างไว้แต่ไม่ตรงใครใน list เลย
+ * (ยังไม่ได้คลิกเลือก) — เรียกก่อนเซฟเพื่อ block พร้อม error message กันข้อมูลเพี้ยนแบบเงียบๆ
+ * @param {HTMLElement} containerEl — modal หรือ form ทั้งก้อนที่ครอบทุกช่อง lead-search
+ * @returns {boolean}
+ */
+export function leadSearchHasUnresolvedText(containerEl) {
+  if (!containerEl) return false;
+  return [...containerEl.querySelectorAll('.lead-search')]
+    .some(inp => inp.value.trim() && !inp.dataset.empId);
+}
+
 /* ============ MONTH LABEL (Mmm-yyyy) ============ */
 
 /** English 3-letter month abbreviations (index 0 = Jan) */
