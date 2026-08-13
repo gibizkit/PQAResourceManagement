@@ -103,6 +103,11 @@
   .c2  { min-width:72px;  width:72px;  left:550px; }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
 
+  /* header ของคอลัมน์ Project — ป้าย "Project" + icon-only Collapse All/Expand All
+     (ย้ายมาจาก toolbar เดิม — เหลือแค่ icon ไม่มีข้อความ กด collapseAllProjects()/expandAllProjects()) */
+  .c0-head { display:flex; align-items:center; justify-content:space-between; gap:4px; }
+  .c0-head-actions { display:flex; gap:2px; }
+
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days
      thead มี 2 แถว sticky ซ้อนกัน (month + day) — ต้องคนละ top offset กัน ไม่งั้นแถว day
      (มาทีหลังใน DOM) จะ sticky ทับแถว month ตอน scroll ลง (เดิมทั้งคู่ top:0 เท่ากัน = บั๊กที่ทำให้
@@ -305,15 +310,13 @@
     <div class="toolbar">
       <span class="badge" id="projCount">0</span>
       <button class="btn accent" id="addBtn">+ เพิ่ม Project</button>
-      <button class="btn" id="collapseAllBtn">⊟ Collapse All</button>
-      <button class="btn" id="expandAllBtn">⊞ Expand All</button>
-      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
       <div class="ms" id="msReleaseSchedule">
         <button class="btn" id="releaseScheduleBtn" type="button">📦 Release Schedule</button>
         <div class="ms-panel hidden" id="releaseSchedulePanel">
           <div class="ms-list" id="releaseScheduleList"></div>
         </div>
       </div>
+      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -1359,7 +1362,11 @@ function renderGantt(){
   // month header labels via shared helper → 'Mmm-yyyy' (e.g. 'Jul-2026')
 
   let head = '<thead><tr>' +
-    '<th class="sticky-col c0" rowspan="2">Project</th>' +
+    '<th class="sticky-col c0" rowspan="2"><div class="c0-head"><span>Project</span>' +
+    '<span class="c0-head-actions">' +
+    '<button class="ico" type="button" onclick="collapseAllProjects()" title="Collapse All">⊟</button>' +
+    '<button class="ico" type="button" onclick="expandAllProjects()" title="Expand All">⊞</button>' +
+    '</span></div></th>' +
     '<th class="sticky-col c1" rowspan="2">Phase</th>' +
     '<th class="sticky-col c2" rowspan="2" style="text-align:center">Action</th>' +
     months.map(mo => `<th class="th-month" colspan="${mo.count}">${monthLabel(mo.ym)}</th>`).join('') +
@@ -1609,8 +1616,11 @@ function fmtMD(n){
 
 /* ============ TOOLBAR ============ */
 window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderGantt(); };
-$('collapseAllBtn').onclick = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
-$('expandAllBtn').onclick   = () => { filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
+// Collapse All / Expand All ย้ายเข้าไปเป็นปุ่ม icon ในหัวคอลัมน์ Project (.c0-head) แล้ว
+// (เดิมเป็นปุ่มข้อความในนี้ toolbar) — head ของตาราง re-render ทุกครั้งที่ renderGantt() รัน
+// จึงต้องเป็น global function ผูกผ่าน inline onclick ไม่ใช่ $('id').onclick แบบเดิม
+window.collapseAllProjects = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
+window.expandAllProjects   = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
 $('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); saveFilterPrefs(); };
 $('applyBtn').onclick = () => {

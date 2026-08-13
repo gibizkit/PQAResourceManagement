@@ -745,10 +745,15 @@ export function initLeadSearch(inputEl, leads, selectedEmpId) {
   const runSearch = () => {
     const q = inputEl.value.trim().toLowerCase();
     if (!q) { closePanel(); return; }
+    // ต้องเทียบกับ leadLabel(l) (รูปแบบเต็ม "nickname : short_name") ด้วย ไม่ใช่แค่ short_name/
+    // nickname/emp_id แยกชิ้น — ไม่งั้น focus ช่องที่มีค่าอยู่แล้ว (เช่นตอนเปิด Edit Project) จะ
+    // runSearch() ด้วย q = label เต็มที่ไม่ตรงกับฟิลด์ไหนเดี่ยวๆ เลยสักฟิลด์ (มี " : " คั่นกลาง)
+    // ขึ้น "ไม่พบชื่อ" ทั้งที่ค่าที่กรอกอยู่ตรงกับ lead คนนั้นเป๊ะ (บั๊กที่เจอ 2026-08-13)
     const matches = list.filter(l =>
       String(l.short_name || '').toLowerCase().includes(q) ||
       String(l.nickname || '').toLowerCase().includes(q) ||
-      String(l.emp_id || '').toLowerCase().includes(q));
+      String(l.emp_id || '').toLowerCase().includes(q) ||
+      leadLabel(l).toLowerCase().includes(q));
     openPanel(matches);
   };
 
