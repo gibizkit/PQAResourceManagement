@@ -110,6 +110,36 @@
     margin: 0;
   }
 
+  /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt) ---- */
+  .ms { position:relative; }
+  .ms-btn {
+    min-width:180px; text-align:left; padding:8px 11px; border-radius:9px;
+    border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text);
+    font-size:13px; font-weight:600; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
+  }
+  .ms-btn:hover { border-color:var(--dk-accent); }
+  .ms-panel {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:40;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:12px;
+    box-shadow:0 16px 40px rgba(34,28,21,.16); padding:6px; width:270px;
+    max-height:290px; overflow:auto;
+  }
+  .ms-panel.hidden { display:none; }
+  .ms-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:8px; font-size:13px; cursor:pointer; }
+  .ms-item:hover { background:var(--dk-hover); }
+  .ms-item input { margin:0; accent-color:var(--dk-accent); }
+  .ms-search-wrap { position:relative; padding:4px 6px 6px; }
+  .ms-search { width:100%; box-sizing:border-box; padding:7px 26px 7px 10px; border-radius:8px;
+    border:1px solid var(--dk-border-s); font-size:12.5px; background:#fff; color:var(--dk-text); }
+  .ms-search:focus { outline:none; border-color:var(--dk-accent); }
+  .ms-search-x { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    border:none; background:none; cursor:pointer; font-size:15px; line-height:1; color:var(--dk-text3);
+    width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+  .ms-search-x:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .ms-tools { display:flex; gap:6px; padding:4px 6px 8px; border-bottom:1px solid var(--dk-border); margin-bottom:4px; }
+  .ms-tools button { font-size:11px; padding:4px 9px; border-radius:7px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
+  .ms-tools button:hover { background:var(--dk-hover); }
+
   /* ============ OS GRID ============ */
   .os-scroll-wrap {
     background: #fff;
@@ -364,12 +394,24 @@
 
     <div class="filters hidden" id="filterPanel">
       <div class="fld">
-        <label>ชื่อ Outsource</label>
-        <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
+        <label>Project</label>
+        <div class="ms" id="msProject"></div>
       </div>
       <div class="fld">
-        <label>Skills</label>
-        <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
+        <label>UAT Lead</label>
+        <div class="ms" id="msLead"></div>
+      </div>
+      <div class="fld">
+        <label>App</label>
+        <div class="ms" id="msApp"></div>
+      </div>
+      <div class="fld">
+        <label>Group</label>
+        <select id="selGroupBy">
+          <option value="booked">Booked</option>
+          <option value="project" selected>Project</option>
+          <option value="none">None</option>
+        </select>
       </div>
       <div class="fld">
         <label>Start Date</label>
@@ -379,16 +421,16 @@
         <label>End Date</label>
         <input type="date" class="date-input" id="fEnd">
       </div>
-      <button class="btn" id="applyBtn">แสดง</button>
       <div class="fld">
-        <label>Group By</label>
-        <select id="selGroupBy">
-          <option value="booked">Booked</option>
-          <option value="project" selected>Project</option>
-          <option value="none">None</option>
-        </select>
+        <label>Outsource Name</label>
+        <input class="search" id="fName" placeholder="ค้นหาชื่อ Outsource...">
       </div>
-      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ Only Conflict</label>
+      <div class="fld">
+        <label>Skill</label>
+        <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
+      </div>
+      <button class="btn" id="applyBtn">ค้นหา</button>
+      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ Show only conflict</label>
     </div>
 
     <div class="os-scroll-wrap" id="osScrollWrap">
@@ -525,7 +567,7 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
   leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
-  loadPrefs, savePrefs, setPrefsOwner, signIn,
+  loadPrefs, savePrefs, setPrefsOwner, signIn, prefSet,
   getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
 
@@ -550,9 +592,12 @@ const S = {
   phaseMap: {},
   osStaff: [],          // [{resourceId, eid, fullName, nickname, nicknameName, roleCode, skills, endDate}]
   osByResourceId: {},
-  projMap: {},           // project_key -> {name, uatLead}
+  projMap: {},           // project_key -> {name, uatLead, appCode, otherApp}
   projectsActive: [],    // [{project_key, project_name}]
   phasesByProject: {},   // project_key -> [{phase_code, phase_label, start_date, end_date}]
+  apps: [],              // master app (is_active) — ตัวเลือก filter App
+  leads: [],              // master pqa_lead (is_active) — ตัวเลือก filter UAT Lead
+  filter: { projects: new Set(), leads: new Set(), apps: new Set() },  // จัดเรียง/rename ให้สอดคล้องกับ Gantt (§ filter panel)
   bookings: [],
   leaves: [],
   bookingsByResource: {},
@@ -744,6 +789,11 @@ function restoreFilterPrefs() {
   if (['booked', 'project', 'none'].includes(p.groupByMode)) $('selGroupBy').value = p.groupByMode;
   if (typeof p.conflict === 'boolean') $('chkConflict').checked = p.conflict;
 
+  // ต้อง restore ก่อน loadAll()/buildFilterMultiSelects() เพื่อให้ multi-select ขึ้น checked ถูกตั้งแต่แรก
+  S.filter.projects = prefSet(p.projects);
+  S.filter.leads    = prefSet(p.leads);
+  S.filter.apps     = prefSet(p.apps);
+
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
 }
 
@@ -756,6 +806,9 @@ function saveFilterPrefs() {
     end: S.range.e,
     groupByMode: $('selGroupBy').value,
     conflict: $('chkConflict').checked,
+    projects: [...S.filter.projects],
+    leads: [...S.filter.leads],
+    apps: [...S.filter.apps],
     panelOpen: !$('filterPanel').classList.contains('hidden'),
   });
 }
@@ -775,7 +828,7 @@ function setDefaultRangeIfEmpty() {
 async function loadAll() {
   $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
   try {
-    const [holidays, roleRows, phaseRows, staffRows, resRows, projRows, phRows, skillRows] = await Promise.all([
+    const [holidays, roleRows, phaseRows, staffRows, resRows, projRows, phRows, skillRows, appRows, leadRows] = await Promise.all([
       loadHolidays(),
       supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
       supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
@@ -784,9 +837,11 @@ async function loadAll() {
         .eq('is_active', true),
       supabase.from('resource').select('resource_id,outsource_eid')
         .eq('resource_type', 'outsource').eq('is_active', true),
-      supabase.from('v_project_wide').select('project_key,project_name,uat_lead').eq('is_active', true),
+      supabase.from('v_project_wide').select('project_key,project_name,uat_lead,app,other_app').eq('is_active', true),
       supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date'),
-      supabase.from('outsource_skill').select('eid,skills')
+      supabase.from('outsource_skill').select('eid,skills'),
+      supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
+      supabase.from('pqa_lead').select('emp_id,short_name').eq('is_active', true).order('short_name', { ascending: true })
     ]);
 
     S.holidays = holidays || {};
@@ -827,7 +882,7 @@ async function loadAll() {
 
     S.projMap = {};
     (projRows.data || []).forEach(p => {
-      S.projMap[p.project_key] = { name: p.project_name, uatLead: p.uat_lead };
+      S.projMap[p.project_key] = { name: p.project_name, uatLead: p.uat_lead, appCode: p.app, otherApp: p.other_app };
     });
     S.projectsActive = (projRows.data || [])
       .map(p => ({ project_key: p.project_key, project_name: p.project_name }))
@@ -838,6 +893,15 @@ async function loadAll() {
       if (!S.projMap[ph.project_key]) return; // เฉพาะ project ที่ active
       (S.phasesByProject[ph.project_key] = S.phasesByProject[ph.project_key] || []).push(ph);
     });
+
+    S.apps = appRows.error ? [] : (appRows.data || []);
+    S.leads = leadRows.error ? [] : (leadRows.data || []);
+    if (appRows.error) console.warn('app master load error', appRows.error);
+    if (leadRows.error) console.warn('pqa_lead master load error', leadRows.error);
+
+    // จัดเรียง/rename filter panel ให้สอดคล้องกับ Gantt — สร้าง multi-select Project/UAT Lead/App
+    // ต้องมาหลัง S.projectsActive/S.leads/S.apps พร้อมแล้ว และก่อน renderGrid() แรกสุด
+    buildFilterMultiSelects();
 
     setDefaultRangeIfEmpty();
     await reloadRangeData();
@@ -923,6 +987,16 @@ function renderThead(days) {
   $('osThead').innerHTML = row1 + row2 + row3;
 }
 
+// Project/UAT Lead/App filter ผ่านหรือไม่ (เช็คเป็น AND บน booking เดียวกัน — ใช้ทั้งกับ
+// matchesFilters ด้านล่าง และตอนขึ้น section header ในโหมด Group by Project)
+function projectPassesFilter(pk) {
+  if (S.filter.projects.size && !S.filter.projects.has(pk)) return false;
+  const proj = S.projMap[pk] || {};
+  if (S.filter.leads.size && !(proj.uatLead && S.filter.leads.has(proj.uatLead))) return false;
+  if (S.filter.apps.size && !(proj.appCode && S.filter.apps.has(proj.appCode))) return false;
+  return true;
+}
+
 function matchesFilters(p) {
   const nameQ = $('fName').value.trim().toLowerCase();
   const skillQ = $('fSkills').value.trim().toLowerCase();
@@ -935,6 +1009,11 @@ function matchesFilters(p) {
   }
   // ซ่อน OS ที่ลาออกไปแล้ว: last working day (end_date) < วันเริ่มของ filter
   if (p.endDate && S.range.s && p.endDate < S.range.s) return false;
+  // Project/UAT Lead/App filter — ต้องมี booking (ในช่วงที่โหลดอยู่) ที่ตรงเงื่อนไขทั้งหมดพร้อมกัน
+  if (S.filter.projects.size || S.filter.leads.size || S.filter.apps.size) {
+    const bk = S.bookingsByResource[p.resourceId] || [];
+    if (!bk.some(b => projectPassesFilter(b.project_key))) return false;
+  }
   return true;
 }
 
@@ -1056,16 +1135,111 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
   let html = '';
   const uniqueRes = new Set();
   S.projectsActive.forEach(proj => {
+    if (!projectPassesFilter(proj.project_key)) return;
     const m = groups[proj.project_key];
     if (!m || !m.size) return;
     const rows = Array.from(m.values()).sort(sortFn);
     rows.forEach(x => uniqueRes.add(x.p.resourceId));
-    html += `<tr class="grp-sep"><td colspan="${colspan}">📁 ${esc(proj.project_name)} (${rows.length} คน)</td></tr>`;
+    // req: หัวกลุ่มโชว์ {Project Name} · {APP} · {LEAD} · ({N} คน) — ข้ามส่วนที่ไม่มีข้อมูล
+    // ไม่ให้มี " · " ค้าง (เหมือนแพตเทิร์น Main Lead ใน calendar.html §5.17)
+    const info = S.projMap[proj.project_key] || {};
+    const appLabel = info.appCode || info.otherApp || '';
+    const leadLabel = info.uatLead || '';
+    const headParts = [proj.project_name, appLabel, leadLabel, `(${rows.length} คน)`]
+      .filter(Boolean).map(esc);
+    html += `<tr class="grp-sep"><td colspan="${colspan}">📁 ${headParts.join(' · ')}</td></tr>`;
     html += rows.map(x => buildRow(x.p, days, conflictMap, proj.project_key)).join('');
   });
 
   return { html, uniqueCount: uniqueRes.size };
 }
+
+/* ============ MULTISELECT (Project/UAT Lead/App — ตามแพตเทิร์นเดียวกับ gantt.html) ============ */
+function buildFilterMultiSelects() {
+  makeMultiSelect('msProject',
+    S.projectsActive.map(p => ({ value: p.project_key, label: p.project_name })),
+    S.filter.projects, 'ทุก Project');
+  makeMultiSelect('msLead',
+    S.leads.map(l => ({ value: l.short_name, label: l.short_name })),
+    S.filter.leads, 'ทุก Lead');
+  makeMultiSelect('msApp',
+    S.apps.map(a => ({ value: a.app_code, label: a.app_code })),
+    S.filter.apps, 'ทุก App');
+}
+function makeMultiSelect(hostId, items, selectedSet, labelAll) {
+  const host = $(hostId);
+  host.innerHTML = `
+    <button class="ms-btn" type="button">${labelAll} <span class="ms-count">▾</span></button>
+    <div class="ms-panel hidden">
+      <div class="ms-search-wrap">
+        <input type="text" class="ms-search" placeholder="พิมพ์เพื่อค้นหา...">
+        <button type="button" class="ms-search-x" title="ล้างคำค้นหา">×</button>
+      </div>
+      <div class="ms-tools">
+        <button type="button" data-act="none">ล้าง</button>
+      </div>
+      <div class="ms-list"></div>
+    </div>`;
+  const btn = host.querySelector('.ms-btn');
+  const panel = host.querySelector('.ms-panel');
+  const list = host.querySelector('.ms-list');
+  const search = host.querySelector('.ms-search');
+  const searchX = host.querySelector('.ms-search-x');
+  list.innerHTML = items.map(it =>
+    `<label class="ms-item" data-label="${esc(String(it.label).toLowerCase())}"><input type="checkbox" value="${esc(it.value)}"${selectedSet.has(it.value)?' checked':''}><span>${esc(it.label)}</span></label>`).join('');
+
+  const applySearch = () => {
+    const q = search.value.trim().toLowerCase();
+    list.querySelectorAll('.ms-item').forEach(el => {
+      el.style.display = (!q || (el.dataset.label||'').includes(q)) ? '' : 'none';
+    });
+  };
+  search.oninput = applySearch;
+  search.onclick = (e) => e.stopPropagation();
+  searchX.onclick = (e) => { e.stopPropagation(); search.value=''; applySearch(); search.focus(); };
+
+  // เปิด dropdown ตัวไหน → หุบตัวอื่นทั้งหมดก่อน (เปิดได้ทีละอันเท่านั้น)
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = panel.classList.contains('hidden');
+    closeAllMsPanels();
+    if (willOpen) { panel.classList.remove('hidden'); search.focus(); }
+  };
+  panel.onclick = (e) => { e.stopPropagation(); };
+  list.onchange = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input:checked').forEach(cb => selectedSet.add(cb.value));
+    updateMsLabel(host, items, selectedSet, labelAll);
+    renderGrid();
+    saveFilterPrefs();
+  };
+  host.querySelector('[data-act=none]').onclick = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input').forEach(cb => cb.checked=false);
+    updateMsLabel(host, items, selectedSet, labelAll); renderGrid();
+    saveFilterPrefs();
+  };
+  updateMsLabel(host, items, selectedSet, labelAll);
+}
+function updateMsLabel(host, items, selectedSet, labelAll) {
+  const btn = host.querySelector('.ms-btn');
+  const n = selectedSet.size;
+  let label;
+  if (n === 0) {
+    label = labelAll;
+  } else if (n === 1) {
+    const only = [...selectedSet][0];
+    const it = items.find(x => x.value === only);
+    label = it ? it.label : labelAll;
+  } else {
+    label = `${n} รายการ`;
+  }
+  btn.innerHTML = `${esc(String(label))} <span class="ms-count">▾</span>`;
+}
+function closeAllMsPanels() {
+  document.querySelectorAll('.ms-panel').forEach(p => p.classList.add('hidden'));
+}
+document.addEventListener('click', closeAllMsPanels);
 
 function renderTbody(days) {
   const conflictMap = computeConflictMap(days);
@@ -1145,6 +1319,7 @@ $('applyBtn').addEventListener('click', async () => {
 /* ============ ESC closes any open modal (req 2) ============ */
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if (document.querySelector('.ms-panel:not(.hidden)')) { closeAllMsPanels(); return; }
   if (!$('lpOverlay').classList.contains('hidden')) window.closeLP();
   else if (!$('mbOverlay').classList.contains('hidden')) window.closeMB();
 });
