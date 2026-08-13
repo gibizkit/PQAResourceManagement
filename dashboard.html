@@ -100,13 +100,11 @@
 
   /* ---- dashboard tables (generic) ---- */
   .dash-table-wrap { background:#fff; border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
-  /* By Lead tab stacks 3 sections (Main Lead / Sub Lead / Executor, 2026-08-13) — the
-     shared .section-title (theme.css) has a dashed top rule + top margin meant for
-     mid-page dividers; the first section sits right under the tab bar so it shouldn't
-     have either. Also shrink each stacked table so all 3 fit without one eating the
-     whole viewport. */
+  /* By Lead tab shows one role's table at a time, picked via #leadRoleSelect
+     (2026-08-13) — the shared .section-title (theme.css) has a dashed top rule + top
+     margin meant for mid-page dividers; here it's the very first thing under the tab
+     bar, so it shouldn't have either. */
   #viewContainer .section-title:first-child { margin-top:0; border-top:none; padding-top:0; }
-  #viewContainer .section-title + .dash-table-wrap { max-height:min(340px, 34vh); }
   table.dash-table { width:100%; border-collapse:collapse; font-size:13px; }
   table.dash-table th {
     position:sticky; top:0; background:var(--dk-surface); text-align:left; padding:9px 12px;
@@ -281,6 +279,18 @@
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
 
+      <!-- By Lead grouping dropdown (2026-08-13, replaced the earlier "3 stacked tables"
+           layout per Gibb's request) — only one role's matrix table shows at a time,
+           picked here. Hidden on every tab except By Lead (toggled in switchDashView()). -->
+      <div class="filters filters-inline hidden" id="leadRoleControls">
+        <span class="period-lbl">Group by:</span>
+        <select id="leadRoleSelect">
+          <option value="main">Main Lead</option>
+          <option value="sub">Sub Lead</option>
+          <option value="exec">Internal Executor</option>
+        </select>
+      </div>
+
       <!-- Custom Start–End range (compact inline "ค้นหา Project:") — decides WHICH projects
            show up in every tab (phase dates OR signoff_date overlap this window — see
            projectMatchesRange()). It no longer restricts the MD numbers themselves: once a
@@ -440,6 +450,7 @@ const S = {
   // changes — see §5.37 in CLAUDE.md.
   dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
+  leadRoleFilter: 'main',       // By Lead tab grouping: 'main' | 'sub' | 'exec' (#leadRoleSelect)
   chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
   overallRange: { s:'', e:'' }, // selected Start/End — "ค้นหา Project" search window (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
@@ -530,6 +541,12 @@ function restoreDashPrefs(){
     S.dashView = p.dashView;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
   }
+  $('leadRoleControls').classList.toggle('hidden', S.dashView !== 'lead');
+
+  if (['main', 'sub', 'exec'].includes(p.leadRoleFilter)) {
+    S.leadRoleFilter = p.leadRoleFilter;
+  }
+  $('leadRoleSelect').value = S.leadRoleFilter;
 
   if (typeof p.chartCollapsed === 'boolean') S.chartCollapsed = p.chartCollapsed;
 
@@ -1248,13 +1265,22 @@ function roleLabelFor(code){
    column already uses, computed only over projects that matched the search — so the
    number is consistent with the rest of the page. Projects with no main lead simply
    never get added to any lead's total (no double counting, no orphan bucket). */
-/* By Lead tab — split into 3 sections (2026-08-13, requested by Gibb): Main Lead,
- * Sub Lead, Internal Executor. Each section is its own matrix table (Lead × App).
- * Only the Main Lead section carries a Total MD column — MD is only ever summed from
+/* By Lead tab — one matrix table (Lead × App) at a time, for whichever role is picked
+ * in #leadRoleSelect (S.leadRoleFilter). First shipped as 3 tables stacked vertically
+ * (2026-08-13), then Gibb asked for a dropdown instead so only one table shows at a
+ * time — the role-classification/coverage-building logic below is unchanged from that
+ * version, only the rendering step (build 1 section instead of 3) changed.
+ * Only the Main Lead table carries a Total MD column — MD is only ever summed from
  * projects where the lead is_main (see §5.18/§5.20), and Gibb confirmed Sub Lead /
- * Executor sections should show project counts only, no MD column, to avoid implying
- * a per-role MD split that doesn't exist. App columns are shared across all 3 sections
- * (union of apps seen in any role) so the tables stay comparable side by side. */
+ * Executor should show project counts only, no MD column, to avoid implying a
+ * per-role MD split that doesn't exist. The App column set is still computed as the
+ * union across all 3 roles (not just the selected one) so switching the dropdown
+ * doesn't shuffle the columns around. */
+const LEAD_ROLE_META = {
+  main: { title: 'Main Lead', withMD: true },
+  sub:  { title: 'Sub Lead', withMD: false },
+  exec: { title: 'Internal Executor', withMD: false },
+};
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
@@ -1330,10 +1356,9 @@ function renderLeadView(container){
       </div>`;
   }
 
-  container.innerHTML =
-    buildSection('Main Lead', coverage.main, true) +
-    buildSection('Sub Lead', coverage.sub, false) +
-    buildSection('Internal Executor', coverage.exec, false);
+  const roleKey = Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? S.leadRoleFilter : 'main';
+  const meta = LEAD_ROLE_META[roleKey];
+  container.innerHTML = buildSection(meta.title, coverage[roleKey], meta.withMD);
 }
 
 /* ---- Signoff ---- */
@@ -1432,6 +1457,11 @@ function wireToolbar(){
     renderAll();
     hideDashLoading();
   });
+  $('leadRoleSelect').addEventListener('change', () => {
+    S.leadRoleFilter = $('leadRoleSelect').value;
+    savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter });
+    renderLeadView($('viewContainer')); // only the By Lead table needs to re-render
+  });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
     if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
@@ -1449,6 +1479,7 @@ function switchDashView(view){
   S.dashView = view;
   savePrefs(PAGE, { dashView: S.dashView });
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
+  $('leadRoleControls').classList.toggle('hidden', view !== 'lead');
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
   // same "hidden while (re)building, revealed only after" contract as loadPeriod).
