@@ -605,11 +605,16 @@
         <div id="pfSubLeadRows"></div>
         <button type="button" class="btn" onclick="addProjectSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
       </div>
+      <div class="field">
+        <label>Internal Executor (เพิ่มได้หลายคน)</label>
+        <div id="pfExecutorRows"></div>
+        <button type="button" class="btn" onclick="addProjectExecutorRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Internal Executor</button>
+      </div>
 
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-table-scroll">
         <div class="phase-row">
-          <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Resource</div><div>Total WD</div><div style="text-align:center">AI</div><div>AI Note</div>
+          <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Required OS</div><div>Total WD</div><div style="text-align:center">AI</div><div>AI Note</div>
         </div>
         <div id="pfPhaseRows"></div>
       </div>
@@ -646,7 +651,7 @@
 
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, parseInputDate, statusPill, fmtDate,
-         leadOptionsHTML, loadProjectLeads, saveProjectLeads,
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
          loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn } from './common.js';
 
 // holiday map { 'yyyy-MM-dd': desc } ใช้เฉพาะคำนวณ WD ใน Project modal (แยกจาก STATE.holidays ที่เป็น array ของแท็บ Holiday)
@@ -873,12 +878,14 @@ function buildProjectPhaseRows(data) {
       ? `<div></div><div></div>`
       : `<div class="ph-ai-cell"><input type="checkbox" class="ph-ai" ${aiOn ? 'checked' : ''} title="AI Assisted"></div>
          <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
+    // SIT เป็นงานทีมพัฒนา ไม่ใช่ทีม UAT ที่ต้อง book resource → ไม่มีช่อง Required OS ให้กรอกเลย
+    const resCell = isSit ? `<div></div>` : `<input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">`;
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
       <div class="ph-wd ph-calc">${wd || ''}</div>
-      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">
+      ${resCell}
       <div class="ph-totalwd ph-calc">${totalWd || ''}</div>
       ${aiCells}
     </div>`;
@@ -904,7 +911,9 @@ function buildProjectPhaseRows(data) {
     };
     row.querySelector('.ph-start').addEventListener('change', recalc);
     row.querySelector('.ph-end').addEventListener('change', recalc);
-    row.querySelector('.ph-res').addEventListener('input', recalc);
+    // SIT ไม่มีช่อง Required OS (.ph-res) ใน DOM แล้ว — ผูก listener เฉพาะแถวที่มีจริง
+    const resEl = row.querySelector('.ph-res');
+    if (resEl) resEl.addEventListener('input', recalc);
   });
 }
 
@@ -1047,16 +1056,36 @@ window.addProjectSubLeadRow = function(selected) {
   $('pfSubLeadRows').appendChild(row);
 };
 
-function buildProjectLeadPicker(main, subs) {
+window.addProjectExecutorRow = function(selected) {
+  const row = document.createElement('div');
+  row.className = 'sublead-row';
+  const sel = document.createElement('select');
+  sel.className = 'executor-lead';
+  sel.innerHTML = leadOptionsHTML(STATE.pqaLeads, selected || '', '— เลือก Lead —');
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn';
+  del.textContent = '✕';
+  del.title = 'ลบ Internal Executor แถวนี้';
+  del.onclick = () => row.remove();
+  row.appendChild(sel);
+  row.appendChild(del);
+  $('pfExecutorRows').appendChild(row);
+};
+
+function buildProjectLeadPicker(main, subs, executors) {
   $('pfMainLead').innerHTML = leadOptionsHTML(STATE.pqaLeads, main || '', '— ไม่ระบุ —');
   $('pfSubLeadRows').innerHTML = '';
   (subs || []).forEach(id => window.addProjectSubLeadRow(id));
+  $('pfExecutorRows').innerHTML = '';
+  (executors || []).forEach(id => window.addProjectExecutorRow(id));
 }
 
 function readProjectLeadPicker() {
   return {
     main: $('pfMainLead').value || null,
-    subs: [...document.querySelectorAll('#pfSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean)
+    subs: [...document.querySelectorAll('#pfSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean),
+    executors: [...document.querySelectorAll('#pfExecutorRows .executor-lead')].map(s => s.value).filter(Boolean)
   };
 }
 
@@ -1076,7 +1105,7 @@ window.openAddProject = async function() {
   $('pfSignoffUrl').value = '';
   $('pfNote').value = '';
   $('pfActiveField').style.display = 'none';   // add mode: โปรเจกต์ใหม่ active อยู่แล้ว
-  buildProjectLeadPicker('', []);
+  buildProjectLeadPicker('', [], []);
   buildProjectPhaseRows(null);
   $('pfFormErr').textContent = '';
   $('projOverlay').classList.remove('hidden');
@@ -1100,11 +1129,11 @@ window.openEditProject = async function(key) {
   $('pfActiveField').style.display = 'flex';   // แก้ is_active ได้ตอน edit (แทนปุ่มลบ)
   $('pfActive').checked = p.is_active !== false;
   $('pfFormErr').textContent = '';
-  buildProjectLeadPicker('', []);
+  buildProjectLeadPicker('', [], []);
   $('projOverlay').classList.remove('hidden');
 
   const pl = await loadProjectLeads(key);
-  if (editingProjectKey === key) buildProjectLeadPicker(pl.main, pl.subs);   // กันเคสเปิดโปรเจกต์อื่นทับ
+  if (editingProjectKey === key) buildProjectLeadPicker(pl.main, pl.subs, pl.executors);   // กันเคสเปิดโปรเจกต์อื่นทับ
 
   // โหลด phase จริงจาก project_phase
   const { data: phs } = await supabase.from('project_phase')
@@ -1126,17 +1155,20 @@ function readProjectPhases() {
   return [...document.querySelectorAll('#pfPhaseRows .phase-row')].map(r => {
     const wdText = r.querySelector('.ph-wd').textContent.trim();
     const phaseCode = r.dataset.phase;
+    const isSit = phaseCode === 'SIT';
     // AI: SIT ไม่มีช่องให้ติ๊ก (ส่ง false/null เสมอ) · ไม่ติ๊ก = note ต้องเป็น null
     // ตรงกับ check constraint project_phase_ai_not_sit / project_phase_ai_note_needs_flag
     const aiEl = r.querySelector('.ph-ai');
-    const aiOn = phaseCode !== 'SIT' && !!(aiEl && aiEl.checked);
+    const aiOn = !isSit && !!(aiEl && aiEl.checked);
     const noteEl = r.querySelector('.ph-ainote');
+    const resEl = r.querySelector('.ph-res');
     return {
       phase_code: phaseCode,
       start_date: r.querySelector('.ph-start').value || null,
       end_date: r.querySelector('.ph-end').value || null,
-      md: phaseCode === 'SIT' ? null : (wdText === '' ? null : Number(wdText)),   // SIT ต้องส่ง md=null เสมอ ไม่มี WD
-      resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+      md: isSit ? null : (wdText === '' ? null : Number(wdText)),   // SIT ต้องส่ง md=null เสมอ ไม่มี WD
+      // SIT ไม่มีช่อง Required OS ให้กรอกแล้ว (ไม่มี .ph-res ใน DOM) → ส่ง null เสมอ
+      resource_count: isSit ? null : (resEl.value === '' ? null : Number(resEl.value)),
       ai_assisted: aiOn,
       ai_note: aiOn ? ((noteEl && noteEl.value.trim()) || null) : null,
     };
@@ -1165,6 +1197,11 @@ window.saveProject = async function() {
   }
   if (!$('pfMainLead').value) {
     err.textContent = 'กรุณาเลือก Main Lead';
+    return;
+  }
+  // req 2026-08-13: Main Lead / Sub Lead / Internal Executor ห้ามเป็นคนเดียวกัน
+  if (leadPickerHasDuplicates(readProjectLeadPicker())) {
+    err.textContent = 'Main Lead, Sub Lead, Internal Executor ต้องไม่ใช่คนเดียวกัน';
     return;
   }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
@@ -1207,7 +1244,7 @@ window.saveProject = async function() {
 
   // ---- leads (project_lead) — ต้องเขียนทุกครั้ง ไม่งั้น filter ด้วย Lead หาโปรเจกต์ไม่เจอ ----
   const pickedLeads = readProjectLeadPicker();
-  const leadRes = await saveProjectLeads(key, pickedLeads.main, pickedLeads.subs);
+  const leadRes = await saveProjectLeads(key, pickedLeads.main, pickedLeads.subs, pickedLeads.executors);
   if (leadRes.error) {
     btn.disabled = false;
     btn.textContent = 'บันทึก';

@@ -588,23 +588,25 @@ export function leadOptionsHTML(leads, selected = '', placeholder = '— เล�
 /**
  * โหลด lead ของโปรเจกต์หนึ่ง
  * @param {string} projectKey
- * @returns {Promise<{main: string|null, subs: string[]}>}
+ * @returns {Promise<{main: string|null, subs: string[], executors: string[]}>}
  */
 export async function loadProjectLeads(projectKey) {
   const { data, error } = await supabase.from('project_lead')
-    .select('pqa_emp_id,is_main').eq('project_key', projectKey);
-  if (error) { console.warn('loadProjectLeads error:', error); return { main: null, subs: [] }; }
+    .select('pqa_emp_id,is_main,is_executor').eq('project_key', projectKey);
+  if (error) { console.warn('loadProjectLeads error:', error); return { main: null, subs: [], executors: [] }; }
   const rows = data || [];
   const main = rows.find(r => r.is_main);
   return {
     main: main ? main.pqa_emp_id : null,
-    subs: rows.filter(r => !r.is_main).map(r => r.pqa_emp_id)
+    subs: rows.filter(r => !r.is_main && !r.is_executor).map(r => r.pqa_emp_id),
+    executors: rows.filter(r => r.is_executor).map(r => r.pqa_emp_id)
   };
 }
 
 /**
  * เขียน lead ของโปรเจกต์ (replace ทั้งชุด) — main lead ได้คนเดียว (unique index
- * project_lead_one_main_uk บังคับอยู่แล้ว), sub lead กี่คนก็ได้
+ * project_lead_one_main_uk บังคับอยู่แล้ว), sub lead กี่คนก็ได้, และ Internal Executor
+ * (บทบาทที่ 3 — is_main=false, is_executor=true) กี่คนก็ได้เช่นกัน
  *
  * หมายเหตุ: RLS ที่บล็อกจะไม่คืน error แต่ไม่มีแถวถูกเขียน (ดู memory
  * "RLS silent no-op writes") จึงเช็คจำนวนแถวที่คืนกลับด้วยเสมอ
@@ -612,19 +614,25 @@ export async function loadProjectLeads(projectKey) {
  * @param {string} projectKey
  * @param {string|null} mainEmpId
  * @param {string[]} subEmpIds
+ * @param {string[]} executorEmpIds
  * @returns {Promise<{error: {message:string}|null}>}
  */
-export async function saveProjectLeads(projectKey, mainEmpId, subEmpIds = []) {
+export async function saveProjectLeads(projectKey, mainEmpId, subEmpIds = [], executorEmpIds = []) {
   const rows = [];
   const seen = new Set();
   if (mainEmpId) {
-    rows.push({ project_key: projectKey, pqa_emp_id: mainEmpId, is_main: true });
+    rows.push({ project_key: projectKey, pqa_emp_id: mainEmpId, is_main: true, is_executor: false });
     seen.add(mainEmpId);
   }
   for (const id of (subEmpIds || [])) {
     if (!id || seen.has(id)) continue;   // กันซ้ำกับ main และซ้ำกันเอง
     seen.add(id);
-    rows.push({ project_key: projectKey, pqa_emp_id: id, is_main: false });
+    rows.push({ project_key: projectKey, pqa_emp_id: id, is_main: false, is_executor: false });
+  }
+  for (const id of (executorEmpIds || [])) {
+    if (!id || seen.has(id)) continue;   // กันซ้ำกับ main/sub และซ้ำกันเอง
+    seen.add(id);
+    rows.push({ project_key: projectKey, pqa_emp_id: id, is_main: false, is_executor: true });
   }
 
   const del = await supabase.from('project_lead').delete().eq('project_key', projectKey);
@@ -645,6 +653,18 @@ export async function saveProjectLeads(projectKey, mainEmpId, subEmpIds = []) {
     return { error: { message: 'บันทึก Lead ไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์เขียน project_lead' } };
   }
   return { error: null };
+}
+
+/**
+ * เช็คว่า Main Lead / Sub Lead / Internal Executor ที่เลือกไว้ในฟอร์ม Project มีคนซ้ำกันไหม
+ * (คนคนเดียวรับได้แค่บทบาทเดียวต่อโปรเจกต์ — ตาราง project_lead มี PK เป็น
+ * (project_key, pqa_emp_id) อยู่แล้ว) เรียกก่อนกด Save ในทั้ง gantt.html และ admin.html
+ * @param {{main:string|null, subs:string[], executors:string[]}} picked
+ * @returns {boolean} true = มีคนซ้ำกันอย่างน้อยหนึ่งคน (ต้องกันไม่ให้เซฟ)
+ */
+export function leadPickerHasDuplicates(picked){
+  const all = [picked.main, ...(picked.subs || []), ...(picked.executors || [])].filter(Boolean);
+  return new Set(all).size !== all.length;
 }
 
 /* ============ MONTH LABEL (Mmm-yyyy) ============ */

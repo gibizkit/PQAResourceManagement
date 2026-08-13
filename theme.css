@@ -554,21 +554,20 @@ tbody tr:hover {
   padding-bottom: 2px;
 }
 
-/* 8 คอลัมน์: Phase | Start | End | WD | Resource | Total WD | AI | AI Note
+/* 8 คอลัมน์: Phase | Start | End | WD | Required OS | Total WD | AI | AI Note
    (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์)
-   minmax() กันคอลัมน์ Start/End/AI Note บีบจนล้น — grid item ตัวใดตัวหนึ่ง
-   (โดยเฉพาะ input) มี min-width:auto เป็นค่าเริ่มต้นของ browser ถ้าไม่ set
-   min-width:0 ให้ชัดๆ มันจะไม่ยอมหดตามคอลัมน์ แล้วดันทั้งแถวล้นจน modal
-   ขึ้น scrollbar แนวนอน (ห้ามลบ regel นี้ทิ้ง) */
+   Start/End เป็น fixed width แคบๆ (2026-08-13: ย่อลงจาก minmax(140px,1fr) ตามที่ขอ
+   — dd/mm/yyyy + ไอคอนปฏิทินพอดีที่ 100px) ส่วนที่เหลือยกให้ AI Note (minmax(...,1fr))
+   min-width:0 บน grid item (โดยเฉพาะ input) กันแถวล้น (ห้ามลบ regel นี้ทิ้ง) */
 .phase-row {
   display: grid;
-  grid-template-columns: 76px minmax(140px,1fr) minmax(140px,1fr) 46px 56px 60px 34px minmax(150px,1.5fr);
+  grid-template-columns: 76px 100px 100px 46px 66px 62px 34px minmax(170px,1fr);
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
   border-radius: 8px;
   margin-bottom: 3px;
-  min-width: 800px;
+  min-width: 730px;
 }
 
 .phase-row > * {
@@ -627,12 +626,11 @@ tbody tr:hover {
   color: rgba(34, 28, 21, 0.28);
 }
 
+/* 2026-08-13: เลิกเป็นกล่อง highlight (มี background+border เหมือน badge) —
+   ปล่อยว่างจนกว่าจะคำนวณได้ แล้วเติมตัวเลขเป็นข้อความเปล่าๆ กึ่งกลางคอลัมน์ */
 .phase-row .ph-calc {
   padding: 7px 4px;
   font-size: 12.5px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: var(--dk-surface);
   color: var(--dk-text2);
   text-align: center;
   font-weight: 600;

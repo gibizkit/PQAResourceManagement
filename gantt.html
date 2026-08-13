@@ -178,6 +178,7 @@
     min-width:0; }
   .p-meta-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .p-lead-inline { color:var(--dk-accent); font-weight:700; }
+  .p-lead-sub { color:var(--dk-text3); }
   /* Total Booked/Plan MD badge — prepended to the summary row meta line (moved up from the
      old Milestones row, see projectTotalMD() in the row-builder section) */
   .p-md-badge { display:inline-flex; align-items:center; flex:0 0 auto; font-size:11px; font-weight:700;
@@ -398,11 +399,16 @@
         <div id="fSubLeadRows"></div>
         <button type="button" class="btn" id="fAddSubLeadBtn" onclick="addSubLeadRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Sub Lead</button>
       </div>
+      <div class="field">
+        <label>Internal Executor (เพิ่มได้หลายคน)</label>
+        <div id="fExecutorRows"></div>
+        <button type="button" class="btn" id="fAddExecutorBtn" onclick="addExecutorRow()" style="align-self:flex-start;margin-top:4px">+ เพิ่ม Internal Executor</button>
+      </div>
 
       <div class="section-title">Phases (กรอกเฉพาะเฟสที่ใช้)</div>
       <div class="phase-table-scroll">
         <div class="phase-row">
-          <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Resource</div><div>Total WD</div><div style="text-align:center">AI</div><div>AI Note</div>
+          <div>Phase</div><div>Start</div><div>End</div><div>WD</div><div>Required OS</div><div>Total WD</div><div style="text-align:center">AI</div><div>AI Note</div>
         </div>
         <div id="phaseRows"></div>
       </div>
@@ -540,7 +546,7 @@
 
 <script type="module">
 import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, monthLabel, defaultFilterEndStr,
-         leadOptionsHTML, loadProjectLeads, saveProjectLeads,
+         leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
          loadProjectStatuses, statusOptionsHTML,
          loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
          getCachedRole, setCachedRole, paintNavAdmin } from './common.js';
@@ -765,7 +771,7 @@ async function loadAll(){
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
       supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
-      supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
+      supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
       supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
       supabase.from('booking').select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true),
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
@@ -834,7 +840,7 @@ async function loadAll(){
     (plRes.data || []).forEach(pl => {
       const l = leadByEmp[pl.pqa_emp_id];
       (S.leadsByProject[pl.project_key] ||= []).push({
-        emp_id: pl.pqa_emp_id, short_name: l ? l.short_name : pl.pqa_emp_id, is_main: pl.is_main
+        emp_id: pl.pqa_emp_id, short_name: l ? l.short_name : pl.pqa_emp_id, is_main: pl.is_main, is_executor: pl.is_executor
       });
     });
 
@@ -1403,15 +1409,21 @@ function summaryRow(p, days){
   const pk = p.project_key;
   const collapsed = S.collapsed[pk];
   const { mn, mx } = projSpan(pk, true);   // project span excludes SIT
-  const lead = (S.leadsByProject[pk]||[]).find(l => l.is_main) || (S.leadsByProject[pk]||[])[0];
+  const leadsArr = S.leadsByProject[pk]||[];
+  const lead = leadsArr.find(l => l.is_main) || leadsArr[0];
+  const subLeadNames = leadsArr.filter(l => !l.is_main && !l.is_executor).map(l => l.short_name);
+  const executorNames = leadsArr.filter(l => l.is_executor).map(l => l.short_name);
   const app = p.app_code || p.other_app || '';
 
   const cells = runCells(days, mn, mx, 'var(--ph-summary)', { summary:true });
 
   // req 4: no project_key in meta — app · lead · status
+  // 2026-08-13: ต่อท้ายด้วย Sub Lead(s) แล้ว Internal Executor(s) เป็นตัวเทา (ยืนยันโดยเจ้าของระบบ)
   const metaParts = [];
   if (app) metaParts.push(esc(app));
   metaParts.push(lead ? `<span class="p-lead-inline">${esc(lead.short_name)}</span>` : '— ไม่มี Lead —');
+  if (subLeadNames.length) metaParts.push(`<span class="p-lead-sub">${esc(subLeadNames.join(', '))}</span>`);
+  if (executorNames.length) metaParts.push(`<span class="p-lead-sub">${esc(executorNames.join(', '))}</span>`);
   const meta = metaParts.join(' · ');
 
   // Total Booked/Plan MD ทั้งโปรเจกต์ (ไม่รวม SIT) — badge นำหน้า meta line
@@ -1632,7 +1644,8 @@ function buildPhaseRows(data){
   $('phaseRows').innerHTML = PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
     const isSit = ph.code === 'SIT';
-    // req 6: เฟส SIT ไม่ต้องมี MD — WD / Total WD เว้นว่างเสมอ (resource_count ยังกรอกได้ปกติ)
+    // req 6: เฟส SIT ไม่ต้องมี MD — WD / Total WD เว้นว่างเสมอ
+    // 2026-08-13: SIT ไม่มีช่อง Required OS ให้กรอกแล้ว (ดู resCell ด้านล่าง)
     const wd = isSit ? 0 : calcWD(d.start_date, d.end_date);
     const res = d.resource_count ?? '';
     const totalWd = (!isSit && wd && res !== '') ? wd * Number(res) : 0;
@@ -1643,12 +1656,14 @@ function buildPhaseRows(data){
       ? `<div></div><div></div>`
       : `<div class="ph-ai-cell"><input type="checkbox" class="ph-ai" ${aiOn ? 'checked' : ''} title="AI Assisted"></div>
          <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
+    // SIT เป็นงานทีมพัฒนา ไม่ใช่ทีม UAT ที่ต้อง book resource → ไม่มีช่อง Required OS ให้กรอกเลย
+    const resCell = isSit ? `<div></div>` : `<input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">`;
     return `<div class="phase-row" data-phase="${ph.code}">
       <div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
       <div class="ph-wd ph-calc">${isSit ? '' : (wd || '')}</div>
-      <input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">
+      ${resCell}
       <div class="ph-totalwd ph-calc">${isSit ? '' : (totalWd || '')}</div>
       ${aiCells}
     </div>`;
@@ -1675,7 +1690,9 @@ function buildPhaseRows(data){
     };
     row.querySelector('.ph-start').addEventListener('change', recalc);
     row.querySelector('.ph-end').addEventListener('change', recalc);
-    row.querySelector('.ph-res').addEventListener('input', recalc);
+    // SIT ไม่มีช่อง Required OS (.ph-res) ใน DOM แล้ว — ผูก listener เฉพาะแถวที่มีจริง
+    const resEl = row.querySelector('.ph-res');
+    if (resEl) resEl.addEventListener('input', recalc);
   });
 }
 /* ---- Lead pickers ในโมดัล Project (S.leads = pqa_lead ที่ active) ---- */
@@ -1695,15 +1712,31 @@ window.addSubLeadRow = function(selected){
   row.appendChild(sel); row.appendChild(del);
   $('fSubLeadRows').appendChild(row);
 };
-function buildLeadPicker(main, subs){
+window.addExecutorRow = function(selected){
+  const row = document.createElement('div');
+  row.className = 'sublead-row';
+  const sel = document.createElement('select');
+  sel.className = 'executor-lead';
+  sel.innerHTML = leadOptionsHTML(S.leads, selected || '', '— เลือก Lead —');
+  const del = document.createElement('button');
+  del.type = 'button'; del.className = 'btn'; del.textContent = '✕';
+  del.title = 'ลบ Internal Executor แถวนี้';
+  del.onclick = () => row.remove();
+  row.appendChild(sel); row.appendChild(del);
+  $('fExecutorRows').appendChild(row);
+};
+function buildLeadPicker(main, subs, executors){
   fillMainLeadOptions(main || '');
   $('fSubLeadRows').innerHTML = '';
   (subs || []).forEach(id => window.addSubLeadRow(id));
+  $('fExecutorRows').innerHTML = '';
+  (executors || []).forEach(id => window.addExecutorRow(id));
 }
 function readLeadPicker(){
   return {
     main: $('fMainLead').value || null,
-    subs: [...document.querySelectorAll('#fSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean)
+    subs: [...document.querySelectorAll('#fSubLeadRows .sub-lead')].map(s => s.value).filter(Boolean),
+    executors: [...document.querySelectorAll('#fExecutorRows .executor-lead')].map(s => s.value).filter(Boolean)
   };
 }
 
@@ -1739,7 +1772,7 @@ window.openProjAdd = async function(){
   // default Main Lead = ตัวผู้ใช้ที่ล็อกอิน ถ้าอยู่ใน pqa_lead (เลือกใหม่ได้)
   const me = S.user && S.user.pqa_emp_id;
   const meIsLead = me && S.leads.some(l => l.emp_id === me);
-  buildLeadPicker(meIsLead ? me : '', []);
+  buildLeadPicker(meIsLead ? me : '', [], []);
   buildPhaseRows(null);
   $('projFormErr').textContent='';
   $('projOverlay').classList.remove('hidden');
@@ -1763,12 +1796,12 @@ window.openProjEdit = async function(key){
   $('fSignoffUrl').value = p.signoff_url || '';
   $('fNote').value = p.project_note || '';
   $('projFormErr').textContent='';
-  buildLeadPicker('', []);
+  buildLeadPicker('', [], []);
   buildPhaseRows(null);
   $('projOverlay').classList.remove('hidden');
 
   const pl = await loadProjectLeads(key);
-  if (editingKey === key) buildLeadPicker(pl.main, pl.subs);   // กันเคสผู้ใช้เปิดโปรเจกต์อื่นทับ
+  if (editingKey === key) buildLeadPicker(pl.main, pl.subs, pl.executors);   // กันเคสผู้ใช้เปิดโปรเจกต์อื่นทับ
 
   const { data: phs } = await supabase.from('project_phase')
     .select('project_phase_id,phase_code,phase_label,start_date,end_date,md,resource_count,ai_assisted,ai_note')
@@ -1794,13 +1827,15 @@ function readPhaseInputs(){
     const aiEl = r.querySelector('.ph-ai');
     const aiOn = !isSit && !!(aiEl && aiEl.checked);
     const noteEl = r.querySelector('.ph-ainote');
+    const resEl = r.querySelector('.ph-res');
     return {
       phase_code: r.dataset.phase,
       start_date: r.querySelector('.ph-start').value || null,
       end_date:   r.querySelector('.ph-end').value || null,
       // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง) — req 6: SIT ไม่มี MD เลย ส่ง null เสมอ
       md:         isSit ? null : (wdText === '' ? null : Number(wdText)),
-      resource_count: r.querySelector('.ph-res').value === '' ? null : Number(r.querySelector('.ph-res').value),
+      // SIT ไม่มีช่อง Required OS ให้กรอกแล้ว (ไม่มี .ph-res ใน DOM) → ส่ง null เสมอ
+      resource_count: isSit ? null : (resEl.value === '' ? null : Number(resEl.value)),
       ai_assisted: aiOn,
       ai_note:     aiOn ? ((noteEl && noteEl.value.trim()) || null) : null,
     };
@@ -1818,6 +1853,8 @@ window.saveProj = async function(){
   if (!name){ err.textContent='กรุณากรอกชื่อ Project'; return; }
   if (!app && !otherApp){ err.textContent='ต้องระบุ App หรือ Other App อย่างน้อยหนึ่งอย่าง'; return; }
   if (!$('fMainLead').value){ err.textContent='กรุณาเลือก Main Lead'; return; }
+  // req 2026-08-13: Main Lead / Sub Lead / Internal Executor ห้ามเป็นคนเดียวกัน
+  if (leadPickerHasDuplicates(readLeadPicker())){ err.textContent='Main Lead, Sub Lead, Internal Executor ต้องไม่ใช่คนเดียวกัน'; return; }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
   const uatStartRow = document.querySelector('#phaseRows .phase-row[data-phase="UAT"] .ph-start');
   if (!uatStartRow || !uatStartRow.value){ err.textContent='กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project'; return; }
@@ -1850,7 +1887,7 @@ window.saveProj = async function(){
 
   // ---- leads (project_lead) — ต้องเขียนทุกครั้ง ไม่งั้น filter ด้วย Lead หาโปรเจกต์ไม่เจอ ----
   const picked = readLeadPicker();
-  const leadRes = await saveProjectLeads(key, picked.main, picked.subs);
+  const leadRes = await saveProjectLeads(key, picked.main, picked.subs, picked.executors);
   if (leadRes.error){
     btn.disabled=false; btn.textContent='บันทึก';
     err.textContent = 'บันทึก Lead ไม่สำเร็จ: ' + leadRes.error.message; return;

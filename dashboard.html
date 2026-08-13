@@ -583,7 +583,7 @@ async function loadMasterData(){
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
     supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role').eq('is_active', true),
-    supabase.from('project_lead').select('project_key,pqa_emp_id,is_main'),
+    supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
     supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,sort_order'),
   ]);
 
@@ -985,19 +985,34 @@ function subLeadMap(){
   S.leadsAll.forEach(l => { nameOf[l.emp_id] = l.short_name || l.nickname || l.emp_id; });
   const map = {};
   S.projectLeadRows.forEach(pl => {
-    if (pl.is_main) return;
+    if (pl.is_main || pl.is_executor) return;
+    (map[pl.project_key] = map[pl.project_key] || []).push(nameOf[pl.pqa_emp_id] || pl.pqa_emp_id);
+  });
+  Object.values(map).forEach(a => a.sort((x,y)=>String(x).localeCompare(String(y))));
+  return map;
+}
+/* Internal Executor names per project (project_lead.is_executor = true) — added 2026-08-13,
+   same shape/pattern as subLeadMap() above, shown as another grey line in the Lead cell. */
+function executorMap(){
+  const nameOf = {};
+  S.leadsAll.forEach(l => { nameOf[l.emp_id] = l.short_name || l.nickname || l.emp_id; });
+  const map = {};
+  S.projectLeadRows.forEach(pl => {
+    if (!pl.is_executor) return;
     (map[pl.project_key] = map[pl.project_key] || []).push(nameOf[pl.pqa_emp_id] || pl.pqa_emp_id);
   });
   Object.values(map).forEach(a => a.sort((x,y)=>String(x).localeCompare(String(y))));
   return map;
 }
 /** Lead cell HTML: main lead + one grey line per sub lead (or — when there is no lead at all). */
-function leadCellHTML(mainLead, subLeads){
+function leadCellHTML(mainLead, subLeads, executors){
   const subs = subLeads || [];
-  const main = mainLead ? esc(mainLead) : (subs.length ? '<span class="muted">—</span>' : '');
+  const execs = executors || [];
+  const main = mainLead ? esc(mainLead) : ((subs.length || execs.length) ? '<span class="muted">—</span>' : '');
   const subHtml = subs.map(n => `<span class="lead-sub">${esc(n)}</span>`).join('');
-  if (!main && !subHtml) return '<span class="muted">—</span>';
-  return `${main}${subHtml}`;
+  const execHtml = execs.map(n => `<span class="lead-sub">${esc(n)}</span>`).join('');
+  if (!main && !subHtml && !execHtml) return '<span class="muted">—</span>';
+  return `${main}${subHtml}${execHtml}`;
 }
 
 /** Whether project `pk`'s overall span (all its project_phase rows, exactly like the
@@ -1027,6 +1042,7 @@ const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
   const subLeads = subLeadMap();
+  const executors = executorMap();
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
   // already server-filtered via .eq('is_active', true) in loadMasterData().
   const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
@@ -1074,6 +1090,7 @@ function buildProjectRows(){
       projectName: p.project_name || '',
       lead: p.uat_lead || '',
       subLeads: subLeads[pk] || [],
+      executors: executors[pk] || [],
       uatPeriodDisp, uatPeriodSortKey: periodStart || '',
       totalMD, tcprep: pAgg.TCPREP || 0, uat: pAgg.UAT || 0, reg: pAgg.REG || 0,
       other1, other2, support: pAgg.SUPPORT || 0,
@@ -1099,7 +1116,7 @@ function renderProjectView(container){
     return `<tr>
       <td class="col-app" title="${esc(r.app)}">${esc(r.app)}</td>
       <td class="proj-name" title="${esc(r.projectName)}">${esc(truncName(r.projectName))}</td>
-      <td class="col-lead" title="${esc([r.lead, ...r.subLeads].filter(Boolean).join(' / '))}">${leadCellHTML(r.lead, r.subLeads)}</td>
+      <td class="col-lead" title="${esc([r.lead, ...r.subLeads, ...r.executors].filter(Boolean).join(' / '))}">${leadCellHTML(r.lead, r.subLeads, r.executors)}</td>
       <td>${esc(r.uatPeriodDisp)}</td>
       <td class="right">${fmtMD(r.totalMD)}</td>
       <td class="right">${fmtMD(r.tcprep)}</td>
@@ -1294,6 +1311,7 @@ const SIGNOFF_KEYFNS = {
 function renderSignoffView(container){
   const { first, last } = currentRange();
   const subLeads = subLeadMap();
+  const executors = executorMap();
   const rows = currentProjectsList()
     .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
     .map(p => ({
@@ -1301,6 +1319,7 @@ function renderSignoffView(container){
       app: p.app || p.other_app || '',
       lead: p.uat_lead || '',
       subLeads: subLeads[p.project_key] || [],
+      executors: executors[p.project_key] || [],
       signoff_date: p.signoff_date,
       projectName: p.project_name,
       signoff_url: p.signoff_url || '',
@@ -1320,7 +1339,7 @@ function renderSignoffView(container){
       : `<button class="ico-btn" title="ไม่มีเอกสาร Signoff" disabled>📄</button>`;
     return `<tr>
       <td class="col-app" title="${esc(p.app)}">${esc(p.app)}</td>
-      <td class="col-lead" title="${esc([p.lead, ...p.subLeads].filter(Boolean).join(' / '))}">${leadCellHTML(p.lead, p.subLeads)}</td>
+      <td class="col-lead" title="${esc([p.lead, ...p.subLeads, ...p.executors].filter(Boolean).join(' / '))}">${leadCellHTML(p.lead, p.subLeads, p.executors)}</td>
       <td>${dDisp(p.signoff_date)}</td>
       <td class="proj-name" title="${esc(p.projectName)}">${esc(truncName(p.projectName))}</td>
       <td class="center">${signoffBtn}</td>
