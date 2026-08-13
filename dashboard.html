@@ -302,15 +302,25 @@
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
 
-      <!-- By Lead grouping dropdown (2026-08-13, replaced the earlier "3 stacked tables"
+      <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
            layout per Gibb's request) — only one role's matrix table shows at a time,
-           picked here. Hidden on every tab except By Lead (toggled in switchDashView()). -->
+           picked here. Hidden on every tab except By Lead (toggled in switchDashView()).
+           Domain dropdown added same day (2026-08-13, follow-up): filters which leads show
+           up in the matrix by their pqa_lead.email domain — see leadDomainBucket(). Label
+           renamed "Group by:" → "Filter:" at the same time since it now covers 2 dropdowns,
+           not just the role grouping. -->
       <div class="filters filters-inline hidden" id="leadRoleControls">
-        <span class="period-lbl">Group by:</span>
+        <span class="period-lbl">Filter:</span>
         <select id="leadRoleSelect">
           <option value="main">Main Lead</option>
           <option value="sub">Sub Lead</option>
           <option value="exec">Internal Executor</option>
+        </select>
+        <select id="leadDomainSelect">
+          <option value="all">All</option>
+          <option value="infinitas">Infinitas</option>
+          <option value="arise">Arise</option>
+          <option value="other">Other</option>
         </select>
       </div>
 
@@ -477,6 +487,7 @@ const S = {
   dashMode: 'overall',           // always 'overall' — monthly mode has been removed
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
   leadRoleFilter: 'main',       // By Lead tab grouping: 'main' | 'sub' | 'exec' (#leadRoleSelect)
+  leadDomainFilter: 'all',      // By Lead tab email-domain filter: 'all' | 'infinitas' | 'arise' | 'other' (#leadDomainSelect)
   chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
   overallRange: { s:'', e:'' }, // selected Start/End — "ค้นหา Project" search window (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
@@ -486,7 +497,7 @@ const S = {
   periodAggActiveOnly: null,      // same, but further restricted to is_active=true projects (By OS view)
 
   // sort state for the sortable subview tables
-  projectSort: { key:'uatPeriod', dir:'asc' },
+  projectSort: { key:'totalMD', dir:'desc' },
   signoffSort: { key:'signoffDate', dir:'asc' },
 };
 
@@ -574,6 +585,11 @@ function restoreDashPrefs(){
   }
   $('leadRoleSelect').value = S.leadRoleFilter;
 
+  if (['all', 'infinitas', 'arise', 'other'].includes(p.leadDomainFilter)) {
+    S.leadDomainFilter = p.leadDomainFilter;
+  }
+  $('leadDomainSelect').value = S.leadDomainFilter;
+
   if (typeof p.chartCollapsed === 'boolean') S.chartCollapsed = p.chartCollapsed;
 
   if (p.projectSort && typeof p.projectSort === 'object') {
@@ -632,7 +648,7 @@ async function loadMasterData(){
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active'),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
     supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
-    supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role').eq('is_active', true),
+    supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,email').eq('is_active', true),
     supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
     supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,sort_order'),
   ]);
@@ -1319,6 +1335,16 @@ const LEAD_ROLE_META = {
   sub:  { title: 'Sub Lead', withMD: false },
   exec: { title: 'Internal Executor', withMD: false },
 };
+/** Classify a pqa_lead's email into the By Lead "Filter:" domain bucket (2026-08-13, Gibb).
+ *  'infinitas' = @infinitaskt.com, 'arise' = @arise.tech, everything else (outsource
+ *  vendors like @doppiotech.com, missing email, etc.) falls into 'other' — the dropdown
+ *  stays exhaustive without needing to enumerate every vendor domain by name. */
+function leadDomainBucket(email){
+  const e = String(email || '').trim().toLowerCase();
+  if (e.endsWith('@infinitaskt.com')) return 'infinitas';
+  if (e.endsWith('@arise.tech')) return 'arise';
+  return 'other';
+}
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
@@ -1353,26 +1379,31 @@ function renderLeadView(container){
   function buildSection(title, roleCoverage, withMD){
     const colCount = {}; apps.forEach(a => colCount[a] = 0);
     let grandTotal = 0, grandTotalMD = 0;
-    const bodyRows = S.leadsAll.map(l => {
-      const byApp = roleCoverage[l.emp_id] || {};
-      const allProjects = new Set();
-      Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
-      if (!allProjects.size) return ''; // lead with no project in this role/set — skip row
-      let totalMD = 0;
-      if (withMD) {
-        const mainProjects = mainProjectsByLead[l.emp_id] || new Set();
-        mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
-      }
-      const cells = apps.map(a => {
-        const n = byApp[a] ? byApp[a].size : 0;
-        if (n) colCount[a] += n;
-        return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
-      }).join('');
-      grandTotal += allProjects.size;
-      grandTotalMD += totalMD;
-      const mdCell = withMD ? `<td class="right">${fmtMD(totalMD)}</td>` : '';
-      return `<tr><td>${esc(l.short_name)}</td>${mdCell}<td class="right">${allProjects.size}</td>${cells}</tr>`;
-    }).filter(Boolean);
+    // domainFilter defaults to 'all' when S.leadDomainFilter is unset (e.g. older cached
+    // prefs from before this dropdown existed) — never silently drops every lead.
+    const domainFilter = S.leadDomainFilter || 'all';
+    const bodyRows = S.leadsAll
+      .filter(l => domainFilter === 'all' || leadDomainBucket(l.email) === domainFilter)
+      .map(l => {
+        const byApp = roleCoverage[l.emp_id] || {};
+        const allProjects = new Set();
+        Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
+        if (!allProjects.size) return ''; // lead with no project in this role/set — skip row
+        let totalMD = 0;
+        if (withMD) {
+          const mainProjects = mainProjectsByLead[l.emp_id] || new Set();
+          mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
+        }
+        const cells = apps.map(a => {
+          const n = byApp[a] ? byApp[a].size : 0;
+          if (n) colCount[a] += n;
+          return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
+        }).join('');
+        grandTotal += allProjects.size;
+        grandTotalMD += totalMD;
+        const mdCell = withMD ? `<td class="right">${fmtMD(totalMD)}</td>` : '';
+        return `<tr><td>${esc(l.short_name)}</td>${mdCell}<td class="right">${allProjects.size}</td>${cells}</tr>`;
+      }).filter(Boolean);
 
     const mdTotalCell = withMD ? `<td class="right">${fmtMD(grandTotalMD)}</td>` : '';
     const totalRow = `<tr class="dash-total-row">
@@ -1498,6 +1529,11 @@ function wireToolbar(){
   $('leadRoleSelect').addEventListener('change', () => {
     S.leadRoleFilter = $('leadRoleSelect').value;
     savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter });
+    renderLeadView($('viewContainer')); // only the By Lead table needs to re-render
+  });
+  $('leadDomainSelect').addEventListener('change', () => {
+    S.leadDomainFilter = $('leadDomainSelect').value;
+    savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
     renderLeadView($('viewContainer')); // only the By Lead table needs to re-render
   });
   $('ovApplyBtn').addEventListener('click', () => {
