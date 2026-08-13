@@ -100,6 +100,13 @@
 
   /* ---- dashboard tables (generic) ---- */
   .dash-table-wrap { background:#fff; border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
+  /* By Lead tab stacks 3 sections (Main Lead / Sub Lead / Executor, 2026-08-13) — the
+     shared .section-title (theme.css) has a dashed top rule + top margin meant for
+     mid-page dividers; the first section sits right under the tab bar so it shouldn't
+     have either. Also shrink each stacked table so all 3 fit without one eating the
+     whole viewport. */
+  #viewContainer .section-title:first-child { margin-top:0; border-top:none; padding-top:0; }
+  #viewContainer .section-title + .dash-table-wrap { max-height:min(340px, 34vh); }
   table.dash-table { width:100%; border-collapse:collapse; font-size:13px; }
   table.dash-table th {
     position:sticky; top:0; background:var(--dk-surface); text-align:left; padding:9px 12px;
@@ -1241,26 +1248,37 @@ function roleLabelFor(code){
    column already uses, computed only over projects that matched the search — so the
    number is consistent with the rest of the page. Projects with no main lead simply
    never get added to any lead's total (no double counting, no orphan bucket). */
+/* By Lead tab — split into 3 sections (2026-08-13, requested by Gibb): Main Lead,
+ * Sub Lead, Internal Executor. Each section is its own matrix table (Lead × App).
+ * Only the Main Lead section carries a Total MD column — MD is only ever summed from
+ * projects where the lead is_main (see §5.18/§5.20), and Gibb confirmed Sub Lead /
+ * Executor sections should show project counts only, no MD column, to avoid implying
+ * a per-role MD split that doesn't exist. App columns are shared across all 3 sections
+ * (union of apps seen in any role) so the tables stay comparable side by side. */
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
   const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
-  const leadCoverage = {};     // emp_id -> { app -> Set(project_key) }
-  const leadMainProjects = {}; // emp_id -> Set(project_key) where this lead is_main = true
+
+  const coverage = { main:{}, sub:{}, exec:{} }; // role -> emp_id -> { app -> Set(project_key) }
+  const mainProjectsByLead = {};                 // emp_id -> Set(project_key) where is_main = true
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
     if (!projectMatchesRange(pl.project_key, rangeS, rangeE)) return;   // §5.37: search-matched only
     const app = proj.app || proj.other_app || '— ไม่มี App —';
-    const byApp = (leadCoverage[pl.pqa_emp_id] = leadCoverage[pl.pqa_emp_id] || {});
+    const role = pl.is_main ? 'main' : (pl.is_executor ? 'exec' : 'sub');
+    const byApp = (coverage[role][pl.pqa_emp_id] = coverage[role][pl.pqa_emp_id] || {});
     (byApp[app] = byApp[app] || new Set()).add(pl.project_key);
     if (pl.is_main) {
-      (leadMainProjects[pl.pqa_emp_id] = leadMainProjects[pl.pqa_emp_id] || new Set()).add(pl.project_key);
+      (mainProjectsByLead[pl.pqa_emp_id] = mainProjectsByLead[pl.pqa_emp_id] || new Set()).add(pl.project_key);
     }
   });
 
   const appSet = new Set();
-  Object.values(leadCoverage).forEach(byApp => Object.keys(byApp).forEach(a => appSet.add(a)));
+  ['main','sub','exec'].forEach(role => {
+    Object.values(coverage[role]).forEach(byApp => Object.keys(byApp).forEach(a => appSet.add(a)));
+  });
   const apps = sortedApps([...appSet]);
 
   if (!apps.length) {
@@ -1268,40 +1286,54 @@ function renderLeadView(container){
     return;
   }
 
-  const colCount = {}; apps.forEach(a => colCount[a] = 0);
-  let grandTotal = 0;
-  let grandTotalMD = 0;
-  const bodyRows = S.leadsAll.map(l => {
-    const byApp = leadCoverage[l.emp_id] || {};
-    const allProjects = new Set();
-    Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
-    if (!allProjects.size) return ''; // lead with no project in the current set — skip row (keeps matrix relevant)
-    const mainProjects = leadMainProjects[l.emp_id] || new Set();
-    let totalMD = 0;
-    mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
-    const cells = apps.map(a => {
-      const n = byApp[a] ? byApp[a].size : 0;
-      if (n) colCount[a] += n;
-      return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
-    }).join('');
-    grandTotal += allProjects.size;
-    grandTotalMD += totalMD;
-    return `<tr><td>${esc(l.short_name)}</td><td class="right">${fmtMD(totalMD)}</td><td class="right">${allProjects.size}</td>${cells}</tr>`;
-  }).filter(Boolean);
+  function buildSection(title, roleCoverage, withMD){
+    const colCount = {}; apps.forEach(a => colCount[a] = 0);
+    let grandTotal = 0, grandTotalMD = 0;
+    const bodyRows = S.leadsAll.map(l => {
+      const byApp = roleCoverage[l.emp_id] || {};
+      const allProjects = new Set();
+      Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
+      if (!allProjects.size) return ''; // lead with no project in this role/set — skip row
+      let totalMD = 0;
+      if (withMD) {
+        const mainProjects = mainProjectsByLead[l.emp_id] || new Set();
+        mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
+      }
+      const cells = apps.map(a => {
+        const n = byApp[a] ? byApp[a].size : 0;
+        if (n) colCount[a] += n;
+        return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
+      }).join('');
+      grandTotal += allProjects.size;
+      grandTotalMD += totalMD;
+      const mdCell = withMD ? `<td class="right">${fmtMD(totalMD)}</td>` : '';
+      return `<tr><td>${esc(l.short_name)}</td>${mdCell}<td class="right">${allProjects.size}</td>${cells}</tr>`;
+    }).filter(Boolean);
 
-  const totalRow = `<tr class="dash-total-row">
-    <td>รวม (${bodyRows.length} Lead)</td><td class="right">${fmtMD(grandTotalMD)}</td><td class="right">${grandTotal}</td>
-    ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
-  </tr>`;
+    const mdTotalCell = withMD ? `<td class="right">${fmtMD(grandTotalMD)}</td>` : '';
+    const totalRow = `<tr class="dash-total-row">
+      <td>รวม (${bodyRows.length} Lead)</td>${mdTotalCell}<td class="right">${grandTotal}</td>
+      ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
+    </tr>`;
 
-  container.innerHTML = `
-    <div class="dash-table-wrap">
-      <table class="dash-table">
-        <thead><tr><th>UAT Lead</th><th class="right">Total MD</th><th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
-        <tbody>${bodyRows.join('') || `<tr><td colspan="${3+apps.length}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
-        <tfoot>${totalRow}</tfoot>
-      </table>
-    </div>`;
+    const mdHeader = withMD ? '<th class="right">Total MD</th>' : '';
+    const colspan = (withMD ? 3 : 2) + apps.length;
+
+    return `
+      <div class="section-title">${esc(title)}</div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead><tr><th>UAT Lead</th>${mdHeader}<th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
+          <tbody>${bodyRows.join('') || `<tr><td colspan="${colspan}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
+          <tfoot>${totalRow}</tfoot>
+        </table>
+      </div>`;
+  }
+
+  container.innerHTML =
+    buildSection('Main Lead', coverage.main, true) +
+    buildSection('Sub Lead', coverage.sub, false) +
+    buildSection('Internal Executor', coverage.exec, false);
 }
 
 /* ---- Signoff ---- */
