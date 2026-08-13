@@ -571,6 +571,17 @@ input.lead-search.invalid {
   border-color: var(--dk-accent);
 }
 
+/* input[type=color] ต้องแยกจาก .field input ทั่วไป — padding/width แบบ text input
+   (9px 11px, width:100%) ไปบีบพื้นที่ swatch สีจริงของ native color picker จนแบนเหลือ
+   เป็นเส้นบางๆ มองไม่เห็นสีเลย (เจอใน Project Status / Phase edit modal 2026-08-13)
+   ให้กว้าง/สูงคงที่พอดีเป็นกล่องสี่เหลี่ยม + padding แคบๆ ให้เห็น swatch เต็มๆ */
+.field input[type="color"] {
+  width: 56px;
+  height: 36px;
+  padding: 2px;
+  cursor: pointer;
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
