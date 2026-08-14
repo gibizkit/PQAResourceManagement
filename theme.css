@@ -605,22 +605,46 @@ input.lead-search.invalid {
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 2px;
+  /* 2026-08-14: scrollbar overlay ของ macOS จะซ่อนตัวเองจนกว่าจะลากสกอลล์ ทำให้ดูเหมือน
+     "scrollbar หาย" ทั้งที่ตารางยังเลื่อนได้ — บังคับให้แถบสกอลล์แสดงตลอดแทน */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dk-border-s) var(--dk-surface);
+}
+
+.phase-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.phase-table-scroll::-webkit-scrollbar-track {
+  background: var(--dk-surface);
+  border-radius: 4px;
+}
+
+.phase-table-scroll::-webkit-scrollbar-thumb {
+  background: var(--dk-border-s);
+  border-radius: 4px;
+}
+
+.phase-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--dk-text3);
 }
 
 /* 8 คอลัมน์: Phase | Start | End | WD | Required OS | Total WD | AI | AI Note
    (โมดัล Project ใช้ .modal.modal-wide เพราะ 640px แคบเกินไปสำหรับ 8 คอลัมน์)
    Start/End เป็น fixed width แคบๆ (2026-08-13: ย่อลงจาก minmax(140px,1fr) ตามที่ขอ
-   — dd/mm/yyyy + ไอคอนปฏิทินพอดีที่ 100px) ส่วนที่เหลือยกให้ AI Note (minmax(...,1fr))
+   — dd/mm/yyyy + ไอคอนปฏิทินพอดีที่ 100px, 2026-08-14: ขยายอีก 5px เป็น 105px ตามที่ขอ)
+   Total WD ขยายจาก 62px เป็น 70px กันหัวคอลัมน์ "Total WD" ตัดขึ้นบรรทัดใหม่
+   ส่วนที่เหลือยกให้ AI Note (minmax(...,1fr))
    min-width:0 บน grid item (โดยเฉพาะ input) กันแถวล้น (ห้ามลบ regel นี้ทิ้ง) */
 .phase-row {
   display: grid;
-  grid-template-columns: 76px 100px 100px 46px 66px 62px 34px minmax(170px,1fr);
+  grid-template-columns: 76px 105px 105px 46px 66px 70px 34px minmax(170px,1fr);
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
   border-radius: 8px;
   margin-bottom: 3px;
-  min-width: 730px;
+  min-width: 745px;
 }
 
 .phase-row > * {
@@ -700,6 +724,11 @@ input.lead-search.invalid {
   color: var(--dk-text3);
   letter-spacing: .02em;
   text-transform: uppercase;
+}
+
+/* กันหัวคอลัมน์ (เช่น "Total WD") ตัดขึ้นบรรทัดใหม่เวลาช่องแคบ/ซูมเบราว์เซอร์ */
+.section-title + .phase-row > div {
+  white-space: nowrap;
 }
 
 .form-err {

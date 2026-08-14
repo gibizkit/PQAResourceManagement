@@ -33,11 +33,10 @@
   .view-tab:hover { background:var(--dk-hover); }
   .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
 
-  /* ---- toolbar row: view tabs (left) + period controls (right) on one line ---- */
+  /* ---- toolbar row: view tabs (left) + ปุ่มตัวกรอง (right) on one line ---- */
   .dash-toolbar-row {
     display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;
   }
-  .period-controls { display:flex; align-items:center; gap:10px; margin-left:auto; }
   .filters-inline { align-items:center !important; gap:8px; }
   .period-lbl { font-size:12px; font-weight:700; color:var(--dk-text2); letter-spacing:.02em; }
   .period-sep { color:var(--dk-text3); }
@@ -293,7 +292,7 @@
 
   <div class="main">
 
-    <!-- ===== Toolbar row: view tabs (left) + period controls (right) ===== -->
+    <!-- ===== Toolbar row: view tabs (left) + filter toggle (right) ===== -->
     <div class="toolbar dash-toolbar-row">
       <div class="view-tabs" id="viewTabs">
         <button class="view-tab active" data-view="project">📊 By Project</button>
@@ -301,7 +300,16 @@
         <button class="view-tab" data-view="lead">👑 By Lead</button>
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
+      <!-- ปุ่มตัวกรอง (2026-08-14, ตามคำขอพี่กิ๊บ) — เอา pattern เดียวกับ gantt.html/outsource.html
+           มาใช้: default หุบ, กดเปิด/ปิดได้, จำสถานะเปิด/ปิดผ่าน panelOpen ใน prefs. Panel เดียวใช้
+           ร่วมกันทุก tab ของ Dashboard (ไม่แยก panel ต่อ tab) — ตัวกรอง "ค้นหา Project" (ช่วงวันที่)
+           มีผลกับทุก tab อยู่แล้วโดยธรรมชาติ (S.overallRange เป็น global state เดียว, ดู
+           projectMatchesRange()), ส่วน "Filter:" (Role/Domain) เกี่ยวกับ By Lead tab เท่านั้นจึงยัง
+           ซ่อน/โชว์ตามแท็บที่เลือกอยู่ (switchDashView()) แม้ panel ใหญ่จะเปิดอยู่ก็ตาม -->
+      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
+    </div>
 
+    <div class="filters hidden" id="filterPanel">
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
            layout per Gibb's request) — only one role's matrix table shows at a time,
            picked here. Hidden on every tab except By Lead (toggled in switchDashView()).
@@ -328,15 +336,14 @@
            show up in every tab (phase dates OR signoff_date overlap this window — see
            projectMatchesRange()). It no longer restricts the MD numbers themselves: once a
            project matches, its MD is its full/all-time Effective (Booked − Leave) total,
-           not clipped to this range — see recomputeAggregates(). -->
-      <div class="period-controls" id="overallToolbar">
-        <div class="filters filters-inline">
-          <span class="period-lbl">ค้นหา Project:</span>
-          <input type="date" id="ovStart">
-          <span class="period-sep">–</span>
-          <input type="date" id="ovEnd">
-          <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
-        </div>
+           not clipped to this range — see recomputeAggregates(). Shared across every tab
+           (By Project/By OS/By Lead/Signoff) since S.overallRange is a single global filter. -->
+      <div class="filters filters-inline" id="overallToolbar">
+        <span class="period-lbl">ค้นหา Project:</span>
+        <input type="date" id="ovStart">
+        <span class="period-sep">–</span>
+        <input type="date" id="ovEnd">
+        <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
       </div>
     </div>
 
@@ -591,6 +598,9 @@ function restoreDashPrefs(){
   $('leadDomainSelect').value = S.leadDomainFilter;
 
   if (typeof p.chartCollapsed === 'boolean') S.chartCollapsed = p.chartCollapsed;
+
+  // ปุ่มตัวกรอง (2026-08-14) — เหมือน gantt.html/outsource.html: จำว่า panel เปิดค้างไว้ไหม
+  if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
 
   if (p.projectSort && typeof p.projectSort === 'object') {
     const { key, dir } = p.projectSort;
@@ -1519,6 +1529,11 @@ function wireToolbar(){
     if (!btn) return;
     switchDashView(btn.dataset.view);
   });
+  // ปุ่มตัวกรอง (2026-08-14, ตามคำขอพี่กิ๊บ) — pattern เดียวกับ gantt.html/outsource.html
+  $('toggleFilterBtn').addEventListener('click', () => {
+    $('filterPanel').classList.toggle('hidden');
+    savePrefs(PAGE, { panelOpen: !$('filterPanel').classList.contains('hidden') });
+  });
   $('summaryToggleBtn').addEventListener('click', () => {
     S.chartCollapsed = !S.chartCollapsed;
     savePrefs(PAGE, { chartCollapsed: S.chartCollapsed });
@@ -1542,6 +1557,9 @@ function wireToolbar(){
     if (s > e) { toast('End ต้องไม่ก่อน Start', true); return; }
     S.overallRange = { s, e };
     savePrefs(PAGE, { rangeS: s, rangeE: e });
+    // req เดียวกับ gantt/outsource: auto-collapse panel หลังกดค้นหาสำเร็จ
+    $('filterPanel').classList.add('hidden');
+    savePrefs(PAGE, { panelOpen: false });
     // range เปลี่ยน = เปลี่ยนแค่ "ค้นหา Project" ไหนถูกนับ — booking/leave data ไม่ต้อง fetch ใหม่
     // (ไม่ขึ้นกับช่วงวันที่แล้ว) → force=false ให้ loadPeriod แค่ recompute+render จาก cache
     loadPeriod(false);
