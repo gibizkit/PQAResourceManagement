@@ -44,18 +44,20 @@
   .period-lbl { font-size:12px; font-weight:700; color:var(--dk-text2); letter-spacing:.02em; }
   .period-sep { color:var(--dk-text3); }
 
-  /* ---- ตัวกรอง panel select (Type/Domain) — mirrors gantt.html/outsource.html ---- */
+  /* ---- ตัวกรอง panel select (Type/Domain) — mirrors gantt.html/outsource.html.
+     2026-08-14: min-width 160→128 (ตามคำขอพี่กิ๊บ — ลดขนาดกล่อง filter ให้พอดี 1 บรรทัด ตอนนี้ต้อง
+     เผื่อที่ให้ Type/Domain ที่โชว์ทุก tab แล้วด้วย) ---- */
   .filters select {
-    padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
-    font-size:13px; background:#fff; color:var(--dk-text); font-weight:600; min-width:160px;
+    padding:7px 9px; border-radius:9px; border:1px solid var(--dk-border-s);
+    font-size:13px; background:#fff; color:var(--dk-text); font-weight:600; min-width:128px;
   }
   .filters select:focus { outline:none; border-color:var(--dk-accent); }
 
   /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt/Outsource,
-     2026-08-14) ---- */
+     2026-08-14; min-width 180→148 same reason as .filters select above) ---- */
   .ms { position:relative; }
   .ms-btn {
-    min-width:180px; text-align:left; padding:8px 11px; border-radius:9px;
+    min-width:148px; text-align:left; padding:7px 10px; border-radius:9px;
     border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text);
     font-size:13px; font-weight:600; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
   }
@@ -88,14 +90,20 @@
   table.dash-table td.col-app   { max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   table.dash-table td.proj-name { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  /* ---- overall-mode range filter (mirrors gantt.html .filters/.fld) ---- */
+  /* ---- overall-mode range filter (mirrors gantt.html .filters/.fld) ----
+     2026-08-14 (ตามคำขอพี่กิ๊บ): เพิ่ม card boundary (background/border/shadow) + margin-bottom
+     ให้เหมือน gantt.html/outsource.html's .filters — เดิมหน้านี้ไม่มีกรอบ/เว้นระยะกับหัวตารางเลย.
+     ลด gap + ความกว้างของแต่ละ field (ดู .ms-btn/.filters select/input ด้านล่าง) ให้ทุก field
+     (Project/UAT Lead/App/Type/Domain/Start/End/ค้นหา — 8 ชิ้น ตอนนี้แสดงทุก tab แล้ว) พอดี 1 บรรทัด. */
   .filters {
-    display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;
+    display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
+    background:var(--dk-card); border:1px solid var(--dk-border); border-radius:14px;
+    padding:12px 14px; margin-bottom:16px; box-shadow:0 1px 2px rgba(34,28,21,.04);
   }
   .filters .fld { display:flex; flex-direction:column; gap:5px; }
   .filters label { font-size:11px; color:var(--dk-text3); font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
   .filters input[type=date] {
-    padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
+    width:128px; box-sizing:border-box; padding:7px 9px; border-radius:9px; border:1px solid var(--dk-border-s);
     font-size:13px; background:#fff; color:var(--dk-text);
   }
   .filters input[type=date]:focus { outline:none; border-color:var(--dk-accent); }
@@ -378,21 +386,24 @@
       </div>
 
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
-           layout per Gibb's request) — only one role's matrix table shows at a time,
-           picked here. Hidden on every tab except By Lead (toggled in switchDashView()).
-           Domain dropdown added same day (2026-08-13, follow-up): filters which leads show
-           up in the matrix by their pqa_lead.email domain — see leadDomainBucket().
-           2026-08-14: split the old single "Filter:" inline row into 2 separate .fld
-           (Type/Domain) so they line up with the other filter fields in this panel. -->
-      <div class="fld hidden" id="leadRoleFld">
+           layout per Gibb's request) — the picked role/domain here only actually changes what
+           renders on the By Lead tab (see wireToolbar()'s change handlers below, which only
+           re-render the Lead matrix when S.dashView === 'lead'), but the fields themselves are
+           now shown on EVERY Dashboard tab (2026-08-14, ตามคำขอพี่กิ๊บ: "ให้ทุกๆ หน้าใน Dashboard
+           มี Type... Domain...") — no longer hidden/shown via switchDashView()/restoreDashPrefs().
+           Domain dropdown filters which leads show up in the matrix by their pqa_lead.email
+           domain — see leadDomainBucket(). 2026-08-14: split the old single "Filter:" inline
+           row into 2 separate .fld (Type/Domain) so they line up with the other filter fields
+           in this panel; "Internal Executor" option renamed → "Executor" (ตามคำขอพี่กิ๊บ). -->
+      <div class="fld" id="leadRoleFld">
         <label>Type</label>
         <select id="leadRoleSelect">
           <option value="main">Main Lead</option>
           <option value="sub">Sub Lead</option>
-          <option value="exec">Internal Executor</option>
+          <option value="exec">Executor</option>
         </select>
       </div>
-      <div class="fld hidden" id="leadDomainFld">
+      <div class="fld" id="leadDomainFld">
         <label>Domain</label>
         <select id="leadDomainSelect">
           <option value="all">All</option>
@@ -653,8 +664,8 @@ function restoreDashPrefs(){
     S.dashView = p.dashView;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
   }
-  $('leadRoleFld').classList.toggle('hidden', S.dashView !== 'lead');
-  $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
+  // 2026-08-14: Type/Domain (#leadRoleFld/#leadDomainFld) เลิก toggle hidden ตาม tab แล้ว — โชว์
+  // ทุก tab เสมอ (ตามคำขอพี่กิ๊บ) ดู wireToolbar() ที่ guard การ re-render ด้วย S.dashView แทน
 
   // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — restore the selected Sets;
   // the actual .ms widgets are (re)built afterward in buildFilterMultiSelects() (called once
@@ -1453,7 +1464,7 @@ function roleLabelFor(code){
 const LEAD_ROLE_META = {
   main: { title: 'Main Lead', withMD: true },
   sub:  { title: 'Sub Lead', withMD: false },
-  exec: { title: 'Internal Executor', withMD: false },
+  exec: { title: 'Executor', withMD: false },   // 2026-08-14: renamed from "Internal Executor" (ตามคำขอพี่กิ๊บ)
 };
 /** Classify a pqa_lead's email into the By Lead "Filter:" domain bucket (2026-08-13, Gibb).
  *  'infinitas' = @infinitaskt.com, 'arise' = @arise.tech, everything else (outsource
@@ -1777,12 +1788,15 @@ function wireToolbar(){
   $('leadRoleSelect').addEventListener('change', () => {
     S.leadRoleFilter = $('leadRoleSelect').value;
     savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter });
-    renderLeadView($('viewContainer')); // only the By Lead table needs to re-render
+    // 2026-08-14: Type/Domain โชว์ทุก tab แล้ว (ไม่ใช่แค่ By Lead) — re-render Lead matrix เฉพาะ
+    // ตอนที่ By Lead tab กำลังแสดงอยู่จริงเท่านั้น ไม่งั้น renderLeadView() จะไปทับ viewContainer
+    // ที่ตอนนั้นแสดง By Project/By OS/Signoff อยู่โดยไม่ตั้งใจ
+    if (S.dashView === 'lead') renderLeadView($('viewContainer'));
   });
   $('leadDomainSelect').addEventListener('change', () => {
     S.leadDomainFilter = $('leadDomainSelect').value;
     savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
-    renderLeadView($('viewContainer')); // only the By Lead table needs to re-render
+    if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
@@ -1804,8 +1818,8 @@ function switchDashView(view){
   S.dashView = view;
   savePrefs(PAGE, { dashView: S.dashView });
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
-  $('leadRoleFld').classList.toggle('hidden', view !== 'lead');
-  $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
+  // Type/Domain (#leadRoleFld/#leadDomainFld) เลิก toggle hidden ตาม tab แล้ว (2026-08-14) — โชว์
+  // ทุก tab เสมอ, ดู wireToolbar() ที่ guard การ re-render ด้วย S.dashView แทน
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
   // same "hidden while (re)building, revealed only after" contract as loadPeriod).
