@@ -33,13 +33,54 @@
   .view-tab:hover { background:var(--dk-hover); }
   .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
 
-  /* ---- toolbar row: view tabs (left) + ปุ่มตัวกรอง (right) on one line ---- */
+  /* ---- toolbar row: view tabs + ตัวกรอง + Show chart, all on one line, กั้นด้วย "|"
+     (2026-08-14, ตามคำขอพี่กิ๊บ — เดิม ตัวกรอง อยู่ชิดขวาแยกจาก tabs ด้วย justify-content:
+     space-between, และ Show chart อยู่คนละแถวด้านล่าง #summaryToggleRow) ---- */
   .dash-toolbar-row {
-    display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   }
+  .toolbar-sep { color:var(--dk-border-s); font-weight:600; }
   .filters-inline { align-items:center !important; gap:8px; }
   .period-lbl { font-size:12px; font-weight:700; color:var(--dk-text2); letter-spacing:.02em; }
   .period-sep { color:var(--dk-text3); }
+
+  /* ---- ตัวกรอง panel select (Type/Domain) — mirrors gantt.html/outsource.html ---- */
+  .filters select {
+    padding:8px 10px; border-radius:9px; border:1px solid var(--dk-border-s);
+    font-size:13px; background:#fff; color:var(--dk-text); font-weight:600; min-width:160px;
+  }
+  .filters select:focus { outline:none; border-color:var(--dk-accent); }
+
+  /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt/Outsource,
+     2026-08-14) ---- */
+  .ms { position:relative; }
+  .ms-btn {
+    min-width:180px; text-align:left; padding:8px 11px; border-radius:9px;
+    border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text);
+    font-size:13px; font-weight:600; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
+  }
+  .ms-btn:hover { border-color:var(--dk-accent); }
+  .ms-panel {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:40;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:12px;
+    box-shadow:0 16px 40px rgba(34,28,21,.16); padding:6px; width:270px;
+    max-height:290px; overflow:auto;
+  }
+  .ms-panel.hidden { display:none; }
+  .ms-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:8px; font-size:13px; cursor:pointer; }
+  .ms-item:hover { background:var(--dk-hover); }
+  .ms-item input { margin:0; accent-color:var(--dk-accent); }
+  .ms-search-wrap { position:relative; padding:4px 6px 6px; }
+  .ms-search { width:100%; box-sizing:border-box; padding:7px 26px 7px 10px; border-radius:8px;
+    border:1px solid var(--dk-border-s); font-size:12.5px; background:#fff; color:var(--dk-text); }
+  .ms-search:focus { outline:none; border-color:var(--dk-accent); }
+  .ms-search-x { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    border:none; background:none; cursor:pointer; font-size:15px; line-height:1; color:var(--dk-text3);
+    width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+  .ms-search-x:hover { background:var(--dk-hover); color:var(--dk-text); }
+  .ms-tools { display:flex; gap:6px; padding:4px 6px 8px; border-bottom:1px solid var(--dk-border); margin-bottom:4px; }
+  .ms-tools button { font-size:11px; padding:4px 9px; border-radius:7px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
+  .ms-tools button:hover { background:var(--dk-hover); }
 
   /* ---- narrow single-line cells: clip with ellipsis, full text shown via title tooltip ----
      widened (was 80px/100px) so App + Project Name are readable without opening the tooltip —
@@ -300,30 +341,59 @@
         <button class="view-tab" data-view="lead">👑 By Lead</button>
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
       </div>
+      <span class="toolbar-sep">|</span>
       <!-- ปุ่มตัวกรอง (2026-08-14, ตามคำขอพี่กิ๊บ) — เอา pattern เดียวกับ gantt.html/outsource.html
            มาใช้: default หุบ, กดเปิด/ปิดได้, จำสถานะเปิด/ปิดผ่าน panelOpen ใน prefs. Panel เดียวใช้
            ร่วมกันทุก tab ของ Dashboard (ไม่แยก panel ต่อ tab) — ตัวกรอง "ค้นหา Project" (ช่วงวันที่)
            มีผลกับทุก tab อยู่แล้วโดยธรรมชาติ (S.overallRange เป็น global state เดียว, ดู
-           projectMatchesRange()), ส่วน "Filter:" (Role/Domain) เกี่ยวกับ By Lead tab เท่านั้นจึงยัง
-           ซ่อน/โชว์ตามแท็บที่เลือกอยู่ (switchDashView()) แม้ panel ใหญ่จะเปิดอยู่ก็ตาม -->
+           projectMatchesRange()), ส่วน "Type/Domain" เกี่ยวกับ By Lead tab เท่านั้นจึงยังซ่อน/โชว์
+           ตามแท็บที่เลือกอยู่ (switchDashView()) แม้ panel ใหญ่จะเปิดอยู่ก็ตาม -->
       <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
+      <!-- 2026-08-14 (ตามคำขอพี่กิ๊บ): ย้าย Show/Hide chart ขึ้นมาอยู่บรรทัดเดียวกับ subtab —
+           เดิมอยู่แถวแยกด้านล่าง (#summaryToggleRow, ตอนนี้เอาออกแล้ว). ปุ่ม + separator ซ่อน/โชว์
+           คู่กันเสมอใน renderSummaryToggle() เพราะมีผลแค่ By Project/By OS เท่านั้น. -->
+      <span class="toolbar-sep hidden" id="chartSep">|</span>
+      <button class="btn sm hidden" id="summaryToggleBtn">Show chart</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
+      <!-- 2026-08-14 (ตามคำขอพี่กิ๊บ): เพิ่ม Project/UAT Lead/App multiselect เข้ามาในตัวกรอง —
+           เอา pattern เดียวกับ gantt.html/outsource.html (.fld + .ms checkbox-multiselect,
+           makeMultiSelect()) มาใช้ ให้หน้าตาตัวกรองสอดคล้องกันทั้ง 3 หน้า — เดิม Dashboard มีแค่
+           "ค้นหา Project:" (ช่วงวันที่) อย่างเดียว ไม่มีตัวกรองรายชื่อ Project/Lead/App เลย. การ
+           เลือกที่นี่กรอง "project ไหนถูกนับ" ร่วมกับช่วงวันที่ (ดู matchProjectDiscovery()) มีผล
+           กับทุก tab ของ Dashboard ทันทีที่เปลี่ยน (apply-on-change เหมือน Gantt/Outsource) ต่าง
+           จาก Start/End ที่ยังต้องกด "ค้นหา" -->
+      <div class="fld">
+        <label>Project</label>
+        <div class="ms" id="msProject"></div>
+      </div>
+      <div class="fld">
+        <label>UAT Lead</label>
+        <div class="ms" id="msLead"></div>
+      </div>
+      <div class="fld">
+        <label>App</label>
+        <div class="ms" id="msApp"></div>
+      </div>
+
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
            layout per Gibb's request) — only one role's matrix table shows at a time,
            picked here. Hidden on every tab except By Lead (toggled in switchDashView()).
            Domain dropdown added same day (2026-08-13, follow-up): filters which leads show
-           up in the matrix by their pqa_lead.email domain — see leadDomainBucket(). Label
-           renamed "Group by:" → "Filter:" at the same time since it now covers 2 dropdowns,
-           not just the role grouping. -->
-      <div class="filters filters-inline hidden" id="leadRoleControls">
-        <span class="period-lbl">Filter:</span>
+           up in the matrix by their pqa_lead.email domain — see leadDomainBucket().
+           2026-08-14: split the old single "Filter:" inline row into 2 separate .fld
+           (Type/Domain) so they line up with the other filter fields in this panel. -->
+      <div class="fld hidden" id="leadRoleFld">
+        <label>Type</label>
         <select id="leadRoleSelect">
           <option value="main">Main Lead</option>
           <option value="sub">Sub Lead</option>
           <option value="exec">Internal Executor</option>
         </select>
+      </div>
+      <div class="fld hidden" id="leadDomainFld">
+        <label>Domain</label>
         <select id="leadDomainSelect">
           <option value="all">All</option>
           <option value="infinitas">Infinitas</option>
@@ -332,25 +402,22 @@
         </select>
       </div>
 
-      <!-- Custom Start–End range (compact inline "ค้นหา Project:") — decides WHICH projects
-           show up in every tab (phase dates OR signoff_date overlap this window — see
-           projectMatchesRange()). It no longer restricts the MD numbers themselves: once a
-           project matches, its MD is its full/all-time Effective (Booked − Leave) total,
-           not clipped to this range — see recomputeAggregates(). Shared across every tab
-           (By Project/By OS/By Lead/Signoff) since S.overallRange is a single global filter. -->
-      <div class="filters filters-inline" id="overallToolbar">
-        <span class="period-lbl">ค้นหา Project:</span>
+      <!-- Custom Start–End range ("ค้นหา Project") — decides WHICH projects show up in every
+           tab (phase dates OR signoff_date overlap this window — see projectMatchesRange()).
+           It no longer restricts the MD numbers themselves: once a project matches, its MD is
+           its full/all-time Effective (Booked − Leave) total, not clipped to this range — see
+           recomputeAggregates(). Shared across every tab (By Project/By OS/By Lead/Signoff)
+           since S.overallRange is a single global filter. Still requires "ค้นหา" (Apply) —
+           unlike Project/UAT Lead/App/Type/Domain above which apply immediately on change. -->
+      <div class="fld">
+        <label>Start Date</label>
         <input type="date" id="ovStart">
-        <span class="period-sep">–</span>
-        <input type="date" id="ovEnd">
-        <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
       </div>
-    </div>
-
-    <!-- ===== Chart-row collapse toggle (By Project / By OS only — hides the chart row to
-         give the table more vertical space; KPI cards stay visible) ===== -->
-    <div class="summary-toggle-row hidden" id="summaryToggleRow">
-      <button class="btn sm" id="summaryToggleBtn">Hide chart</button>
+      <div class="fld">
+        <label>End Date</label>
+        <input type="date" id="ovEnd">
+      </div>
+      <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
     </div>
 
     <!-- ===== Loading wrapper: KPI + charts + view table ============================
@@ -417,7 +484,7 @@
 <script type="module" src="./signoffReviewModal.js"></script>
 <script type="module">
 import {
-  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, setPrefsOwner, signIn,
+  supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
 
@@ -495,6 +562,7 @@ const S = {
   dashView: 'project',          // 'project' | 'os' | 'lead' | 'signoff'
   leadRoleFilter: 'main',       // By Lead tab grouping: 'main' | 'sub' | 'exec' (#leadRoleSelect)
   leadDomainFilter: 'all',      // By Lead tab email-domain filter: 'all' | 'infinitas' | 'arise' | 'other' (#leadDomainSelect)
+  filter: { projects: new Set(), leads: new Set(), apps: new Set() }, // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — ANDed with S.overallRange in matchProjectDiscovery(); empty Set = no restriction (same convention as gantt.html/outsource.html)
   chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
   overallRange: { s:'', e:'' }, // selected Start/End — "ค้นหา Project" search window (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
@@ -585,7 +653,15 @@ function restoreDashPrefs(){
     S.dashView = p.dashView;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
   }
-  $('leadRoleControls').classList.toggle('hidden', S.dashView !== 'lead');
+  $('leadRoleFld').classList.toggle('hidden', S.dashView !== 'lead');
+  $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
+
+  // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — restore the selected Sets;
+  // the actual .ms widgets are (re)built afterward in buildFilterMultiSelects() (called once
+  // master data is loaded), which reads these Sets as the initial "checked" state.
+  S.filter.projects = prefSet(p.projects);
+  S.filter.leads = prefSet(p.leads);
+  S.filter.apps = prefSet(p.apps);
 
   if (['main', 'sub', 'exec'].includes(p.leadRoleFilter)) {
     S.leadRoleFilter = p.leadRoleFilter;
@@ -641,6 +717,10 @@ async function showApp(session){
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreDashPrefs เสมอ)
   setPrefsOwner(session.user.email);
   restoreDashPrefs();
+  // 2026-08-14: Project/UAT Lead/App multiselect — ต้องมาหลัง loadMasterData() (ใช้
+  // S.activeProjects/S.leadsAll/S.appList) และหลัง restoreDashPrefs() (ใช้ S.filter.* ที่
+  // restore แล้วเป็น selected set เริ่มต้นตอนสร้าง widget)
+  buildFilterMultiSelects();
   await ensureOverallRangeDefaults();
   await loadPeriod(true);
 }
@@ -787,9 +867,9 @@ async function loadPeriod(force){
 function recomputeAggregates(){
   const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
   const matchedAll = {};
-  Object.keys(S.allProjMap).forEach(pk => { if (projectMatchesRange(pk, rangeS, rangeE)) matchedAll[pk] = S.allProjMap[pk]; });
+  Object.keys(S.allProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedAll[pk] = S.allProjMap[pk]; });
   const matchedActive = {};
-  Object.keys(S.activeProjMap).forEach(pk => { if (projectMatchesRange(pk, rangeS, rangeE)) matchedActive[pk] = S.activeProjMap[pk]; });
+  Object.keys(S.activeProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedActive[pk] = S.activeProjMap[pk]; });
   S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true });
   S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActive, { restrict: true });
 }
@@ -933,7 +1013,10 @@ function hideDashLoading(){
    ===================================================================== */
 function renderSummaryToggle(){
   const relevant = S.dashView === 'project' || S.dashView === 'os';
-  $('summaryToggleRow').classList.toggle('hidden', !relevant);
+  // 2026-08-14: ปุ่ม + separator ย้ายขึ้นไปอยู่ใน dash-toolbar-row แล้ว (เดิม toggle #summaryToggleRow
+  // ทั้งแถว) — toggle ทั้งสอง element คู่กันเพื่อไม่ให้เหลือ "|" ค้างเดี่ยวๆ ตอนไม่ relevant
+  $('summaryToggleBtn').classList.toggle('hidden', !relevant);
+  $('chartSep').classList.toggle('hidden', !relevant);
   if (!relevant) return;
   $('summaryToggleBtn').textContent = S.chartCollapsed ? 'Show chart' : 'Hide chart';
 }
@@ -1123,6 +1206,33 @@ function projectMatchesRange(pk, rangeS, rangeE){
   return !!periodStart && !!rangeS && !!rangeE && periodStart <= rangeE && periodEnd >= rangeS;
 }
 
+/** Whether project `pk` passes the Project/UAT Lead/App multiselect ตัวกรอง (2026-08-14) —
+ *  independent of projectMatchesRange()'s date-range check. Empty Set on any of the 3 = "no
+ *  restriction" for that field (same convention as gantt.html/outsource.html's S.filter).
+ *  UAT Lead matches ANY role on the project (Main/Sub/Executor, via project_lead) — not just
+ *  the main lead shown in the "Lead" column — same breadth as Gantt's msLead filter. */
+function projectPassesExtraFilters(pk){
+  if (S.filter.projects.size && !S.filter.projects.has(pk)) return false;
+  if (S.filter.apps.size) {
+    const proj = S.allProjMap[pk];
+    const app = proj ? (proj.app || '') : '';
+    if (!(app && S.filter.apps.has(app))) return false;
+  }
+  if (S.filter.leads.size) {
+    const hasLead = S.projectLeadRows.some(pl => pl.project_key === pk && S.filter.leads.has(pl.pqa_emp_id));
+    if (!hasLead) return false;
+  }
+  return true;
+}
+
+/** Combined "should this project count as discovered" check (2026-08-14) — AND's the
+ *  existing date-range match (projectMatchesRange(), §5.37) with the new Project/UAT
+ *  Lead/App multiselect filters above. Replaces bare projectMatchesRange() at every call
+ *  site that decides which projects feed the MD aggregates / show up in a tab's rows. */
+function matchProjectDiscovery(pk, rangeS, rangeE){
+  return projectMatchesRange(pk, rangeS, rangeE) && projectPassesExtraFilters(pk);
+}
+
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
@@ -1168,7 +1278,7 @@ function buildProjectRows(){
        แล้วเท่านั้น (recomputeAggregates() ใช้ projectMatchesRange() ตัวเดียวกันนี้กรอง projMap
        ก่อนเข้า computeAgg) ⇒ โปรเจกต์ที่ไม่ผ่านการค้นหาจะมี MD เป็นศูนย์เสมอโดยธรรมชาติ —
        เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ */
-    if (!projectMatchesRange(pk, rangeS, rangeE)) return null;
+    if (!matchProjectDiscovery(pk, rangeS, rangeE)) return null;
 
     return {
       app: p.app || p.other_app || '— ไม่มี App —',
@@ -1365,7 +1475,7 @@ function renderLeadView(container){
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
-    if (!projectMatchesRange(pl.project_key, rangeS, rangeE)) return;   // §5.37: search-matched only
+    if (!matchProjectDiscovery(pl.project_key, rangeS, rangeE)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
     const app = proj.app || proj.other_app || '— ไม่มี App —';
     const role = pl.is_main ? 'main' : (pl.is_executor ? 'exec' : 'sub');
     const byApp = (coverage[role][pl.pqa_emp_id] = coverage[role][pl.pqa_emp_id] || {});
@@ -1450,6 +1560,7 @@ function renderSignoffView(container){
   const executors = executorMap();
   const rows = currentProjectsList()
     .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
+    .filter(p => projectPassesExtraFilters(p.project_key))   // 2026-08-14: Project/UAT Lead/App ตัวกรอง
     .map(p => ({
       project_key: p.project_key,
       app: p.app || p.other_app || '',
@@ -1521,6 +1632,128 @@ async function ensureOverallRangeDefaults(){
 }
 
 /* =====================================================================
+   MULTISELECT (Project/UAT Lead/App ตัวกรอง — เอา pattern เดียวกับ gantt.html/outsource.html
+   มาใช้ทั้งดุ้น, 2026-08-14 ตามคำขอพี่กิ๊บ)
+   ===================================================================== */
+function makeMultiSelect(hostId, items, selectedSet, labelAll){
+  const host = $(hostId);
+  host.innerHTML = `
+    <button class="ms-btn" type="button">${labelAll} <span class="ms-count">▾</span></button>
+    <div class="ms-panel hidden">
+      <div class="ms-search-wrap">
+        <input type="text" class="ms-search" placeholder="พิมพ์เพื่อค้นหา...">
+        <button type="button" class="ms-search-x" title="ล้างคำค้นหา">×</button>
+      </div>
+      <div class="ms-tools">
+        <button type="button" data-act="none">ล้าง</button>
+      </div>
+      <div class="ms-list"></div>
+    </div>`;
+  const btn = host.querySelector('.ms-btn');
+  const panel = host.querySelector('.ms-panel');
+  const list = host.querySelector('.ms-list');
+  const search = host.querySelector('.ms-search');
+  const searchX = host.querySelector('.ms-search-x');
+  list.innerHTML = items.map(it =>
+    `<label class="ms-item" data-label="${esc(String(it.label).toLowerCase())}"><input type="checkbox" value="${esc(it.value)}"${selectedSet.has(it.value)?' checked':''}><span>${esc(it.label)}</span></label>`).join('');
+
+  const applySearch = () => {
+    const q = search.value.trim().toLowerCase();
+    list.querySelectorAll('.ms-item').forEach(el => {
+      el.style.display = (!q || (el.dataset.label||'').includes(q)) ? '' : 'none';
+    });
+  };
+  search.oninput = applySearch;
+  search.onclick = (e) => e.stopPropagation();
+  searchX.onclick = (e) => { e.stopPropagation(); search.value=''; applySearch(); search.focus(); };
+
+  // เปิด dropdown ตัวไหน → หุบตัวอื่นทั้งหมดก่อน (เปิดได้ทีละอันเท่านั้น)
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const willOpen = panel.classList.contains('hidden');
+    closeAllMsPanels();
+    if (willOpen) { panel.classList.remove('hidden'); search.focus(); }
+  };
+  panel.onclick = (e) => { e.stopPropagation(); };
+  list.onchange = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input:checked').forEach(cb => selectedSet.add(cb.value));
+    updateMsLabel(host, items, selectedSet, labelAll);
+    onExtraFilterChange();
+  };
+  host.querySelector('[data-act=none]').onclick = () => {
+    selectedSet.clear();
+    list.querySelectorAll('input').forEach(cb => cb.checked=false);
+    updateMsLabel(host, items, selectedSet, labelAll);
+    onExtraFilterChange();
+  };
+  updateMsLabel(host, items, selectedSet, labelAll);
+}
+function updateMsLabel(host, items, selectedSet, labelAll){
+  const btn = host.querySelector('.ms-btn');
+  const n = selectedSet.size;
+  let label;
+  if (n === 0) {
+    label = labelAll;
+  } else if (n === 1) {
+    const only = [...selectedSet][0];
+    const it = items.find(x => x.value === only);
+    label = it ? it.label : labelAll;
+  } else {
+    label = `${n} รายการ`;
+  }
+  btn.innerHTML = `${esc(String(label))} <span class="ms-count">▾</span>`;
+}
+function closeAllMsPanels(){
+  document.querySelectorAll('.ms-panel').forEach(p => p.classList.add('hidden'));
+}
+document.addEventListener('click', closeAllMsPanels);
+// ESC ก็หุบ dropdown ที่เปิดอยู่
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.querySelector('.ms-panel:not(.hidden)')) {
+    closeAllMsPanels();
+    e.stopPropagation();
+  }
+}, true);
+
+/** Build the 3 multiselect widgets from master data — call once after loadMasterData()
+ *  (needs S.activeProjects/S.leadsAll/S.appList populated) + restoreDashPrefs() (needs
+ *  S.filter.* already restored so the widgets open with the right checkboxes pre-checked). */
+function buildFilterMultiSelects(){
+  makeMultiSelect('msProject',
+    S.activeProjects.slice().sort((a,b)=>String(a.project_name).localeCompare(String(b.project_name)))
+      .map(p => ({ value:p.project_key, label:p.project_name })),
+    S.filter.projects, 'ทุก Project');
+  makeMultiSelect('msLead',
+    S.leadsAll.map(l => ({ value:l.emp_id, label:l.short_name || l.nickname || l.emp_id })),
+    S.filter.leads, 'ทุก Lead');
+  makeMultiSelect('msApp',
+    S.appList.map(a => ({ value:a.app_code, label:a.app_code })),
+    S.filter.apps, 'ทุก App');
+}
+
+// dump S.filter (Project/UAT Lead/App multiselect) ลง sessionStorage — เรียกทุกครั้งที่ตัวเลือก
+// ใน multiselect เปลี่ยน (แยก key จาก rangeS/rangeE/panelOpen ที่มี savePrefs ของตัวเองอยู่แล้ว)
+function saveFilterPrefs(){
+  savePrefs(PAGE, {
+    projects: [...S.filter.projects],
+    leads: [...S.filter.leads],
+    apps: [...S.filter.apps],
+  });
+}
+
+/** Project/UAT Lead/App multiselect เปลี่ยน → มีผลทันที (ไม่ต้องกด "ค้นหา" เหมือน Start/End) —
+ *  ต้อง recomputeAggregates() ใหม่ด้วย เพราะ matchProjectDiscovery() (ซึ่งเช็ค S.filter ด้วย
+ *  ตั้งแต่ 2026-08-14) เป็นตัวตัดสิน projMap ที่ป้อนเข้า computeAgg(). */
+function onExtraFilterChange(){
+  saveFilterPrefs();
+  showDashLoading();
+  recomputeAggregates();
+  renderAll();
+  hideDashLoading();
+}
+
+/* =====================================================================
    TOOLBAR WIRING
    ===================================================================== */
 function wireToolbar(){
@@ -1571,7 +1804,8 @@ function switchDashView(view){
   S.dashView = view;
   savePrefs(PAGE, { dashView: S.dashView });
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
-  $('leadRoleControls').classList.toggle('hidden', view !== 'lead');
+  $('leadRoleFld').classList.toggle('hidden', view !== 'lead');
+  $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
   // same "hidden while (re)building, revealed only after" contract as loadPeriod).
