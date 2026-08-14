@@ -362,6 +362,12 @@
            คู่กันเสมอใน renderSummaryToggle() เพราะมีผลแค่ By Project/By OS เท่านั้น. -->
       <span class="toolbar-sep hidden" id="chartSep">|</span>
       <button class="btn hidden" id="summaryToggleBtn">Show chart</button>
+      <!-- Download Excel (2026-08-14, ตามคำขอพี่กิ๊บ) — By Lead tab เท่านั้น, export สิ่งที่กำลัง
+           แสดงอยู่จริง (Project/UAT Lead/App/Type/Domain/Start-End ที่เลือกอยู่ตอนนี้) ออกเป็น
+           .xlsx 3 sheet (Filter/Summary/Project) — ดู downloadLeadExcel(). ซ่อน/โชว์คู่กับ
+           leadRoleFld/leadDomainFld ใน switchDashView(). -->
+      <span class="toolbar-sep hidden" id="leadDownloadSep">|</span>
+      <button class="btn hidden" id="downloadLeadBtn">📥 Download Excel</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -504,6 +510,10 @@ import {
   supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin
 } from './common.js';
+// SheetJS — ใช้เฉพาะ "Download Excel" ใน By Lead tab (2026-08-14), ดู downloadLeadExcel()
+// ใช้ CDN ทางการของ SheetJS เอง (ไม่ใช่ jsdelivr +esm แบบ supabase-js ด้านบน) เพราะ xlsx เป็น
+// UMD bundle ตัวใหญ่ — SheetJS มี .mjs build ของตัวเองที่ import ตรงแบบนี้ได้เสถียรกว่า
+import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs';
 
 const PAGE = 'dashboard';
 
@@ -716,13 +726,15 @@ async function showApp(session){
   // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
   paintNavAdmin(getCachedRole(session.user.email));
   let who = session.user.email, role = '';
-  const { data:u } = await supabase.from('app_user').select('display_name,app_role')
+  // pqa_emp_id เพิ่มเข้ามา 2026-08-14 — ใช้ตั้งชื่อไฟล์ + บันทึกลง download_log ตอนกด
+  // "Download Excel" ใน By Lead tab (ดู downloadLeadExcel()) ไม่กระทบของเดิม (who/role)
+  const { data:u } = await supabase.from('app_user').select('display_name,app_role,pqa_emp_id')
     .eq('email', session.user.email).maybeSingle();
   if (u) { who = u.display_name; role = u.app_role; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
   setCachedRole(session.user.email, role);
   paintNavAdmin(role);
-  S.user = { displayName: who, role };
+  S.user = { displayName: who, role, userId: session.user.id, pqaEmpId: (u && u.pqa_emp_id) || null };
 
   if (sessionBooted) return;
   sessionBooted = true;
@@ -1252,6 +1264,25 @@ function matchProjectDiscovery(pk, rangeS, rangeE){
 }
 
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
+
+/** "Project Period" DISPLAY string for project `pk` = TC Prep phase start_date through the
+ *  max end_date across all of its project_phase rows — same formula as the inline block in
+ *  buildProjectRows() (kept inline there, not refactored to call this, so the tests/
+ *  run_tests.mjs vm-eval harness that extracts+runs buildProjectRows() in isolation still
+ *  works unmodified). Added 2026-08-14 for downloadLeadExcel()'s Project sheet, which needs
+ *  the same "Project Period" text as the By Project tab — if you change one, change both. */
+function projectPeriodDisp(pk){
+  const phases = S.phasesByProject[pk] || [];
+  const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
+  let maxEnd = null;
+  phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+  const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+  const periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
+  const disp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
+    : periodStart ? dDisp(periodStart) : '—';
+  return { disp, periodStart };
+}
+
 function buildProjectRows(){
   const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
   const subLeads = subLeadMap();
@@ -1483,6 +1514,73 @@ function leadDomainBucket(email){
   if (e.endsWith('@arise.tech')) return 'arise';
   return 'other';
 }
+/** Lead × App coverage for the currently matched project set (Project/UAT Lead/App +
+ *  Start/End search, §5.37) — same logic as the inline block at the top of renderLeadView()
+ *  (kept inline there on purpose, NOT refactored to call this: tests/run_tests.mjs vm-evals
+ *  renderLeadView() as an isolated, self-contained function in several places, and a shared
+ *  helper would break that). Added 2026-08-14 for downloadLeadExcel() so the "Download
+ *  Excel" button computes from the same rules the on-screen matrix uses — if the coverage
+ *  rules in renderLeadView() change, mirror the change here too. Returns
+ *  { coverage: {main|sub|exec -> emp_id -> {app -> Set(project_key)}},
+ *    mainProjectsByLead: emp_id -> Set(project_key) where is_main=true,
+ *    apps: sorted app list (union across all 3 roles), agg: S.periodAgg }. */
+function computeLeadCoverage(){
+  const projByKey = currentProjMap();
+  const agg = S.periodAgg || { byProject:{} };
+  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+
+  const coverage = { main:{}, sub:{}, exec:{} }; // role -> emp_id -> { app -> Set(project_key) }
+  const mainProjectsByLead = {};                 // emp_id -> Set(project_key) where is_main = true
+  S.projectLeadRows.forEach(pl => {
+    const proj = projByKey[pl.project_key];
+    if (!proj) return;
+    if (!matchProjectDiscovery(pl.project_key, rangeS, rangeE)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
+    const app = proj.app || proj.other_app || '— ไม่มี App —';
+    const role = pl.is_main ? 'main' : (pl.is_executor ? 'exec' : 'sub');
+    const byApp = (coverage[role][pl.pqa_emp_id] = coverage[role][pl.pqa_emp_id] || {});
+    (byApp[app] = byApp[app] || new Set()).add(pl.project_key);
+    if (pl.is_main) {
+      (mainProjectsByLead[pl.pqa_emp_id] = mainProjectsByLead[pl.pqa_emp_id] || new Set()).add(pl.project_key);
+    }
+  });
+
+  const appSet = new Set();
+  ['main','sub','exec'].forEach(role => {
+    Object.values(coverage[role]).forEach(byApp => Object.keys(byApp).forEach(a => appSet.add(a)));
+  });
+  return { coverage, mainProjectsByLead, apps: sortedApps([...appSet]), agg };
+}
+
+/** Row DATA (no HTML) for one role's By Lead table — one row per lead who has ≥1 matched
+ *  project in that role, after the Type/Domain dropdowns (S.leadDomainFilter). Mirrors
+ *  buildSection()'s row-building block inside renderLeadView() (kept separate on purpose,
+ *  see computeLeadCoverage() comment above re: the vm-eval test harness) — added 2026-08-14
+ *  so downloadLeadExcel()'s Summary sheet uses the same row set/numbers as the screen. */
+function buildLeadRoleRows(roleCoverage, mainProjectsByLead, apps, agg, withMD){
+  // domainFilter defaults to 'all' when S.leadDomainFilter is unset (e.g. older cached
+  // prefs from before this dropdown existed) — never silently drops every lead.
+  const domainFilter = S.leadDomainFilter || 'all';
+  return S.leadsAll
+    .filter(l => domainFilter === 'all' || leadDomainBucket(l.email) === domainFilter)
+    .map(l => {
+      const byApp = roleCoverage[l.emp_id] || {};
+      const allProjects = new Set();
+      Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
+      if (!allProjects.size) return null; // lead with no project in this role/set — skip row
+      let totalMD = 0;
+      if (withMD) {
+        const mainProjects = mainProjectsByLead[l.emp_id] || new Set();
+        mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
+      }
+      const cellsByApp = {};
+      apps.forEach(a => { cellsByApp[a] = byApp[a] ? byApp[a].size : 0; });
+      return {
+        emp_id: l.emp_id, name: l.short_name || l.nickname || l.emp_id, email: l.email || '',
+        totalMD, totalProject: allProjects.size, projectKeys: allProjects, cellsByApp,
+      };
+    }).filter(Boolean);
+}
+
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
@@ -1575,6 +1673,158 @@ function renderLeadView(container){
   const roleKey = Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? S.leadRoleFilter : 'main';
   const meta = LEAD_ROLE_META[roleKey];
   container.innerHTML = buildSection(meta.title, coverage[roleKey], meta.withMD);
+}
+
+/* =====================================================================
+   DOWNLOAD EXCEL (By Lead tab only — "📥 Download Excel" button, 2026-08-14 ตามคำขอพี่กิ๊บ)
+   Exports what's currently on screen: honors Project/UAT Lead/App/Type/Domain/Start-End —
+   computeLeadCoverage()/buildLeadRoleRows() below mirror the same matching rules
+   renderLeadView() uses (§5.37), kept as separate functions rather than a shared refactor
+   so tests/run_tests.mjs's isolated vm-eval of renderLeadView()/buildProjectRows() keeps
+   working unmodified (see the doc comments on computeLeadCoverage()/projectPeriodDisp()
+   above). 3 sheets: Filter (ตัวกรองที่เลือก) / Summary (เหมือน By Lead matrix แต่รวมทุก role
+   ที่เลือกเป็นตารางเดียว) / Project (1 แถวต่อ Lead×Project×Phase, MD จาก
+   S.periodAgg.byProjectPhase เหมือน By Project tab). Also logs the download to
+   pqa.download_log (sql/patch_2026-08-14_download_log.sql — ต้องรันบน Supabase ก่อน). ===== */
+/** Human-readable label for a multiselect's current selection — used in the exported
+ *  "Filter" sheet. Empty Set = "All" (same convention as makeMultiSelect() itself). */
+function selectedLabelsText(selectedSet, items, valueKey, labelKey){
+  if (!selectedSet.size) return 'All';
+  const byValue = {};
+  items.forEach(it => { byValue[it[valueKey]] = it[labelKey]; });
+  return [...selectedSet].map(v => byValue[v] || v).join(', ');
+}
+
+const LEAD_DOMAIN_LABELS = { all:'All', infinitas:'Infinitas', arise:'Arise', other:'Other' };
+
+/** yyyyMMddHHmmss ตามเวลาเครื่องผู้ใช้ (ทีมอยู่โซนไทยอยู่แล้ว) — ใช้ตั้งชื่อไฟล์ export ตาม
+ *  pattern pqaResourceManagement_<pqa_emp_id>_<YYYYMMDDHHMMSS>.xlsx ที่ขอ */
+function fileTimeStamp(d){
+  const p2 = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+}
+
+/** Sheet3 "Project" rows for one role — 1 แถวต่อ (lead × matched project ที่ lead คนนั้นดูแล
+ *  ในบทบาทนี้ × phase ของ project นั้น) — project set มาจาก roleRows (ผลลัพธ์
+ *  buildLeadRoleRows() ตัวเดียวกับที่ตาราง/Summary sheet ใช้ ไม่มีชุดข้อมูลที่สอง) MD ต่อ phase
+ *  มาจาก S.periodAgg.byProjectPhase เหมือน By Project tab (buildProjectRows()) ทุกประการ */
+function buildLeadProjectPhaseRows(roleTitle, roleRows, agg){
+  const projByKey = currentProjMap();
+  const byProjectPhase = agg.byProjectPhase || {};
+  const out = [];
+  roleRows.forEach(r => {
+    const domainLabel = LEAD_DOMAIN_LABELS[leadDomainBucket(r.email)] || 'Other';
+    [...r.projectKeys].sort().forEach(pk => {
+      const proj = projByKey[pk];
+      if (!proj) return;
+      const app = proj.app || proj.other_app || '— ไม่มี App —';
+      const { disp: periodDisp } = projectPeriodDisp(pk);
+      const phases = S.phasesByProject[pk] || [];
+      const pAgg = byProjectPhase[pk] || {};
+      if (!phases.length) {
+        // edge case: project ไม่มี project_phase เลย — ยังคง 1 แถวไว้ไม่ให้ project นี้หายไปเงียบๆ
+        out.push([r.name, r.email, roleTitle, domainLabel, app, pk, proj.project_name || '', periodDisp, '—', '', '', '']);
+        return;
+      }
+      phases.forEach(ph => {
+        const md = pAgg[ph.phase_code];
+        out.push([
+          r.name, r.email, roleTitle, domainLabel, app, pk, proj.project_name || '', periodDisp,
+          ph.phase_label || phaseName(ph.phase_code),
+          ph.start_date ? dDisp(ph.start_date) : '',
+          ph.end_date ? dDisp(ph.end_date) : '',
+          md ? Number(fmtMD(md)) : 0,
+        ]);
+      });
+    });
+  });
+  return out;
+}
+
+async function downloadLeadExcel(){
+  const btn = $('downloadLeadBtn');
+  btn.disabled = true;
+  try {
+    const { coverage, mainProjectsByLead, apps, agg } = computeLeadCoverage();
+    if (!apps.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+    // Type ที่กำลังเลือกอยู่ (S.leadRoleFilter) → role(s) ที่จะรวมอยู่ใน Summary/Project sheet
+    // 'all' = ทั้ง 3 role (เหมือนหน้าจอที่ stack ทั้ง 3 ตาราง) ไม่ใช่แค่ role เดียว
+    const roleKeys = S.leadRoleFilter === 'all' ? ['main', 'sub', 'exec']
+      : (Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? [S.leadRoleFilter] : ['main']);
+
+    // ---- Sheet1: Filter ที่เลือก ----
+    const projectLabel = selectedLabelsText(S.filter.projects, S.activeProjects, 'project_key', 'project_name');
+    const leadItems = S.leadsAll.map(l => ({ emp_id: l.emp_id, label: l.short_name || l.nickname || l.emp_id }));
+    const leadLabel = selectedLabelsText(S.filter.leads, leadItems, 'emp_id', 'label');
+    const appLabel = S.filter.apps.size ? [...S.filter.apps].sort().join(', ') : 'All';
+    const typeLabel = S.leadRoleFilter === 'all' ? 'All' : (LEAD_ROLE_META[roleKeys[0]] || LEAD_ROLE_META.main).title;
+    const domainLabel = LEAD_DOMAIN_LABELS[S.leadDomainFilter || 'all'] || 'All';
+    const filterAoa = [
+      ['Project', projectLabel],
+      ['UAT Lead', leadLabel],
+      ['App', appLabel],
+      ['Type', typeLabel],
+      ['Domain', domainLabel],
+      ['Start Date', S.overallRange.s ? dDisp(S.overallRange.s) : ''],
+      ['End Date', S.overallRange.e ? dDisp(S.overallRange.e) : ''],
+    ];
+
+    // ---- Sheet2: Summary + Sheet3: Project — buildLeadRoleRows() ต่อ role ป้อนทั้งคู่ ----
+    const summaryAoa = [['Name', 'Email', 'Type', 'Domain', 'Total MD', 'Total Project', ...apps]];
+    const projectAoa = [['Name', 'Email', 'Type', 'Domain', 'App', 'Project Key', 'Project Name', 'Project Period', 'Phase', 'Phase Start', 'Phase End', 'MD']];
+    roleKeys.forEach(roleKey => {
+      const meta = LEAD_ROLE_META[roleKey];
+      const rows = buildLeadRoleRows(coverage[roleKey], mainProjectsByLead, apps, agg, meta.withMD);
+      rows.forEach(r => {
+        const domainLabelRow = LEAD_DOMAIN_LABELS[leadDomainBucket(r.email)] || 'Other';
+        summaryAoa.push([
+          r.name, r.email, meta.title, domainLabelRow,
+          meta.withMD ? Number(fmtMD(r.totalMD)) : '',
+          r.totalProject,
+          ...apps.map(a => r.cellsByApp[a] || ''),
+        ]);
+      });
+      projectAoa.push(...buildLeadProjectPhaseRows(meta.title, rows, agg));
+    });
+
+    if (summaryAoa.length === 1) { toast('ไม่มีข้อมูล Lead ให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+    // ---- ประกอบไฟล์ .xlsx 3 sheet แล้วสั่งดาวน์โหลด ----
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryAoa), 'Summary');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projectAoa), 'Project');
+
+    const empId = (S.user && S.user.pqaEmpId) || 'NA';
+    const filename = `pqaResourceManagement_${empId}_${fileTimeStamp(new Date())}.xlsx`;
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // ---- บันทึกลง pqa.download_log — best-effort, fire-and-forget เหมือน logLogin() ใน
+    //      common.js ไม่ block การดาวน์โหลด (ไฟล์ดาวน์โหลดไปแล้วข้างบนไม่ว่า insert นี้จะสำเร็จ
+    //      หรือไม่) ต้องรัน sql/patch_2026-08-14_download_log.sql บน Supabase ก่อนถึงจะบันทึกได้ ----
+    if (S.user && S.user.userId) {
+      supabase.from('download_log').insert({
+        user_id: S.user.userId,
+        pqa_emp_id: S.user.pqaEmpId,
+      }).then(({ error }) => {
+        if (error) console.warn('download_log insert failed:', error.message);
+      });
+    }
+
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ---- Signoff ---- */
@@ -1814,6 +2064,7 @@ function wireToolbar(){
     savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
     if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
+  $('downloadLeadBtn').addEventListener('click', downloadLeadExcel);
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
     if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
@@ -1836,6 +2087,9 @@ function switchDashView(view){
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
+  // Download Excel — By Lead tab เท่านั้น (2026-08-14) เหตุผลเดียวกับ leadRoleFld/leadDomainFld
+  $('leadDownloadSep').classList.toggle('hidden', view !== 'lead');
+  $('downloadLeadBtn').classList.toggle('hidden', view !== 'lead');
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
   // same "hidden while (re)building, revealed only after" contract as loadPeriod).
