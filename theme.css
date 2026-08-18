@@ -162,7 +162,12 @@ a {
   border-bottom: 1px solid var(--dk-border);
   position: sticky;
   top: 0;
-  z-index: 10;
+  /* topbar เป็น position:sticky + z-index ของตัวเอง = สร้าง stacking context ใหม่ ทำให้
+     .noti-panel (z-index:95) ที่อยู่ข้างในถูก "ครอบ" ไว้ที่ระดับนี้เวลาเทียบกับ element
+     นอก topbar — เจอบั๊ก 2026-08-18: thead sticky ของตาราง gantt (z-index:15/20/25) แม้ต่ำกว่า
+     95 มาก แต่ดันวาดทับ noti-panel เพราะ 15/20/25 > 10 (z-index เดิมของ topbar) ที่ root
+     stacking context ต้องยกให้สูงกว่า z-index สูงสุดที่ใช้ในเนื้อหาหน้า (ตอนนี้คือ 25) */
+  z-index: 30;
 }
 
 .topbar .brand {
