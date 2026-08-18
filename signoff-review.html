@@ -141,9 +141,11 @@
   .sr-comment-top { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .sr-comment-author { font-weight:700; font-size:13px; color:var(--dk-text); }
   .sr-comment-text { font-size:13.5px; color:var(--dk-text); line-height:1.55; margin-top:3px; white-space:pre-wrap; }
+  .sr-comment-deleted { color:var(--dk-text2); font-style:italic; }
   .sr-comment-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:7px; position:relative; }
   .sr-reply-btn { border:none; background:none; color:var(--dk-text2); font-size:12px; font-weight:600; cursor:pointer; padding:2px 4px; }
   .sr-reply-btn:hover { text-decoration:underline; }
+  .sr-delete-btn:hover { color:var(--danger); }
   .sr-replies { border-left:2px solid var(--dk-border); margin:9px 0 2px; padding-left:14px; display:flex; flex-direction:column; gap:3px; }
   .sr-reply { display:flex; gap:9px; padding:5px 0; }
   .sr-reply-top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
@@ -678,6 +680,23 @@ function clearPendingAttachComposers(){
 }
 
 async function loadRoom(pk){
+  // เก็บข้อความที่พิมพ์ค้างไว้ (ยังไม่กด "ส่ง"/"บันทึก") ก่อน re-render ทั้งก้อน — ไม่งั้นถ้ามี
+  // realtime event มาระหว่างนั้น (คนอื่นคอมเมนต์ใหม่ กด reaction ฯลฯ หรือแม้แต่ของเราเองจากอีกแท็บ)
+  // convPane.innerHTML จะถูกล้างแล้วสร้างใหม่จากข้อมูลใน DB ล้วน ๆ ทำให้กล่องแก้ไข/ตอบกลับ/คอมเมนต์
+  // ที่กำลังพิมพ์ค้างอยู่ถูกรีเซ็ตกลับเป็นข้อความเดิมแบบเงียบ ๆ — หน้าตาเหมือน "แก้ไขไม่ได้" เพราะ
+  // ข้อความที่พิมพ์หายทุกครั้งที่มีคนอื่นขยับในห้อง (ดู memory pqa-signoff-review-bugs-2026-08)
+  const _draft = {};
+  if (S.editOpenKey != null) {
+    const ta = document.querySelector(`.sr-edit-textarea[data-cid="${S.editOpenKey}"]`);
+    if (ta) _draft.edit = ta.value;
+  }
+  if (S.replyOpenKey != null) {
+    const ta = document.querySelector(`.sr-reply-input[data-cid="${S.replyOpenKey}"]`);
+    if (ta) _draft.reply = ta.value;
+  }
+  const _composerTa = document.querySelector('.sr-composer-text');
+  if (_composerTa && _composerTa.value) _draft.composer = _composerTa.value;
+
   $('convPane').innerHTML = '<div class="sr-empty">กำลังโหลด...</div>';
   try {
     // 1) root ("signoff review" opener) comment, if it already exists
@@ -687,10 +706,13 @@ async function loadRoom(pk){
     if (rootErr) throw rootErr;
     const rootId = rootRow ? rootRow.id : null;
 
-    // 2) thread comments (non-root)
+    // 2) thread comments (non-root) — INCLUDE soft-deleted rows (deleted_at not null) on
+    // purpose (2026-08-18 delete feature): a deleted comment still needs to render as a
+    // "ข้อความถูกลบแล้ว" tombstone so any replies still attached to its parent_id don't go
+    // orphaned/invisible — see buildCommentHTML/buildReplyHTML for the tombstone rendering
     const { data: cmtRows, error: cmtErr } = await supabase.from('signoff_comment')
-      .select('id,parent_id,is_root,author_email,body,created_at,edited_at')
-      .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
+      .select('id,parent_id,is_root,author_email,body,created_at,edited_at,deleted_at')
+      .eq('project_key', pk).eq('is_root', false)
       .order('created_at', { ascending: true });
     if (cmtErr) throw cmtErr;
 
@@ -751,6 +773,19 @@ async function loadRoom(pk){
 
     S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors, attachmentsByComment, mentionsByComment };
     renderRoomFull(pk);
+    // คืนข้อความที่พิมพ์ค้างไว้กลับเข้ากล่องเดิม (ถ้ากล่องนั้นยังเปิดอยู่หลัง re-render)
+    if (_draft.edit != null && S.editOpenKey != null) {
+      const ta = document.querySelector(`.sr-edit-textarea[data-cid="${S.editOpenKey}"]`);
+      if (ta) ta.value = _draft.edit;
+    }
+    if (_draft.reply != null && S.replyOpenKey != null) {
+      const ta = document.querySelector(`.sr-reply-input[data-cid="${S.replyOpenKey}"]`);
+      if (ta) ta.value = _draft.reply;
+    }
+    if (_draft.composer != null) {
+      const ta = document.querySelector('.sr-composer-text');
+      if (ta) ta.value = _draft.composer;
+    }
     ensureRealtimeSub(pk);
     if (S.pendingHighlightCommentId != null) {
       highlightComment(S.pendingHighlightCommentId);
@@ -946,6 +981,7 @@ function buildReplyHTML(rp){
   const isMine = rp.author_email === S.me;
   const editOpen = S.editOpenKey === rp.id;
   const edited = rp.edited_at ? ' (แก้ไขแล้ว)' : '';
+  const isDeleted = !!rp.deleted_at;
   return `
     <div class="sr-reply" data-cid="${rp.id}">
       <span class="sr-avatar xs ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
@@ -954,11 +990,13 @@ function buildReplyHTML(rp){
           <span class="sr-reply-author">${esc(dispName)}</span>
           <span class="sr-time">${esc(commentTimeFull(rp.created_at))}${edited}</span>
         </div>
-        ${editOpen ? buildEditFormHTML(rp.id, rp.body) : `
+        ${isDeleted ? `
+        <div class="sr-reply-text sr-comment-deleted">🗑️ ข้อความนี้ถูกลบแล้ว</div>` :
+        editOpen ? buildEditFormHTML(rp.id, rp.body) : `
         <div class="sr-reply-text">${esc(rp.body)}</div>
         ${attachmentThumbsHTML(S.room.attachmentsByComment[rp.id], S.me)}
         ${buildMentionLogHTML(rp.id)}
-        ${isMine ? `<div class="sr-reply-actions"><button class="sr-reply-btn sr-edit-btn" data-cid="${rp.id}">✏️ แก้ไข</button></div>` : ''}`}
+        ${isMine ? `<div class="sr-reply-actions"><button class="sr-reply-btn sr-edit-btn" data-cid="${rp.id}">✏️ แก้ไข</button><button class="sr-reply-btn sr-delete-btn" data-cid="${rp.id}">🗑️ ลบ</button></div>` : ''}`}
       </div>
     </div>`;
 }
@@ -969,6 +1007,7 @@ function buildCommentHTML(c){
   const replyOpen = S.replyOpenKey === c.id;
   const editOpen = S.editOpenKey === c.id;
   const edited = c.edited_at ? ' (แก้ไขแล้ว)' : '';
+  const isDeleted = !!c.deleted_at;
   return `
     <div class="sr-comment" data-cid="${c.id}">
       <span class="sr-avatar sm ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
@@ -978,14 +1017,16 @@ function buildCommentHTML(c){
           ${isMine ? '<span class="sr-role-tag">ฉัน</span>' : ''}
           <span class="sr-time">${esc(commentTimeFull(c.created_at))}${edited}</span>
         </div>
-        ${editOpen ? buildEditFormHTML(c.id, c.body) : `
+        ${isDeleted ? `
+        <div class="sr-comment-text sr-comment-deleted">🗑️ ข้อความนี้ถูกลบแล้ว</div>` :
+        editOpen ? buildEditFormHTML(c.id, c.body) : `
         <div class="sr-comment-text">${esc(c.body)}</div>
         ${attachmentThumbsHTML(S.room.attachmentsByComment[c.id], S.me)}
         ${buildMentionLogHTML(c.id)}
         <div class="sr-comment-actions">
           ${buildReactionsBlock(c.id, String(c.id))}
           <button class="sr-reply-btn" data-cid="${c.id}">↩ ตอบกลับ</button>
-          ${isMine ? `<button class="sr-reply-btn sr-edit-btn" data-cid="${c.id}">✏️ แก้ไข</button>` : ''}
+          ${isMine ? `<button class="sr-reply-btn sr-edit-btn" data-cid="${c.id}">✏️ แก้ไข</button><button class="sr-reply-btn sr-delete-btn" data-cid="${c.id}">🗑️ ลบ</button>` : ''}
         </div>`}
         ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
         ${replyOpen ? `
@@ -1108,12 +1149,20 @@ async function insertMentions(commentId, body){
   if (error) console.warn('insert signoff_mention error', error);
 }
 
+// กันส่งซ้ำ (double-submit) — ตัวเดียวใช้ร่วมกันทั้ง sendComment/sendReply/saveCommentEdit
+// เพราะ UI เปิดได้ทีละกล่อง (composer/reply/edit) อยู่แล้ว เจอบั๊กจริง: กด Enter รัว ๆ (หรือคีย์รีพีท
+// จากการกดค้างเสี้ยววินาที) ยิง keydown 2 ครั้งก่อนแถวแรกจะ insert เสร็จ — เดิม sendComment() เช็คแค่
+// ปิดปุ่ม "ส่ง" (disabled) ซึ่งกันได้แค่การคลิกซ้ำ ไม่ได้กันทาง Enter ที่เรียกฟังก์ชันตรง ๆ เลยหลุด
+// ไปสร้างคอมเมนต์ซ้ำ 2 แถวในตาราง (ดู memory pqa-signoff-review-bugs-2026-08)
+let _srBusy = false;
+
 async function sendComment(){
-  if (!S.room) return;
+  if (!S.room || _srBusy) return;
   const ta = document.querySelector('.sr-composer-text');
   const v = (ta && ta.value || '').trim();
   const blobs = composerAttach ? composerAttach.getBlobs() : [];
   if (!v && !blobs.length) return; // ต้องมีข้อความ "หรือ" มีรูปแนบอย่างน้อย 1 รูป
+  _srBusy = true;
   const btn = document.querySelector('.sr-send-btn');
   if (btn) { btn.disabled = true; if (blobs.length) btn.textContent = 'กำลังอัปโหลด...'; }
   try {
@@ -1134,15 +1183,17 @@ async function sendComment(){
     console.warn('sendComment error', err);
     toast('ส่งข้อความไม่สำเร็จ: ' + (err.message || ''), true);
   } finally {
+    _srBusy = false;
     if (btn) { btn.disabled = false; btn.textContent = 'ส่ง ➤'; }
   }
 }
 async function sendReply(parentId){
-  if (!S.room || parentId == null) return;
+  if (!S.room || parentId == null || _srBusy) return;
   const input = document.querySelector(`.sr-reply-input[data-cid="${parentId}"]`);
   const v = (input && input.value || '').trim();
   const blobs = replyAttach ? replyAttach.getBlobs() : [];
   if (!v && !blobs.length) return;
+  _srBusy = true;
   try {
     const { data, error } = await supabase.from('signoff_comment')
       .insert({ project_key: S.room.pk, parent_id: parentId, author_email: S.me, body: v })
@@ -1160,13 +1211,15 @@ async function sendReply(parentId){
   } catch (err) {
     console.warn('sendReply error', err);
     toast('ส่งข้อความไม่สำเร็จ', true);
+  } finally {
+    _srBusy = false;
   }
 }
 /** แก้ไขความคิดเห็นของตัวเอง (root ใช้ RPC fn_upsert_signoff_review เหมือน Gantt modal,
  *  comment/reply ธรรมดา update ตรงตาราง — RLS `signoff_comment_update` อนุญาตเฉพาะแถวของตัวเอง
  *  ถ้าโดนบล็อกจะได้ 0 แถวกลับมาแบบเงียบๆ (ไม่ error) เลยต้องเช็ค .select() ที่ได้คืนมาเอง */
 async function saveCommentEdit(id){
-  if (!S.room || id == null) return;
+  if (!S.room || id == null || _srBusy) return;
   const ta = document.querySelector(`.sr-edit-textarea[data-cid="${id}"]`);
   const errBox = document.querySelector(`.sr-edit-err[data-cid="${id}"]`);
   const v = (ta && ta.value || '').trim();
@@ -1174,6 +1227,7 @@ async function saveCommentEdit(id){
   if (!v) { if (errBox) errBox.textContent = 'กรุณากรอกข้อความ ห้ามเว้นว่าง'; return; }
 
   const isRoot = S.room.rootId != null && id === S.room.rootId;
+  _srBusy = true;
   const saveBtn = document.querySelector(`.sr-edit-save[data-cid="${id}"]`);
   if (saveBtn) saveBtn.disabled = true;
   try {
@@ -1206,7 +1260,41 @@ async function saveCommentEdit(id){
     console.warn('saveCommentEdit error', err);
     toast('แก้ไขไม่สำเร็จ: ' + (err.message || ''), true);
   } finally {
+    _srBusy = false;
     if (saveBtn) saveBtn.disabled = false;
+  }
+}
+/** ลบคอมเมนต์/ตอบกลับของตัวเอง (2026-08-18) — soft-delete เท่านั้น (ตั้ง deleted_at) ไม่ลบแถวจริง
+ *  เพราะ (1) reply ที่ตอบไว้ใต้คอมเมนต์นี้ยังต้องอ้าง parent_id เดิมได้ ไม่งั้น orphan และ
+ *  (2) signoff_mention ที่เคย @tag ไปแล้วไม่ควรหายไปเงียบๆ (ดู memory
+ *  pqa-signoff-mention-notification-2026-08 — ตั้งใจให้แถว mention อยู่ต่อแม้คอมเมนต์แม่ถูกซ่อน)
+ *  โชว์แทนที่ด้วย "ข้อความถูกลบแล้ว" ใน buildCommentHTML/buildReplyHTML แต่ reply ข้างล่างยังเห็น
+ *  ปกติ — ลบได้เฉพาะคอมเมนต์ของตัวเอง ห้ามลบ root (ปุ่มลบไม่โชว์ให้ root, กันพลาดซ้ำอีกชั้นตรงนี้) */
+async function deleteComment(id){
+  if (!S.room || id == null || _srBusy) return;
+  if (S.room.rootId != null && id === S.room.rootId) return;
+  if (!confirm('ยืนยันลบความคิดเห็นนี้?')) return;
+  _srBusy = true;
+  try {
+    const { data, error } = await supabase.from('signoff_comment')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id).select();
+    if (error) throw error;
+    if (!data || !data.length) {
+      // RLS signoff_comment_update บล็อกแบบเงียบๆ (0 แถว, ไม่ error) — ลบได้เฉพาะของตัวเองเท่านั้น
+      toast('ลบไม่สำเร็จ: ไม่มีสิทธิ์ลบความคิดเห็นนี้', true);
+      return;
+    }
+    if (S.editOpenKey === id) S.editOpenKey = null;
+    if (S.replyOpenKey === id) S.replyOpenKey = null;
+    toast('ลบความคิดเห็นแล้ว ✓');
+    await loadRoom(S.room.pk);
+    await refreshRailSnippet(S.room.pk);
+  } catch (err) {
+    console.warn('deleteComment error', err);
+    toast('ลบไม่สำเร็จ: ' + (err.message || ''), true);
+  } finally {
+    _srBusy = false;
   }
 }
 async function refreshRailSnippet(pk){
@@ -1342,6 +1430,11 @@ function wireStaticControls(){
     }
     const editSaveBtn = e.target.closest('.sr-edit-save');
     if (editSaveBtn) { await saveCommentEdit(Number(editSaveBtn.dataset.cid)); return; }
+
+    // 🗑️ ลบคอมเมนต์ — เช็คก่อน .sr-reply-btn เสมอ เหมือนปุ่มแก้ไขข้างบน (ปุ่มลบก็มีคลาส
+    // sr-reply-btn ติดมาด้วยเพื่อ reuse สไตล์เดียวกัน)
+    const deleteBtn = e.target.closest('.sr-delete-btn');
+    if (deleteBtn) { await deleteComment(Number(deleteBtn.dataset.cid)); return; }
 
     // ลบรูปที่แนบไว้แล้ว (ทั้งตอนดูปกติและตอนเปิดกล่องแก้ไข) — ลบทันที ไม่ต้องกด "บันทึก"
     const attDelBtn = e.target.closest('.att-thumb-del');

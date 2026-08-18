@@ -1137,6 +1137,7 @@ function sortFn(a, b) {
 // Group by Project: section header = ชื่อ Project, แถวข้างใต้ = คนที่ถูกจองใน project นั้น
 // (ในช่วงวันที่ที่เลือก) — คนคนเดียวกันจะมีหลายบรรทัดได้ถ้าถูกจองมากกว่า 1 project ในช่วงนี้
 // (แต่ละบรรทัดโชว์เฉพาะ booking ของ project นั้นๆ ผ่าน projectKey ที่ส่งให้ buildDayCell)
+// ท้ายสุด: OS ที่ไม่เข้ากลุ่มไหนเลย → กลุ่ม "ยังไม่มี Project" ต่อท้ายสุดของตาราง (2026-08-18)
 function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
   const metaByResId = {};
   withMeta.forEach(x => { metaByResId[x.p.resourceId] = x; });
@@ -1167,6 +1168,16 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
     html += `<tr class="grp-sep"><td colspan="${colspan}">📁 ${headParts.join(' · ')}</td></tr>`;
     html += rows.map(x => buildRow(x.p, days, conflictMap, proj.project_key)).join('');
   });
+
+  // req (2026-08-18): OS ที่ไม่ถูกจัดเข้ากลุ่ม Project ไหนเลย (ไม่มี booking ในช่วงนี้เลย,
+  // หรือมีแต่ booking ที่จับคู่กับ project ที่ inactive/ไม่ผ่านตัวกรอง) ให้โชว์เป็นกลุ่มสุดท้าย
+  // ต่อท้ายสุดของตาราง แทนที่จะหายไปเงียบๆ เหมือนก่อนแก้
+  const noProjectRows = withMeta.filter(x => !uniqueRes.has(x.p.resourceId)).sort(sortFn);
+  if (noProjectRows.length) {
+    noProjectRows.forEach(x => uniqueRes.add(x.p.resourceId));
+    html += `<tr class="grp-sep"><td colspan="${colspan}">📂 ยังไม่มี Project (${noProjectRows.length} คน)</td></tr>`;
+    html += noProjectRows.map(x => buildRow(x.p, days, conflictMap)).join('');
+  }
 
   return { html, uniqueCount: uniqueRes.size };
 }

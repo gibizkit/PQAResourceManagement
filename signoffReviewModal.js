@@ -143,6 +143,8 @@ function ensureModal() {
     /* ---- inline comment edit (Feature 3) ---- */
     .sr-modal-comment-edit-btn, .sr-modal-reply-edit-btn { border:none; background:none; color:var(--dk-text2); font-size:11.5px; font-weight:600; cursor:pointer; padding:1px 3px; margin-left:6px; }
     .sr-modal-comment-edit-btn:hover, .sr-modal-reply-edit-btn:hover { text-decoration:underline; color:var(--dk-accent); }
+    .sr-modal-comment-delete-btn:hover { color:var(--danger) !important; }
+    .sr-comment-deleted { color:var(--dk-text2); font-style:italic; }
     .sr-modal-edit-box textarea { width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--dk-border-s); font-size:13px; color:var(--dk-text); font-family:inherit; margin-top:4px; }
     .sr-modal-edit-box textarea:focus { outline:none; border-color:var(--dk-accent); }
     .sr-modal-edit-actions { display:flex; gap:8px; align-items:center; margin-top:6px; }
@@ -225,9 +227,11 @@ async function loadSignoffReviewModal(pk) {
       supabase.from('signoff_comment')
         .select('id,body,author_email,created_at,edited_at')
         .eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle(),
+      // รวมแถวที่ soft-delete แล้วด้วยตั้งใจ (2026-08-18 delete feature) — ไม่งั้น reply ที่ตอบไว้
+      // ใต้คอมเมนต์ที่ถูกลบจะกลายเป็น orphan มองไม่เห็นเลย (ดู logic เดียวกันใน signoff-review.html)
       supabase.from('signoff_comment')
-        .select('id,parent_id,is_root,author_email,body,created_at,edited_at')
-        .eq('project_key', pk).is('deleted_at', null).eq('is_root', false)
+        .select('id,parent_id,is_root,author_email,body,created_at,edited_at,deleted_at')
+        .eq('project_key', pk).eq('is_root', false)
         .order('created_at', { ascending: true }),
       // Feature 1: project facts for the summary card. Failure here degrades gracefully
       // (see buildSummaryCardHTML) — it must not block the thread from loading.
@@ -348,10 +352,12 @@ function buildUrlRowHTML(pk, url) {
 function commentHeaderHTML(c) {
   const mine = _lookup.me && c.author_email === _lookup.me;
   const edited = c.edited_at ? ' (แก้ไขแล้ว)' : '';
-  const editBtn = mine
-    ? `<button class="sr-modal-comment-edit-btn" data-action="comment-edit" data-cid="${c.id}">✏️ แก้ไข</button>`
+  // ไม่โชว์ปุ่มแก้ไข/ลบให้คอมเมนต์ที่ถูกลบไปแล้ว (deleted_at) — กันลบซ้ำ/แก้ทับ tombstone
+  const actionBtns = (mine && !c.deleted_at)
+    ? `<button class="sr-modal-comment-edit-btn" data-action="comment-edit" data-cid="${c.id}">✏️ แก้ไข</button>` +
+      `<button class="sr-modal-comment-edit-btn sr-modal-comment-delete-btn" data-action="comment-delete" data-cid="${c.id}">🗑️ ลบ</button>`
     : '';
-  return `<b>${esc(shortEmail(c.author_email))}</b> <span class="muted">${esc(commentTimeShort(c.created_at))}${edited}</span>${editBtn}`;
+  return `<b>${esc(shortEmail(c.author_email))}</b> <span class="muted">${esc(commentTimeShort(c.created_at))}${edited}</span>${actionBtns}`;
 }
 /** รูปที่แนบไว้แล้วของคอมเมนต์ id หนึ่ง — จาก _lastLoad.attachmentsByComment ที่โหลดมาพร้อมเธรด */
 function attsFor(id) {
@@ -385,9 +391,12 @@ function commentEditBoxHTML(c) {
 function buildCommentGroupHTML(c, byParent) {
   const replies = byParent[c.id] || [];
   const editing = _editingCommentId === c.id;
+  const isDeleted = !!c.deleted_at;
   const body = editing
     ? `<div class="sr-modal-comment-top"><b>${esc(shortEmail(c.author_email))}</b></div>${commentEditBoxHTML(c)}`
-    : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}${mentionLogHTML(c.id)}`;
+    : isDeleted
+      ? `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text sr-comment-deleted">🗑️ ข้อความนี้ถูกลบแล้ว</div>`
+      : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}${mentionLogHTML(c.id)}`;
   return `
     <div class="sr-modal-comment" data-cid="${c.id}">
       ${body}
@@ -396,9 +405,12 @@ function buildCommentGroupHTML(c, byParent) {
 }
 function buildReplyGroupHTML(r) {
   const editing = _editingCommentId === r.id;
+  const isDeleted = !!r.deleted_at;
   const body = editing
     ? `<b>${esc(shortEmail(r.author_email))}</b>${commentEditBoxHTML(r)}`
-    : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>${attachmentThumbsHTML(attsFor(r.id), _lookup.me)}${mentionLogHTML(r.id)}`;
+    : isDeleted
+      ? `${commentHeaderHTML(r)}<div class="sr-comment-deleted">🗑️ ข้อความนี้ถูกลบแล้ว</div>`
+      : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>${attachmentThumbsHTML(attsFor(r.id), _lookup.me)}${mentionLogHTML(r.id)}`;
   return `<div class="sr-modal-reply" data-cid="${r.id}">${body}</div>`;
 }
 
@@ -502,6 +514,7 @@ async function onSignoffReviewBodyClick(e) {
   if (action === 'comment-edit') { if (_commentAttach) _commentAttach.clear(); _editingCommentId = Number(btn.dataset.cid); renderSignoffReviewModal(); return; }
   if (action === 'comment-cancel') { if (_commentAttach) _commentAttach.clear(); _editingCommentId = null; renderSignoffReviewModal(); return; }
   if (action === 'comment-save') { await saveCommentEdit(Number(btn.dataset.cid)); return; }
+  if (action === 'comment-delete') { await deleteComment(Number(btn.dataset.cid)); return; }
 
   if (action === 'att-delete') { await onAttachmentDelete(btn); return; }
 }
@@ -585,6 +598,34 @@ async function saveCommentEdit(id) {
     if (pk) await loadSignoffReviewModal(pk);
   } catch (err) {
     if (errEl) errEl.textContent = 'บันทึกไม่สำเร็จ: ' + (err.message || String(err));
+  }
+}
+
+/** ลบคอมเมนต์/ตอบกลับของตัวเอง (2026-08-18) — soft-delete เท่านั้น (ตั้ง deleted_at) ไม่ลบแถวจริง
+ *  เหตุผลเดียวกับ signoff-review.html หน้าเต็ม: reply ข้างล่างยังต้องอ้าง parent_id เดิมได้ และ
+ *  signoff_mention ที่เคย @tag ไปแล้วไม่ควรหายไปเงียบๆ — โชว์แทนที่ด้วย "ข้อความถูกลบแล้ว" ใน
+ *  buildCommentGroupHTML/buildReplyGroupHTML แต่ reply ข้างล่างยังเห็นปกติ ห้ามลบ root (modal นี้
+ *  ไม่มีปุ่มลบให้ root เลย — root แก้ไขผ่าน RPC fn_upsert_signoff_review เท่านั้น) */
+async function deleteComment(id) {
+  if (id == null) return;
+  if (!confirm('ยืนยันลบความคิดเห็นนี้?')) return;
+  try {
+    const { data, error } = await supabase.from('signoff_comment')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id).select();
+    if (error) throw error;
+    // RLS (signoff_comment_update: own rows only) silently returns 0 rows on block.
+    if (!data || !data.length) {
+      toast('ลบไม่สำเร็จ: ไม่มีสิทธิ์ลบความคิดเห็นนี้', true);
+      return;
+    }
+    if (_editingCommentId === id) _editingCommentId = null;
+    toast('ลบความคิดเห็นแล้ว ✓');
+    const pk = _lastLoad ? _lastLoad.pk : null;
+    if (pk) await loadSignoffReviewModal(pk);
+  } catch (err) {
+    console.warn('deleteComment error', err);
+    toast('ลบไม่สำเร็จ: ' + (err.message || ''), true);
   }
 }
 
