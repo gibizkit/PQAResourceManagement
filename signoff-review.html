@@ -271,7 +271,9 @@
 import {
   supabase, $, toast, esc, dDisp, monthLabel, loadProjectStatuses, statusDot, d2s,
   loadPrefs, savePrefs, setPrefsOwner, signIn,
-  getCachedRole, setCachedRole, paintNavAdmin
+  getCachedRole, setCachedRole, paintNavAdmin,
+  createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment
 } from './common.js';
 
 const PAGE = 'signoff';
@@ -329,6 +331,11 @@ const S = {
 };
 
 let realtimeChannel = null;
+
+// ตัวควบคุมรูปที่แนบไว้รอส่ง (screenshot paste-to-attach) — ผูกใหม่ทุกครั้งที่ renderRoomFull()
+// รัน (ดู common.js createAttachComposer) มีได้แค่ช่องเดียวต่อประเภทในเวลาเดียวกัน (เข้ากับ
+// S.replyOpenKey/S.editOpenKey ที่เปิดได้ทีละ 1 อยู่แล้ว)
+let composerAttach = null, replyAttach = null, editAttach = null;
 
 /* =====================================================================
    SMALL HELPERS
@@ -636,12 +643,20 @@ function renderRail(){
    ===================================================================== */
 function selectRoom(pk){
   if (!S.projMap[pk]) return;
+  clearPendingAttachComposers();
   S.selectedKey = pk;
   S.pickerOpenKey = null;
   S.replyOpenKey = null;
   S.editOpenKey = null;
   renderRail();
   loadRoom(pk);
+}
+
+/** ล้างรูปที่แนบรอส่งไว้ทุกช่อง (composer/reply/edit) — เรียกก่อนสลับห้อง/ปิดฟอร์ม กัน object URL ค้าง */
+function clearPendingAttachComposers(){
+  if (composerAttach) composerAttach.clear();
+  if (replyAttach) replyAttach.clear();
+  if (editAttach) editAttach.clear();
 }
 
 async function loadRoom(pk){
@@ -690,7 +705,10 @@ async function loadRoom(pk){
       });
     }
 
-    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors };
+    // 4) รูปที่แนบไว้ (screenshot) ของทุกคอมเมนต์ในห้องนี้ รวม root ด้วย
+    const attachmentsByComment = await fetchSignoffAttachments(ids);
+
+    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors, attachmentsByComment };
     renderRoomFull(pk);
     ensureRealtimeSub(pk);
   } catch (err) {
@@ -816,6 +834,7 @@ function buildRootCommentHTML(proj){
         </div>
         ${editOpen ? buildEditFormHTML(rootId, bodyRaw) : `
         <div class="sr-comment-text">${bodyHtml}</div>
+        ${attachmentThumbsHTML(S.room.attachmentsByComment[rootId], S.me)}
         <div class="sr-comment-actions">
           ${buildReactionsBlock(rootId, String(rootId))}
           <button class="sr-reply-btn" data-cid="${rootId}">↩ ตอบกลับ</button>
@@ -823,8 +842,9 @@ function buildRootCommentHTML(proj){
         </div>`}
         ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
         ${replyOpen ? `
+          <div class="att-chip-row" id="replyAttRow"></div>
           <div class="sr-reply-form">
-            <input class="sr-reply-input" data-cid="${rootId}" placeholder="ตอบกลับ Signoff Review นี้...">
+            <input class="sr-reply-input" data-cid="${rootId}" placeholder="ตอบกลับ Signoff Review นี้... (วางรูปได้)">
             <button class="sr-send-sm sr-send-reply" data-cid="${rootId}">ส่ง</button>
           </div>` : ''}
       </div>
@@ -834,9 +854,13 @@ function buildRootCommentHTML(proj){
 /* กล่องแก้ไขความคิดเห็น/reply/root แบบ inline — สลับที่ text + action row เดิม
    ใช้ร่วมกันทั้ง 3 ที่ (buildRootCommentHTML / buildCommentHTML / buildReplyHTML) */
 function buildEditFormHTML(id, body){
+  // รูปเดิมที่แนบไว้แล้ว (ลบทีละใบได้ทันที ไม่ต้องกด "บันทึก") + ช่องแนบรูปใหม่ (วางแล้วอัปตอนกดบันทึก)
+  const existing = (S.room && S.room.attachmentsByComment[id]) || [];
   return `
     <div class="sr-edit-form">
       <textarea class="sr-edit-textarea" data-cid="${id}" rows="3">${esc(body || '')}</textarea>
+      ${attachmentThumbsHTML(existing, S.me)}
+      <div class="att-chip-row" id="editAttRow"></div>
       <div class="sr-edit-err" data-cid="${id}"></div>
       <div class="sr-edit-actions">
         <button class="sr-send-sm sr-edit-save" data-cid="${id}">บันทึก</button>
@@ -860,6 +884,7 @@ function buildReplyHTML(rp){
         </div>
         ${editOpen ? buildEditFormHTML(rp.id, rp.body) : `
         <div class="sr-reply-text">${esc(rp.body)}</div>
+        ${attachmentThumbsHTML(S.room.attachmentsByComment[rp.id], S.me)}
         ${isMine ? `<div class="sr-reply-actions"><button class="sr-reply-btn sr-edit-btn" data-cid="${rp.id}">✏️ แก้ไข</button></div>` : ''}`}
       </div>
     </div>`;
@@ -882,6 +907,7 @@ function buildCommentHTML(c){
         </div>
         ${editOpen ? buildEditFormHTML(c.id, c.body) : `
         <div class="sr-comment-text">${esc(c.body)}</div>
+        ${attachmentThumbsHTML(S.room.attachmentsByComment[c.id], S.me)}
         <div class="sr-comment-actions">
           ${buildReactionsBlock(c.id, String(c.id))}
           <button class="sr-reply-btn" data-cid="${c.id}">↩ ตอบกลับ</button>
@@ -889,8 +915,9 @@ function buildCommentHTML(c){
         </div>`}
         ${replies.length ? `<div class="sr-replies">${replies.map(buildReplyHTML).join('')}</div>` : ''}
         ${replyOpen ? `
+          <div class="att-chip-row" id="replyAttRow"></div>
           <div class="sr-reply-form">
-            <input class="sr-reply-input" data-cid="${c.id}" placeholder="ตอบกลับในเธรดนี้...">
+            <input class="sr-reply-input" data-cid="${c.id}" placeholder="ตอบกลับในเธรดนี้... (วางรูปได้)">
             <button class="sr-send-sm sr-send-reply" data-cid="${c.id}">ส่ง</button>
           </div>` : ''}
       </div>
@@ -915,7 +942,8 @@ function buildComposerHTML(proj){
   return `
     <div class="sr-composer">
       <div class="sr-composer-box">
-        <textarea class="sr-composer-text" rows="1" placeholder="พิมพ์ข้อความในหัวข้อ ${esc(appNameOf(proj))}..."></textarea>
+        <textarea class="sr-composer-text" rows="1" placeholder="พิมพ์ข้อความในหัวข้อ ${esc(appNameOf(proj))}... (วางรูป Ctrl+V แนบ screenshot ได้)"></textarea>
+        <div class="att-chip-row" id="composerAttRow"></div>
         <div class="sr-composer-actions">
           <button class="sr-send-btn">ส่ง ➤</button>
         </div>
@@ -933,6 +961,12 @@ function renderRoomFull(pk){
       ${buildThreadHTML(proj)}
     </div>
     ${buildComposerHTML(proj)}`;
+
+  // โหลดรูปย่อของทุกคอมเมนต์ที่เพิ่ง render + ผูก paste-to-attach ใหม่ทุกช่องพิมพ์ที่มีอยู่ตอนนี้
+  hydrateAttachmentThumbs($('convPane'));
+  composerAttach = createAttachComposer($('composerAttRow'), document.querySelector('.sr-composer-text'));
+  replyAttach = S.replyOpenKey != null ? createAttachComposer($('replyAttRow'), document.querySelector('.sr-reply-input')) : null;
+  editAttach = S.editOpenKey != null ? createAttachComposer($('editAttRow'), document.querySelector('.sr-edit-textarea')) : null;
 }
 function rerenderRoomKeepData(){
   if (S.room) renderRoomFull(S.room.pk);
@@ -982,31 +1016,46 @@ async function sendComment(){
   if (!S.room) return;
   const ta = document.querySelector('.sr-composer-text');
   const v = (ta && ta.value || '').trim();
-  if (!v) return;
+  const blobs = composerAttach ? composerAttach.getBlobs() : [];
+  if (!v && !blobs.length) return; // ต้องมีข้อความ "หรือ" มีรูปแนบอย่างน้อย 1 รูป
   const btn = document.querySelector('.sr-send-btn');
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; if (blobs.length) btn.textContent = 'กำลังอัปโหลด...'; }
   try {
-    const { error } = await supabase.from('signoff_comment')
-      .insert({ project_key: S.room.pk, parent_id: null, author_email: S.me, body: v });
+    const { data, error } = await supabase.from('signoff_comment')
+      .insert({ project_key: S.room.pk, parent_id: null, author_email: S.me, body: v })
+      .select('id').single();
     if (error) throw error;
+    if (blobs.length) {
+      // อัปโหลดหลัง insert ข้อความสำเร็จแล้วเท่านั้น (ต้องมี comment id ก่อน) — รูปพลาดบางใบไม่ทำให้ข้อความหาย
+      const { failCount } = await uploadSignoffAttachments(S.room.pk, data.id, S.me, blobs);
+      if (failCount) toast(`ส่งข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
+    }
+    if (composerAttach) composerAttach.clear();
     await loadRoom(S.room.pk);
     await refreshRailSnippet(S.room.pk);
   } catch (err) {
     console.warn('sendComment error', err);
     toast('ส่งข้อความไม่สำเร็จ: ' + (err.message || ''), true);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'ส่ง ➤'; }
   }
 }
 async function sendReply(parentId){
   if (!S.room || parentId == null) return;
   const input = document.querySelector(`.sr-reply-input[data-cid="${parentId}"]`);
   const v = (input && input.value || '').trim();
-  if (!v) return;
+  const blobs = replyAttach ? replyAttach.getBlobs() : [];
+  if (!v && !blobs.length) return;
   try {
-    const { error } = await supabase.from('signoff_comment')
-      .insert({ project_key: S.room.pk, parent_id: parentId, author_email: S.me, body: v });
+    const { data, error } = await supabase.from('signoff_comment')
+      .insert({ project_key: S.room.pk, parent_id: parentId, author_email: S.me, body: v })
+      .select('id').single();
     if (error) throw error;
+    if (blobs.length) {
+      const { failCount } = await uploadSignoffAttachments(S.room.pk, data.id, S.me, blobs);
+      if (failCount) toast(`ส่งข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
+    }
+    if (replyAttach) replyAttach.clear();
     S.replyOpenKey = null;
     await loadRoom(S.room.pk);
     await refreshRailSnippet(S.room.pk);
@@ -1044,6 +1093,12 @@ async function saveCommentEdit(id){
         return;
       }
     }
+    const newBlobs = editAttach ? editAttach.getBlobs() : [];
+    if (newBlobs.length) {
+      const { failCount } = await uploadSignoffAttachments(S.room.pk, id, S.me, newBlobs);
+      if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปเพิ่มไม่สำเร็จ ${failCount} รูป`, true);
+    }
+    if (editAttach) editAttach.clear();
     S.editOpenKey = null;
     toast('แก้ไขความคิดเห็นแล้ว ✓');
     await loadRoom(S.room.pk);
@@ -1122,6 +1177,7 @@ function setMode(mode){
    รายการเดือนใหม่แล้ว (โชว์เธรดของโปรเจกต์ที่ไม่อยู่ในรายการซ้ายมือค้างไว้ = สับสน) */
 function clearSelectedRoom(){
   if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+  clearPendingAttachComposers();
   S.selectedKey = null;
   S.room = null;
   S.pickerOpenKey = null;
@@ -1173,12 +1229,14 @@ function wireStaticControls(){
     const editBtn = e.target.closest('.sr-edit-btn');
     if (editBtn) {
       const cid = Number(editBtn.dataset.cid);
+      if (editAttach) editAttach.clear();
       S.editOpenKey = (S.editOpenKey === cid) ? null : cid;
       rerenderRoomKeepData();
       return;
     }
     const editCancelBtn = e.target.closest('.sr-edit-cancel');
     if (editCancelBtn) {
+      if (editAttach) editAttach.clear();
       S.editOpenKey = null;
       rerenderRoomKeepData();
       return;
@@ -1186,9 +1244,20 @@ function wireStaticControls(){
     const editSaveBtn = e.target.closest('.sr-edit-save');
     if (editSaveBtn) { await saveCommentEdit(Number(editSaveBtn.dataset.cid)); return; }
 
+    // ลบรูปที่แนบไว้แล้ว (ทั้งตอนดูปกติและตอนเปิดกล่องแก้ไข) — ลบทันที ไม่ต้องกด "บันทึก"
+    const attDelBtn = e.target.closest('.att-thumb-del');
+    if (attDelBtn) {
+      const { error } = await deleteSignoffAttachment({ id: Number(attDelBtn.dataset.attId), storage_path: attDelBtn.dataset.attPath });
+      if (error) { toast('ลบรูปไม่สำเร็จ: ' + (error.message || ''), true); return; }
+      toast('ลบรูปแล้ว ✓');
+      await loadRoom(S.room.pk);
+      return;
+    }
+
     const replyBtn = e.target.closest('.sr-reply-btn');
     if (replyBtn) {
       const cid = Number(replyBtn.dataset.cid);
+      if (replyAttach) replyAttach.clear();
       S.replyOpenKey = (S.replyOpenKey === cid) ? null : cid;
       rerenderRoomKeepData();
       return;
@@ -1209,6 +1278,7 @@ function wireStaticControls(){
     }
     if (e.target.matches('.sr-edit-textarea') && e.key === 'Escape') {
       e.preventDefault();
+      if (editAttach) editAttach.clear();
       S.editOpenKey = null;
       rerenderRoomKeepData();
     }

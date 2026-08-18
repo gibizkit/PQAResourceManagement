@@ -18,6 +18,12 @@
  *    fetched from v_project_wide, rendered above the root card/thread.
  *  - The Signoff URL shown in that card is editable inline by any logged-in user.
  *  - Any comment/reply authored by the current user gets an inline ✏️ edit control.
+ *  - Screenshot attachments (paste Ctrl+V) — 2026-08-17. Paste-to-attach only works inside
+ *    the existing edit boxes (comment/reply edit, root add/edit); this modal has no "new
+ *    top-level comment" composer (never did), so that stays out of scope here — see
+ *    signoff-review.html for the full composer + reply flow. Every comment/reply/root card
+ *    (view AND edit mode) renders any attached images as thumbnails with a lightbox; see
+ *    common.js "SIGNOFF ATTACHMENTS" section for the shared upload/render/lightbox logic.
  *
  * Usage:
  *   <script type="module" src="./signoffReviewModal.js"></script>
@@ -27,7 +33,11 @@
  * Depends on: ./common.js (supabase, $, toast, esc, dDisp, getSession)
  */
 
-import { supabase, $, toast, esc, dDisp, getSession } from './common.js';
+import {
+  supabase, $, toast, esc, dDisp, getSession,
+  createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment
+} from './common.js';
 
 /* ============ HELPERS ============ */
 function shortEmail(email) { return email ? String(email).split('@')[0] : 'ไม่ทราบ'; }
@@ -52,6 +62,9 @@ let _editingCommentId = null;  // id of the comment/reply currently in edit mode
 // root Signoff Review card: edit box is CLOSED by default and only opens via the ✏️ button
 // (shown to the card's own author) or the "เพิ่ม Signoff Review" button when no root exists.
 let _rootEditing = false;
+// ตัวควบคุมรูปที่แนบไว้รอส่ง (screenshot paste-to-attach) — มีได้แค่ 1 ช่องเปิดพร้อมกันเสมออยู่แล้ว
+// (root edit กับ comment edit เปิดพร้อมกันไม่ได้ในโมดัลนี้) ผูกใหม่ทุกครั้งที่ renderSignoffReviewModal() รัน
+let _rootAttach = null, _commentAttach = null;
 
 async function ensureLookups() {
   const tasks = [];
@@ -155,9 +168,9 @@ function ensureModal() {
     if (e.key !== 'Escape') return;
     const ov = $('signoffReviewOverlay');
     if (!ov || ov.classList.contains('hidden')) return;
-    if (_editingCommentId != null) { _editingCommentId = null; renderSignoffReviewModal(); return; }
+    if (_editingCommentId != null) { if (_commentAttach) _commentAttach.clear(); _editingCommentId = null; renderSignoffReviewModal(); return; }
     if (_urlEditing) { _urlEditing = false; renderSignoffReviewModal(); return; }
-    if (_rootEditing) { _rootEditing = false; renderSignoffReviewModal(); return; }
+    if (_rootEditing) { if (_rootAttach) _rootAttach.clear(); _rootEditing = false; renderSignoffReviewModal(); return; }
     window.closeSignoffReviewModal();
   });
 
@@ -179,6 +192,8 @@ window.openSignoffReviewModal = async function (pk, projectName) {
   _urlEditing = false;
   _editingCommentId = null;
   _rootEditing = false;
+  _rootAttach = null;
+  _commentAttach = null;
   _lastLoad = null;
   $('signoffReviewFullLink').href = 'signoff-review.html?project=' + encodeURIComponent(pk);
   $('signoffReviewOverlay').classList.remove('hidden');
@@ -187,6 +202,8 @@ window.openSignoffReviewModal = async function (pk, projectName) {
 window.closeSignoffReviewModal = function () {
   const ov = $('signoffReviewOverlay');
   if (ov) ov.classList.add('hidden');
+  if (_rootAttach) _rootAttach.clear();
+  if (_commentAttach) _commentAttach.clear();
   _urlEditing = false;
   _editingCommentId = null;
   _rootEditing = false;
@@ -227,7 +244,12 @@ async function loadSignoffReviewModal(pk) {
       else (byParent[c.parent_id] ||= []).push(c);
     });
 
-    _lastLoad = { pk, rootRow, topLevel, byParent, projRow };
+    // รูปที่แนบไว้ (screenshot) ของทุกคอมเมนต์ในเธรดนี้ รวม root ด้วย
+    const attIds = (cmtRes.data || []).map(c => c.id);
+    if (rootRow) attIds.push(rootRow.id);
+    const attachmentsByComment = await fetchSignoffAttachments(attIds);
+
+    _lastLoad = { pk, rootRow, topLevel, byParent, projRow, attachmentsByComment };
     renderSignoffReviewModal();
   } catch (err) {
     console.warn('loadSignoffReviewModal error', err);
@@ -303,10 +325,16 @@ function commentHeaderHTML(c) {
     : '';
   return `<b>${esc(shortEmail(c.author_email))}</b> <span class="muted">${esc(commentTimeShort(c.created_at))}${edited}</span>${editBtn}`;
 }
+/** รูปที่แนบไว้แล้วของคอมเมนต์ id หนึ่ง — จาก _lastLoad.attachmentsByComment ที่โหลดมาพร้อมเธรด */
+function attsFor(id) {
+  return (_lastLoad && _lastLoad.attachmentsByComment[id]) || [];
+}
 function commentEditBoxHTML(c) {
   return `
     <div class="sr-modal-edit-box">
       <textarea class="sr-modal-comment-edit-text" rows="3">${esc(c.body || '')}</textarea>
+      ${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}
+      <div class="att-chip-row" id="srmCommentAttRow"></div>
       <div class="form-err sr-modal-comment-edit-err"></div>
       <div class="sr-modal-edit-actions">
         <button class="btn sm accent" data-action="comment-save" data-cid="${c.id}">บันทึก</button>
@@ -319,7 +347,7 @@ function buildCommentGroupHTML(c, byParent) {
   const editing = _editingCommentId === c.id;
   const body = editing
     ? `<div class="sr-modal-comment-top"><b>${esc(shortEmail(c.author_email))}</b></div>${commentEditBoxHTML(c)}`
-    : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>`;
+    : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}`;
   return `
     <div class="sr-modal-comment" data-cid="${c.id}">
       ${body}
@@ -330,7 +358,7 @@ function buildReplyGroupHTML(r) {
   const editing = _editingCommentId === r.id;
   const body = editing
     ? `<b>${esc(shortEmail(r.author_email))}</b>${commentEditBoxHTML(r)}`
-    : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>`;
+    : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>${attachmentThumbsHTML(attsFor(r.id), _lookup.me)}`;
   return `<div class="sr-modal-reply" data-cid="${r.id}">${body}</div>`;
 }
 
@@ -355,6 +383,13 @@ function renderSignoffReviewModal() {
     <div class="sr-modal-thread-title">ความคิดเห็นในห้อง (${topLevel.length + (rootRow ? 1 : 0)})</div>
     ${threadHtml}
   `;
+
+  // โหลดรูปย่อของทุกคอมเมนต์ที่เพิ่ง render + ผูก paste-to-attach ใหม่ให้ช่องแก้ไขที่เปิดอยู่ (ถ้ามี)
+  hydrateAttachmentThumbs($('signoffReviewBody'));
+  _rootAttach = _rootEditing ? createAttachComposer($('srmRootAttRow'), $('signoffReviewText')) : null;
+  _commentAttach = _editingCommentId != null
+    ? createAttachComposer($('srmCommentAttRow'), document.querySelector('.sr-modal-comment-edit-text'))
+    : null;
 }
 
 /**
@@ -372,6 +407,8 @@ function buildRootCardHTML(pk, rootRow) {
         <label>${rootRow ? 'แก้ไข Signoff Review' : 'เพิ่ม Signoff Review'}</label>
         <textarea id="signoffReviewText" rows="6">${esc(rootRow ? (rootRow.body || '') : '')}</textarea>
       </div>
+      ${rootRow ? attachmentThumbsHTML(attsFor(rootRow.id), _lookup.me) : ''}
+      <div class="att-chip-row" id="srmRootAttRow"></div>
       <div class="sr-modal-edit-actions" style="margin-bottom:6px">
         <div class="form-err" id="signoffReviewErr" style="margin-right:auto"></div>
         <button class="btn accent sm" data-action="root-save" data-pk="${esc(pk)}">บันทึก</button>
@@ -398,6 +435,7 @@ function buildRootCardHTML(pk, rootRow) {
         ${editBtn}
       </div>
       <div class="sr-modal-card-body">${esc(rootRow.body || '')}</div>
+      ${attachmentThumbsHTML(attsFor(rootRow.id), _lookup.me)}
     </div>`;
 }
 
@@ -411,13 +449,24 @@ async function onSignoffReviewBodyClick(e) {
   if (action === 'url-cancel') { _urlEditing = false; renderSignoffReviewModal(); return; }
   if (action === 'url-save') { await saveSignoffUrl(btn.dataset.pk); return; }
 
-  if (action === 'root-edit' || action === 'root-add') { _rootEditing = true; renderSignoffReviewModal(); return; }
-  if (action === 'root-cancel') { _rootEditing = false; renderSignoffReviewModal(); return; }
+  if (action === 'root-edit' || action === 'root-add') { if (_rootAttach) _rootAttach.clear(); _rootEditing = true; renderSignoffReviewModal(); return; }
+  if (action === 'root-cancel') { if (_rootAttach) _rootAttach.clear(); _rootEditing = false; renderSignoffReviewModal(); return; }
   if (action === 'root-save') { await window.saveSignoffReviewModal(btn.dataset.pk); return; }
 
-  if (action === 'comment-edit') { _editingCommentId = Number(btn.dataset.cid); renderSignoffReviewModal(); return; }
-  if (action === 'comment-cancel') { _editingCommentId = null; renderSignoffReviewModal(); return; }
+  if (action === 'comment-edit') { if (_commentAttach) _commentAttach.clear(); _editingCommentId = Number(btn.dataset.cid); renderSignoffReviewModal(); return; }
+  if (action === 'comment-cancel') { if (_commentAttach) _commentAttach.clear(); _editingCommentId = null; renderSignoffReviewModal(); return; }
   if (action === 'comment-save') { await saveCommentEdit(Number(btn.dataset.cid)); return; }
+
+  if (action === 'att-delete') { await onAttachmentDelete(btn); return; }
+}
+
+/** ลบรูปที่แนบไว้แล้ว (ทั้งตอนดูปกติและตอนเปิดกล่องแก้ไข) — ลบทันที ไม่ต้องกด "บันทึก" */
+async function onAttachmentDelete(btn) {
+  const { error } = await deleteSignoffAttachment({ id: Number(btn.dataset.attId), storage_path: btn.dataset.attPath });
+  if (error) { toast('ลบรูปไม่สำเร็จ: ' + (error.message || ''), true); return; }
+  toast('ลบรูปแล้ว ✓');
+  const pk = _lastLoad ? _lastLoad.pk : null;
+  if (pk) await loadSignoffReviewModal(pk);
 }
 
 async function saveSignoffUrl(pk) {
@@ -462,6 +511,13 @@ async function saveCommentEdit(id) {
       if (errEl) errEl.textContent = 'บันทึกไม่สำเร็จ — แก้ไขได้เฉพาะความคิดเห็นของตัวเอง';
       return;
     }
+    const blobs = _commentAttach ? _commentAttach.getBlobs() : [];
+    if (blobs.length) {
+      const pkForUpload = _lastLoad ? _lastLoad.pk : null;
+      const { failCount } = await uploadSignoffAttachments(pkForUpload, id, _lookup.me, blobs);
+      if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปเพิ่มไม่สำเร็จ ${failCount} รูป`, true);
+    }
+    if (_commentAttach) _commentAttach.clear();
     toast('บันทึกความคิดเห็นแล้ว ✓');
     _editingCommentId = null;
     const pk = _lastLoad ? _lastLoad.pk : null;
@@ -480,6 +536,22 @@ window.saveSignoffReviewModal = async function (pk) {
   try {
     const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: pk, p_body: body });
     if (error) throw error;
+
+    const blobs = _rootAttach ? _rootAttach.getBlobs() : [];
+    if (blobs.length) {
+      // RPC ไม่คืน id ของแถว root กลับมา — select หา id จริงอีกทีก่อนผูกรูป (ปลอดภัยกว่าเดา)
+      const { data: rootRow, error: selErr } = await supabase.from('signoff_comment')
+        .select('id').eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle();
+      if (selErr || !rootRow) {
+        console.warn('saveSignoffReviewModal: could not resolve root id for attachments', selErr);
+        toast('บันทึกข้อความแล้ว แต่แนบรูปไม่สำเร็จ (หา id ไม่เจอ)', true);
+      } else {
+        const { failCount } = await uploadSignoffAttachments(pk, rootRow.id, _lookup.me, blobs);
+        if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
+      }
+    }
+    if (_rootAttach) _rootAttach.clear();
+
     toast('บันทึก Signoff Review แล้ว ✓');
     _rootEditing = false;   // กลับไปโหมดอ่านอย่างเดียว (ช่องแก้ไม่ค้างเปิด)
     await loadSignoffReviewModal(pk);

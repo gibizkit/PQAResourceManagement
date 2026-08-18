@@ -844,3 +844,272 @@ export function defaultFilterEnd(base = new Date()) {
 export function defaultFilterEndStr(base = new Date()) {
   return d2s(defaultFilterEnd(base));
 }
+
+/* ============ SIGNOFF ATTACHMENTS (screenshot paste-to-attach) ============
+ * ใช้ร่วมกันทั้ง signoff-review.html (หน้าเต็ม) และ signoffReviewModal.js (Gantt/Dashboard)
+ * เพิ่ม 2026-08-17 — ดูสเปกเต็มใน signoff-screenshot-attachment-spec.md
+ *
+ * ต้องรัน sql/patch_2026-08-17_signoff_attachment.sql บน Supabase ก่อนใช้งานได้จริง
+ * (สร้างตาราง pqa.signoff_attachment + Storage bucket 'signoff-attachments' แบบ private)
+ */
+
+const ATT_BUCKET = 'signoff-attachments';
+const ATT_MAX_WIDTH = 1600;
+const ATT_JPEG_QUALITY = 0.82;
+const ATT_MAX_RAW_BYTES = 15 * 1024 * 1024; // 15MB safety cap ก่อนบีบอัด (กันเบราว์เซอร์ค้าง)
+
+/**
+ * ย่อ/บีบอัดรูปที่วางจาก clipboard ก่อนอัปโหลด — screenshot ดิบมักเป็น PNG 2-5MB
+ * บีบแล้วเหลือ ~150-400KB (กว้างไม่เกิน 1600px, JPEG quality .82)
+ * @param {Blob} blob
+ * @returns {Promise<Blob>} JPEG blob
+ */
+export function compressImageBlob(blob, { maxWidth = ATT_MAX_WIDTH, quality = ATT_JPEG_QUALITY } = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxWidth / img.width);
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(out => out ? resolve(out) : reject(new Error('บีบอัดรูปไม่สำเร็จ')), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('อ่านไฟล์รูปไม่สำเร็จ')); };
+    img.src = url;
+  });
+}
+
+/** ดึงไฟล์รูปจาก ClipboardEvent.clipboardData (เฉพาะ image/*) */
+function extractPastedImages(clipboardData) {
+  if (!clipboardData || !clipboardData.items) return [];
+  const out = [];
+  for (const item of clipboardData.items) {
+    if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
+      const f = item.getAsFile();
+      if (f) out.push(f);
+    }
+  }
+  return out;
+}
+
+/**
+ * ผูก paste-to-attach ให้ input/textarea ตัวหนึ่ง — วางรูปจาก clipboard แล้วบีบอัดอัตโนมัติ
+ * ก่อนส่งเข้า onAdd() ทีละรูป ไม่ใช่รูป = ปล่อย paste ปกติ (ข้อความ/HTML) ไม่ preventDefault
+ * @param {HTMLElement} el
+ * @param {Object} opt
+ * @param {Function} opt.getCount — คืนจำนวนรูปที่แนบอยู่ตอนนี้ (เช็ค cap ก่อนรับรูปใหม่)
+ * @param {Function} opt.onAdd — (compressedBlob) => void
+ * @param {number} [opt.maxImages=4]
+ */
+export function wireImagePaste(el, { getCount, onAdd, maxImages = 4 }) {
+  if (!el) return;
+  el.addEventListener('paste', async (e) => {
+    const files = extractPastedImages(e.clipboardData);
+    if (!files.length) return;
+    e.preventDefault();
+    for (const f of files) {
+      if ((getCount ? getCount() : 0) >= maxImages) {
+        toast(`แนบได้สูงสุด ${maxImages} รูปต่อข้อความ`, true);
+        break;
+      }
+      if (f.size > ATT_MAX_RAW_BYTES) {
+        toast('ไฟล์รูปใหญ่เกินไป (เกิน 15MB) — ข้ามรูปนี้', true);
+        continue;
+      }
+      try {
+        const compressed = await compressImageBlob(f);
+        onAdd(compressed);
+      } catch (err) {
+        console.warn('compressImageBlob failed', err);
+        toast('แนบรูปไม่สำเร็จ', true);
+      }
+    }
+  });
+}
+
+/**
+ * สร้างตัวควบคุม "รูปที่แนบไว้รอส่ง" ให้ 1 ช่องพิมพ์ (composer/reply/edit) — ผูก paste-to-attach
+ * + render chip แบบ DOM ตรงๆ (ไม่ผ่าน innerHTML re-render ทั้งก้อน กันข้อความที่พิมพ์ค้างไว้หาย)
+ *
+ * เรียกใหม่ทุกครั้งที่ช่องพิมพ์นั้นถูกสร้างขึ้นมาใหม่ (เปิด reply/edit ใหม่ หรือ re-render ทั้งห้อง)
+ * — pending list จะรีเซ็ตตามไปด้วย พฤติกรรมเดียวกับ draft ข้อความที่หายตอน re-render อยู่แล้วในโค้ดเดิม
+ * (ไม่ใช่ข้อจำกัดใหม่ที่เพิ่มมา)
+ * @param {HTMLElement} rowEl — container ว่างๆ สำหรับใส่ chip (ต้องมีอยู่ใน DOM แล้ว)
+ * @param {HTMLElement} inputEl — textarea/input ที่จะดัก paste
+ * @param {number} [maxImages=4]
+ * @returns {{getBlobs:Function, clear:Function}}
+ */
+export function createAttachComposer(rowEl, inputEl, maxImages = 4) {
+  const pending = []; // [{ blob, url }]
+  function renderChip(entry) {
+    if (!rowEl) return;
+    const chip = document.createElement('span');
+    chip.className = 'att-chip';
+    chip.innerHTML = `<img src="${entry.url}" alt=""><button type="button" class="att-chip-x" title="เอาออก">×</button>`;
+    chip.querySelector('.att-chip-x').addEventListener('click', () => {
+      const i = pending.indexOf(entry);
+      if (i > -1) pending.splice(i, 1);
+      URL.revokeObjectURL(entry.url);
+      chip.remove();
+    });
+    rowEl.appendChild(chip);
+  }
+  wireImagePaste(inputEl, {
+    getCount: () => pending.length,
+    maxImages,
+    onAdd: (blob) => {
+      const entry = { blob, url: URL.createObjectURL(blob) };
+      pending.push(entry);
+      renderChip(entry);
+    }
+  });
+  return {
+    getBlobs: () => pending.map(p => p.blob),
+    clear: () => {
+      pending.forEach(p => URL.revokeObjectURL(p.url));
+      pending.length = 0;
+      if (rowEl) rowEl.innerHTML = '';
+    }
+  };
+}
+
+/**
+ * อัปโหลดรูปที่แนบไว้ทั้งหมดของคอมเมนต์หนึ่ง (เรียกหลัง insert คอมเมนต์แล้วเท่านั้น เพราะ path
+ * ต้องมี comment_id) — อัปโหลดไม่สำเร็จบางรูปไม่ทำให้ข้อความหาย (คอมเมนต์ insert ไปแล้วก่อนหน้านี้)
+ * @returns {Promise<{okCount:number, failCount:number}>}
+ */
+export async function uploadSignoffAttachments(projectKey, commentId, authorEmail, blobs) {
+  let okCount = 0, failCount = 0;
+  for (let i = 0; i < blobs.length; i++) {
+    const blob = blobs[i];
+    const path = `${projectKey}/${commentId}/${i + 1}-${Date.now()}.jpg`;
+    try {
+      const up = await supabase.storage.from(ATT_BUCKET).upload(path, blob, { contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+      const ins = await supabase.from('signoff_attachment').insert({
+        comment_id: commentId, storage_path: path, mime_type: 'image/jpeg',
+        file_size: blob.size, author_email: authorEmail
+      }).select();
+      if (ins.error || !ins.data || !ins.data.length) throw (ins.error || new Error('insert blocked (RLS)'));
+      okCount++;
+    } catch (err) {
+      console.warn('uploadSignoffAttachments: image failed', err);
+      failCount++;
+    }
+  }
+  return { okCount, failCount };
+}
+
+/**
+ * โหลด attachment ของหลายคอมเมนต์พร้อมกัน (เรียกตอนโหลดห้อง/เธรด)
+ * @param {Array<number>} commentIds
+ * @returns {Promise<Object>} map commentId -> [{id, storage_path, mime_type, author_email}]
+ */
+export async function fetchSignoffAttachments(commentIds) {
+  const ids = (commentIds || []).filter(x => x != null);
+  if (!ids.length) return {};
+  const { data, error } = await supabase.from('signoff_attachment')
+    .select('id,comment_id,storage_path,mime_type,author_email')
+    .in('comment_id', ids);
+  if (error) { console.warn('fetchSignoffAttachments error', error); return {}; }
+  const map = {};
+  (data || []).forEach(a => { (map[a.comment_id] = map[a.comment_id] || []).push(a); });
+  return map;
+}
+
+/** ลบ attachment ทีเดียว (ลบแถว DB + ลองลบไฟล์จริงใน Storage แบบ best-effort) */
+export async function deleteSignoffAttachment(row) {
+  const { data, error } = await supabase.from('signoff_attachment').delete().eq('id', row.id).select();
+  if (error) return { error };
+  // RLS delete_attachment อนุญาตเฉพาะรูปของตัวเอง — โดนบล็อกจะได้ 0 แถวกลับมาแบบเงียบๆ (ดู memory "RLS silent no-op writes")
+  if (!data || !data.length) return { error: { message: 'ลบไม่สำเร็จ — ลบได้เฉพาะรูปของตัวเอง' } };
+  supabase.storage.from(ATT_BUCKET).remove([row.storage_path]).then(({ error: e }) => {
+    if (e) console.warn('storage remove (best-effort) failed', e);
+  });
+  return { error: null };
+}
+
+// cache: storage_path -> Promise<objectURL> กันโหลดรูปซ้ำทุกครั้งที่ re-render thread
+const _attUrlCache = new Map();
+function getSignoffAttachmentUrl(path) {
+  if (!_attUrlCache.has(path)) {
+    _attUrlCache.set(path, supabase.storage.from(ATT_BUCKET).download(path).then(({ data, error }) => {
+      if (error || !data) throw error || new Error('download failed');
+      return URL.createObjectURL(data);
+    }).catch(err => {
+      console.warn('getSignoffAttachmentUrl failed', path, err);
+      _attUrlCache.delete(path);
+      return null;
+    }));
+  }
+  return _attUrlCache.get(path);
+}
+
+/**
+ * HTML แถวรูปย่อใต้คอมเมนต์หนึ่ง (ยังไม่มี src จริง — ต้องเรียก hydrateAttachmentThumbs()
+ * หลัง insert เข้า DOM แล้วเสมอ)
+ * @param {Array} list — จาก fetchSignoffAttachments()
+ * @param {string} meEmail — อีเมล session ปัจจุบัน (โชว์ปุ่ม × เฉพาะรูปของตัวเอง)
+ */
+export function attachmentThumbsHTML(list, meEmail) {
+  if (!list || !list.length) return '';
+  return `<div class="att-thumb-row">${list.map(a => {
+    const removable = meEmail && a.author_email === meEmail;
+    return `
+    <span class="att-thumb-wrap">
+      <img class="att-thumb" data-path="${esc(a.storage_path)}" alt="แนบรูป">
+      ${removable ? `<button type="button" class="att-thumb-del" data-action="att-delete" data-att-id="${a.id}" data-att-path="${esc(a.storage_path)}" title="ลบรูปนี้">×</button>` : ''}
+    </span>`;
+  }).join('')}</div>`;
+}
+
+/** โหลดรูปจริงให้ <img class="att-thumb" data-path=...> ทุกตัวที่ยังไม่มี src ภายใน container — เรียกทันทีหลัง set innerHTML */
+export function hydrateAttachmentThumbs(containerEl) {
+  if (!containerEl) return;
+  containerEl.querySelectorAll('img.att-thumb:not([src])').forEach(img => {
+    const path = img.dataset.path;
+    if (!path) return;
+    getSignoffAttachmentUrl(path).then(url => { if (url) img.src = url; });
+  });
+}
+
+/* ---- lightbox (inject ครั้งเดียว, ใช้ร่วมกันทุกหน้าที่ import common.js) ---- */
+let _lightboxEl = null;
+function ensureLightbox() {
+  if (_lightboxEl) return _lightboxEl;
+  const el = document.createElement('div');
+  el.className = 'att-lightbox hidden';
+  el.innerHTML = `<button type="button" class="att-lightbox-x" aria-label="ปิด">×</button><img alt="">`;
+  document.body.appendChild(el);
+  el.addEventListener('click', (e) => {
+    if (e.target === el || e.target.classList.contains('att-lightbox-x')) closeLightbox();
+  });
+  _lightboxEl = el;
+  return el;
+}
+function openLightbox(url) {
+  if (!url) return;
+  const el = ensureLightbox();
+  el.querySelector('img').src = url;
+  el.classList.remove('hidden');
+}
+function closeLightbox() {
+  if (_lightboxEl) _lightboxEl.classList.add('hidden');
+}
+// เปิด lightbox ทุกที่ที่คลิกรูป .att-thumb ที่โหลดเสร็จแล้ว (ไม่ต้องผูกทีละหน้า)
+document.addEventListener('click', (e) => {
+  const thumb = e.target.closest('img.att-thumb');
+  if (thumb && thumb.getAttribute('src')) openLightbox(thumb.src);
+});
+// ESC ปิด lightbox ก่อนเสมอ (capture phase กัน handler ESC อื่นของแต่ละหน้าทำงานซ้อนในคลิกเดียวกัน)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _lightboxEl && !_lightboxEl.classList.contains('hidden')) {
+    closeLightbox();
+    e.stopImmediatePropagation();
+  }
+}, true);
