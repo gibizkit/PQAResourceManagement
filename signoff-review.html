@@ -566,14 +566,21 @@ async function loadMasterData(){
 
   S.lastCommentMap = {};
   S.lastUpdateMap = {};
+  const rootFallbackMap = {}; // โพสต์ root (เปิดหัวข้อ) ของแต่ละโปรเจกต์ — ใช้เป็น fallback snippet
   (lastCmtRes.data || []).forEach(c => {
     // Last Update = เวลากิจกรรมล่าสุดของโปรเจกต์ นับทุกคอมเมนต์ (รวม root) และนับการแก้ไขด้วย
     const activityTs = c.edited_at || c.created_at;
     if (!S.lastUpdateMap[c.project_key] || activityTs > S.lastUpdateMap[c.project_key]) {
       S.lastUpdateMap[c.project_key] = activityTs;
     }
-    // snippet แถบซ้าย ยังใช้แค่คอมเมนต์ตอบกลับ (ไม่รวม root) เหมือนเดิม — root คือโพสต์เปิดหัวข้อ ไม่ใช่ "reply"
+    // snippet แถบซ้าย ให้ความสำคัญกับคอมเมนต์ตอบกลับล่าสุดก่อน (ไม่รวม root)
     if (!c.is_root && !(c.project_key in S.lastCommentMap)) S.lastCommentMap[c.project_key] = c; // first = most recent (desc order)
+    if (c.is_root && !(c.project_key in rootFallbackMap)) rootFallbackMap[c.project_key] = c;
+  });
+  // (2026-08-18) โปรเจกต์ที่มีแค่โพสต์ root (ยังไม่มีใครตอบ) ถือว่า "มีความคิดเห็นแล้ว" —
+  // ให้ snippet แถบซ้ายแสดงข้อความ root แทนที่จะขึ้น "ยังไม่มีความคิดเห็น"
+  Object.keys(rootFallbackMap).forEach(pk => {
+    if (!(pk in S.lastCommentMap)) S.lastCommentMap[pk] = rootFallbackMap[pk];
   });
 
   // รายชื่อคนที่แท็กได้ (active app_user เท่านั้น) — ใช้กับ @ autocomplete ในคอมเมนต์/reply/แก้ไข
@@ -1308,7 +1315,11 @@ async function refreshRailSnippet(pk){
     if (!S.lastUpdateMap[pk] || activityTs > S.lastUpdateMap[pk]) S.lastUpdateMap[pk] = activityTs;
   });
   const nonRoot = (data || []).find(c => !c.is_root);
+  // (2026-08-18) ถ้ายังไม่มีใครตอบ (ไม่มี nonRoot) แต่มีโพสต์ root ให้ fallback ไปใช้ root
+  // แทนการปล่อยว่าง — ไม่งั้น snippet จะย้อนกลับไปขึ้น "ยังไม่มีความคิดเห็น" หลัง refresh
+  const root = (data || []).find(c => c.is_root);
   if (nonRoot) S.lastCommentMap[pk] = nonRoot;
+  else if (root) S.lastCommentMap[pk] = root;
   renderRail();
 }
 
