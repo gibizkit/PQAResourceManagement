@@ -135,6 +135,13 @@
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
+    <div class="noti-bell">
+      <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">🔔<span class="noti-dot" id="notiDot" style="display:none"></span></button>
+      <div class="noti-panel" id="notiPanel" style="display:none">
+        <div class="noti-panel-head">การแจ้งเตือน</div>
+        <div class="noti-panel-list" id="notiList"></div>
+      </div>
+    </div>
     <span class="who" id="who"></span>
     <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
   </div>
@@ -181,7 +188,8 @@ import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort,
   isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut,
   resName, monthLabel, MONTH_ABBR, loadPrefs, savePrefs, setPrefsOwner,
-  getCachedRole, setCachedRole, paintNavAdmin
+  getCachedRole, setCachedRole, paintNavAdmin,
+  initNotificationBell
 } from './common.js';
 
 const PAGE = 'calendar';
@@ -281,6 +289,7 @@ async function showApp(session) {
   // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
   // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
   paintNavAdmin(getCachedRole(session.user.email));
+  initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js)
 
   const profile = await getProfile(session);
   $('who').innerHTML = `<b>${esc(profile.displayName)}</b>${profile.role ? ` · ${esc(profile.role)}` : ''}`;

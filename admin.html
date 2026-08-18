@@ -284,6 +284,13 @@
       <a href="admin.html" class="active">Admin</a>
     </nav>
     <span class="spacer"></span>
+    <div class="noti-bell">
+      <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">🔔<span class="noti-dot" id="notiDot" style="display:none"></span></button>
+      <div class="noti-panel" id="notiPanel" style="display:none">
+        <div class="noti-panel-head">การแจ้งเตือน</div>
+        <div class="noti-panel-list" id="notiList"></div>
+      </div>
+    </div>
     <span class="who" id="who"></span>
     <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
   </div>
@@ -653,7 +660,8 @@
 import { supabase, $, toast, esc, dDisp, d2s, parseInputDate, statusPill, fmtDate,
          leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
          initLeadSearch, getLeadSearchValue, leadSearchHasUnresolvedText,
-         loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn } from './common.js';
+         loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn,
+         initNotificationBell } from './common.js';
 
 // holiday map { 'yyyy-MM-dd': desc } ใช้เฉพาะคำนวณ WD ใน Project modal (แยกจาก STATE.holidays ที่เป็น array ของแท็บ Holiday)
 let projectHolidayMap = {};
@@ -749,6 +757,7 @@ function showLogin() {
 async function showApp(session) {
   $('loginPage').classList.add('hidden');
   $('app').classList.remove('hidden');
+  initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js)
 
   // Get user profile & role
   let who = session.user.email;

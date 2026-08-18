@@ -335,6 +335,13 @@
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
+    <div class="noti-bell">
+      <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">🔔<span class="noti-dot" id="notiDot" style="display:none"></span></button>
+      <div class="noti-panel" id="notiPanel" style="display:none">
+        <div class="noti-panel-head">การแจ้งเตือน</div>
+        <div class="noti-panel-list" id="notiList"></div>
+      </div>
+    </div>
     <span class="who" id="who"></span>
     <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
   </div>
@@ -508,7 +515,8 @@
 <script type="module">
 import {
   supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
-  getCachedRole, setCachedRole, paintNavAdmin
+  getCachedRole, setCachedRole, paintNavAdmin,
+  initNotificationBell
 } from './common.js';
 // SheetJS — ใช้เฉพาะ "Download Excel" ใน By Lead tab (2026-08-14), ดู downloadLeadExcel()
 // ใช้ CDN ทางการของ SheetJS เอง (ไม่ใช่ jsdelivr +esm แบบ supabase-js ด้านบน) เพราะ xlsx เป็น
@@ -725,6 +733,7 @@ async function showApp(session){
   // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
   // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
   paintNavAdmin(getCachedRole(session.user.email));
+  initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js)
   let who = session.user.email, role = '';
   // pqa_emp_id เพิ่มเข้ามา 2026-08-14 — ใช้ตั้งชื่อไฟล์ + บันทึกลง download_log ตอนกด
   // "Download Excel" ใน By Lead tab (ดู downloadLeadExcel()) ไม่กระทบของเดิม (who/role)

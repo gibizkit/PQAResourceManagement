@@ -221,6 +221,13 @@
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
+    <div class="noti-bell">
+      <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">🔔<span class="noti-dot" id="notiDot" style="display:none"></span></button>
+      <div class="noti-panel" id="notiPanel" style="display:none">
+        <div class="noti-panel-head">การแจ้งเตือน</div>
+        <div class="noti-panel-list" id="notiList"></div>
+      </div>
+    </div>
     <span class="who" id="who"></span>
     <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
   </div>
@@ -273,7 +280,8 @@ import {
   loadPrefs, savePrefs, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin,
   createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
-  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment,
+  initNotificationBell, loadTaggableUsers, initMentionAutocomplete, getMentionedEmails
 } from './common.js';
 
 const PAGE = 'signoff';
@@ -483,6 +491,7 @@ async function showApp(session){
   S.m = now.getMonth() + 1;
 
   wireStaticControls();
+  initNotificationBell(); // ทำครั้งเดียวหลัง sessionBooted กันผูก listener ซ้ำ (SIGNED_IN ยิงซ้ำได้)
   await loadMasterData();
 
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreSignoffPrefs เสมอ)
@@ -490,13 +499,17 @@ async function showApp(session){
   // จำ mode/เดือน/คำค้นไว้ตอนสลับหน้า (sessionStorage) — ไม่จำ S.selectedKey (ห้องที่เปิดอยู่)
   restoreSignoffPrefs();
 
-  // ?project= — preselect a room, switching mode if it isn't in the current month
+  // ?project=&comment= — มาจากกระดิ่ง noti (initNotificationBell ใน common.js) หรือ deep-link
+  // อื่นๆ: preselect a room, switching mode if it isn't in the current month + เลื่อน/ไฮไลต์
+  // ไปที่คอมเมนต์ที่ถูกแท็ก (ทำใน loadRoom() หลังห้อง render เสร็จ)
   const qp = new URLSearchParams(location.search).get('project');
+  const qc = new URLSearchParams(location.search).get('comment');
   if (qp && S.projMap[qp]) {
     const proj = S.projMap[qp];
     S.mode = inMonth(proj.signoff_date, S.y, S.m) ? 'monthly' : 'all';
     S.selectedKey = qp;
   }
+  if (qc) S.pendingHighlightCommentId = Number(qc);
 
   updateModeUI();
   renderRail();
@@ -560,6 +573,11 @@ async function loadMasterData(){
     // snippet แถบซ้าย ยังใช้แค่คอมเมนต์ตอบกลับ (ไม่รวม root) เหมือนเดิม — root คือโพสต์เปิดหัวข้อ ไม่ใช่ "reply"
     if (!c.is_root && !(c.project_key in S.lastCommentMap)) S.lastCommentMap[c.project_key] = c; // first = most recent (desc order)
   });
+
+  // รายชื่อคนที่แท็กได้ (active app_user เท่านั้น) — ใช้กับ @ autocomplete ในคอมเมนต์/reply/แก้ไข
+  // (2026-08-18) แยก query จาก userRes ด้านบนเพราะ userRes ไม่กรอง is_active (ใช้ resolve ชื่อ
+  // ของ author เก่าที่อาจถูกปิดใช้งานไปแล้วด้วย ไม่อยากให้หายจากการแสดงผล)
+  S.taggableUsers = await loadTaggableUsers();
 }
 
 /* =====================================================================
@@ -708,14 +726,54 @@ async function loadRoom(pk){
     // 4) รูปที่แนบไว้ (screenshot) ของทุกคอมเมนต์ในห้องนี้ รวม root ด้วย
     const attachmentsByComment = await fetchSignoffAttachments(ids);
 
-    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors, attachmentsByComment };
+    // 5) ใครถูก @tag ในคอมเมนต์ไหนบ้างของห้องนี้ (read-log ใต้คอมเมนต์ + กระดิ่ง 2026-08-18)
+    const { data: mentionRows, error: mentionErr } = await supabase.from('signoff_mention')
+      .select('id,comment_id,mentioned_email,read_at')
+      .eq('project_key', pk);
+    if (mentionErr) console.warn('signoff_mention load error', mentionErr);
+    const mentionsByComment = {};
+    (mentionRows || []).forEach(m => {
+      (mentionsByComment[m.comment_id] = mentionsByComment[m.comment_id] || []).push(m);
+    });
+    // เปิดห้องนี้แล้ว = ถือว่า "เห็นแล้ว" ทุก mention ของฉันในห้องนี้ (ไม่ว่าจะเข้ามาทางกระดิ่งหรือ
+    // คลิกจาก rail list ปกติก็ตาม) — fire-and-forget ไม่ต้องรอ ไม่บล็อกการ render ห้อง
+    const myUnreadIds = (mentionRows || [])
+      .filter(m => m.mentioned_email === S.me && !m.read_at).map(m => m.id);
+    if (myUnreadIds.length) {
+      supabase.from('signoff_mention').update({ read_at: new Date().toISOString() })
+        .in('id', myUnreadIds).then(({ error }) => {
+          if (error) console.warn('mark mention read error', error);
+        });
+      // อัปเดต local state ทันทีด้วย กัน read-log โชว์ "ยังไม่เห็น" ค้างจนกว่าจะโหลดห้องใหม่รอบหน้า
+      const nowIso = new Date().toISOString();
+      (mentionRows || []).forEach(m => { if (myUnreadIds.includes(m.id)) m.read_at = nowIso; });
+    }
+
+    S.room = { pk, rootId, rootAuthorEmail: rootRow?rootRow.author_email:null, rootCreatedAt: rootRow?rootRow.created_at:null, rootBody: rootRow?rootRow.body:null, rootEditedAt: rootRow?rootRow.edited_at:null, topLevel, byParent, counts, mineSet, reactors, attachmentsByComment, mentionsByComment };
     renderRoomFull(pk);
     ensureRealtimeSub(pk);
+    if (S.pendingHighlightCommentId != null) {
+      highlightComment(S.pendingHighlightCommentId);
+      S.pendingHighlightCommentId = null;
+    }
   } catch (err) {
     console.warn('loadRoom error', err);
     toast('โหลดข้อมูลไม่สำเร็จ', true);
     $('convPane').innerHTML = '<div class="sr-empty">โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
   }
+}
+
+/** เลื่อน + ไฮไลต์คอมเมนต์/reply/root ที่ถูกพากดกระดิ่งเข้ามา (?project=&comment=) — data-cid
+ *  ต้องอยู่บน wrapper .sr-comment/.sr-reply เอง (ดู buildRootCommentHTML/buildCommentHTML/
+ *  buildReplyHTML) ไม่ใช่แค่บนปุ่มย่อยข้างในเหมือนที่อื่น */
+function highlightComment(id){
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.sr-comment[data-cid="${id}"], .sr-reply[data-cid="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('sr-highlight-flash');
+    setTimeout(() => el.classList.remove('sr-highlight-flash'), 2600);
+  });
 }
 
 function reactionListFor(commentId){
@@ -807,6 +865,19 @@ function buildCardHTML(proj){
 
 /* คอมเมนต์แรกของเธรด = โพสต์ root (Signoff Review) ที่ UAT Lead เปิดหัวข้อ
    แสดง author + เนื้อหา review + reactions + ปุ่มตอบกลับ + reply ที่ผูกกับ root */
+/** read-log ใต้คอมเมนต์ที่มีคนถูก @tag — "🏷️ เห็นแล้ว: กิ๊บ ✓ · ยังไม่เห็น: อ้อม"
+ *  ใช้ร่วมกันทั้ง root/comment/reply (2026-08-18) — ไม่มีคนถูกแท็กในคอมเมนต์นี้ = คืนค่าว่าง */
+function buildMentionLogHTML(commentId){
+  const rows = (S.room && S.room.mentionsByComment && S.room.mentionsByComment[commentId]) || [];
+  if (!rows.length) return '';
+  const seen = rows.filter(r => r.read_at).map(r => displayNameFor(r.mentioned_email));
+  const unseen = rows.filter(r => !r.read_at).map(r => displayNameFor(r.mentioned_email));
+  const parts = [];
+  if (seen.length) parts.push(`เห็นแล้ว: ${seen.map(n => esc(n) + ' ✓').join(', ')}`);
+  if (unseen.length) parts.push(`ยังไม่เห็น: ${unseen.map(esc).join(', ')}`);
+  return `<div class="sr-mention-log">🏷️ ${parts.join(' · ')}</div>`;
+}
+
 function buildRootCommentHTML(proj){
   const rootId = S.room.rootId;
   const authorEmail = S.room.rootAuthorEmail;
@@ -823,7 +894,7 @@ function buildRootCommentHTML(proj){
   const isMine = rootId != null && authorEmail === S.me;
   const editOpen = rootId != null && S.editOpenKey === rootId;
   return `
-    <div class="sr-comment sr-comment-root">
+    <div class="sr-comment sr-comment-root"${rootId != null ? ` data-cid="${rootId}"` : ''}>
       <span class="sr-avatar sm ${hashClr(authorDisplay)}">${esc(initialsFor(authorDisplay))}</span>
       <div class="sr-comment-body">
         <div class="sr-comment-top">
@@ -835,6 +906,7 @@ function buildRootCommentHTML(proj){
         ${editOpen ? buildEditFormHTML(rootId, bodyRaw) : `
         <div class="sr-comment-text">${bodyHtml}</div>
         ${attachmentThumbsHTML(S.room.attachmentsByComment[rootId], S.me)}
+        ${buildMentionLogHTML(rootId)}
         <div class="sr-comment-actions">
           ${buildReactionsBlock(rootId, String(rootId))}
           <button class="sr-reply-btn" data-cid="${rootId}">↩ ตอบกลับ</button>
@@ -875,7 +947,7 @@ function buildReplyHTML(rp){
   const editOpen = S.editOpenKey === rp.id;
   const edited = rp.edited_at ? ' (แก้ไขแล้ว)' : '';
   return `
-    <div class="sr-reply">
+    <div class="sr-reply" data-cid="${rp.id}">
       <span class="sr-avatar xs ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
       <div>
         <div class="sr-reply-top">
@@ -885,6 +957,7 @@ function buildReplyHTML(rp){
         ${editOpen ? buildEditFormHTML(rp.id, rp.body) : `
         <div class="sr-reply-text">${esc(rp.body)}</div>
         ${attachmentThumbsHTML(S.room.attachmentsByComment[rp.id], S.me)}
+        ${buildMentionLogHTML(rp.id)}
         ${isMine ? `<div class="sr-reply-actions"><button class="sr-reply-btn sr-edit-btn" data-cid="${rp.id}">✏️ แก้ไข</button></div>` : ''}`}
       </div>
     </div>`;
@@ -897,7 +970,7 @@ function buildCommentHTML(c){
   const editOpen = S.editOpenKey === c.id;
   const edited = c.edited_at ? ' (แก้ไขแล้ว)' : '';
   return `
-    <div class="sr-comment">
+    <div class="sr-comment" data-cid="${c.id}">
       <span class="sr-avatar sm ${hashClr(dispName)}">${esc(initialsFor(dispName))}</span>
       <div class="sr-comment-body">
         <div class="sr-comment-top">
@@ -908,6 +981,7 @@ function buildCommentHTML(c){
         ${editOpen ? buildEditFormHTML(c.id, c.body) : `
         <div class="sr-comment-text">${esc(c.body)}</div>
         ${attachmentThumbsHTML(S.room.attachmentsByComment[c.id], S.me)}
+        ${buildMentionLogHTML(c.id)}
         <div class="sr-comment-actions">
           ${buildReactionsBlock(c.id, String(c.id))}
           <button class="sr-reply-btn" data-cid="${c.id}">↩ ตอบกลับ</button>
@@ -967,6 +1041,12 @@ function renderRoomFull(pk){
   composerAttach = createAttachComposer($('composerAttRow'), document.querySelector('.sr-composer-text'));
   replyAttach = S.replyOpenKey != null ? createAttachComposer($('replyAttRow'), document.querySelector('.sr-reply-input')) : null;
   editAttach = S.editOpenKey != null ? createAttachComposer($('editAttRow'), document.querySelector('.sr-edit-textarea')) : null;
+
+  // @ autocomplete ทุกช่องพิมพ์ที่มีอยู่ตอนนี้ (2026-08-18) — เรียกซ้ำได้ปลอดภัยทุก render
+  // เพราะ DOM ถูกสร้างใหม่ทุกครั้ง (innerHTML ทั้งก้อนด้านบน) ไม่มี listener เก่าค้าง
+  initMentionAutocomplete(document.querySelector('.sr-composer-text'), S.taggableUsers);
+  if (S.replyOpenKey != null) initMentionAutocomplete(document.querySelector('.sr-reply-input'), S.taggableUsers);
+  if (S.editOpenKey != null) initMentionAutocomplete(document.querySelector('.sr-edit-textarea'), S.taggableUsers);
 }
 function rerenderRoomKeepData(){
   if (S.room) renderRoomFull(S.room.pk);
@@ -1012,6 +1092,22 @@ async function toggleCardReaction(emoji){
     toast('กดรีแอคชันไม่สำเร็จ', true);
   }
 }
+/** สแกน body หา @email ที่แท็กแล้ว insert เป็นแถว pqa.signoff_mention (2026-08-18) — เรียกหลัง
+ *  insert/update comment สำเร็จ ก่อน loadRoom() เสมอ เพื่อให้ read-log/กระดิ่งเห็นแท็กใหม่ทันที
+ *  upsert + ignoreDuplicates กันชน unique (comment_id, mentioned_email) ตอนแก้ไขคอมเมนต์ที่
+ *  แท็กคนเดิมซ้ำ — ไม่รีเซ็ต read_at ของคนที่เคยเห็นไปแล้วด้วย */
+async function insertMentions(commentId, body){
+  if (commentId == null || !S.room) return;
+  const emails = getMentionedEmails(body, S.taggableUsers, S.me);
+  if (!emails.length) return;
+  const rows = emails.map(email => ({
+    comment_id: commentId, project_key: S.room.pk, mentioned_email: email, author_email: S.me
+  }));
+  const { error } = await supabase.from('signoff_mention')
+    .upsert(rows, { onConflict: 'comment_id,mentioned_email', ignoreDuplicates: true });
+  if (error) console.warn('insert signoff_mention error', error);
+}
+
 async function sendComment(){
   if (!S.room) return;
   const ta = document.querySelector('.sr-composer-text');
@@ -1030,6 +1126,7 @@ async function sendComment(){
       const { failCount } = await uploadSignoffAttachments(S.room.pk, data.id, S.me, blobs);
       if (failCount) toast(`ส่งข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
     }
+    await insertMentions(data.id, v);
     if (composerAttach) composerAttach.clear();
     await loadRoom(S.room.pk);
     await refreshRailSnippet(S.room.pk);
@@ -1055,6 +1152,7 @@ async function sendReply(parentId){
       const { failCount } = await uploadSignoffAttachments(S.room.pk, data.id, S.me, blobs);
       if (failCount) toast(`ส่งข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
     }
+    await insertMentions(data.id, v);
     if (replyAttach) replyAttach.clear();
     S.replyOpenKey = null;
     await loadRoom(S.room.pk);
@@ -1093,6 +1191,7 @@ async function saveCommentEdit(id){
         return;
       }
     }
+    await insertMentions(id, v);
     const newBlobs = editAttach ? editAttach.getBlobs() : [];
     if (newBlobs.length) {
       const { failCount } = await uploadSignoffAttachments(S.room.pk, id, S.me, newBlobs);

@@ -36,7 +36,8 @@
 import {
   supabase, $, toast, esc, dDisp, getSession,
   createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
-  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment,
+  loadTaggableUsers, initMentionAutocomplete, getMentionedEmails
 } from './common.js';
 
 /* ============ HELPERS ============ */
@@ -53,7 +54,7 @@ const _projectNameByKey = {};
 
 /* ============ MODULE STATE (persists across re-renders of the same open modal) ============ */
 // app_code -> app_name (loaded once, lazily) — for the "แอป (App)" row in the summary card
-const _lookup = { app: null, meLoaded: false, me: '' };
+const _lookup = { app: null, meLoaded: false, me: '', taggable: null };
 // last successful loadSignoffReviewModal() result — re-render from this without refetching
 // whenever we just need to toggle an inline edit box open/closed.
 let _lastLoad = null; // { pk, rootRow, topLevel, byParent, projRow }
@@ -81,6 +82,11 @@ async function ensureLookups() {
       _lookup.me = session ? session.user.email : '';
       _lookup.meLoaded = true;
     }));
+  }
+  // รายชื่อคนที่แท็กได้ (active app_user) — ใช้กับ @ autocomplete ในช่องแก้ไข root/comment/reply
+  // (2026-08-18) โหลดครั้งเดียวเก็บไว้ใน module scope เหมือน _lookup.app
+  if (_lookup.taggable === null) {
+    tasks.push(loadTaggableUsers().then(list => { _lookup.taggable = list; }));
   }
   if (tasks.length) await Promise.all(tasks);
 }
@@ -249,7 +255,29 @@ async function loadSignoffReviewModal(pk) {
     if (rootRow) attIds.push(rootRow.id);
     const attachmentsByComment = await fetchSignoffAttachments(attIds);
 
-    _lastLoad = { pk, rootRow, topLevel, byParent, projRow, attachmentsByComment };
+    // ใครถูก @tag ในคอมเมนต์ไหนบ้างของห้องนี้ (read-log ใต้คอมเมนต์ + กระดิ่ง 2026-08-18) —
+    // เปิด modal ห้องนี้แล้ว = ถือว่า "เห็นแล้ว" ทุก mention ของฉันในห้องนี้ เหมือน
+    // signoff-review.html หน้าเต็ม (ดู loadRoom() ที่นั่น — logic เดียวกันเป๊ะ)
+    const { data: mentionRows, error: mentionErr } = await supabase.from('signoff_mention')
+      .select('id,comment_id,mentioned_email,read_at')
+      .eq('project_key', pk);
+    if (mentionErr) console.warn('signoff_mention load error', mentionErr);
+    const mentionsByComment = {};
+    (mentionRows || []).forEach(m => {
+      (mentionsByComment[m.comment_id] ||= []).push(m);
+    });
+    const myUnreadIds = (mentionRows || [])
+      .filter(m => m.mentioned_email === _lookup.me && !m.read_at).map(m => m.id);
+    if (myUnreadIds.length) {
+      supabase.from('signoff_mention').update({ read_at: new Date().toISOString() })
+        .in('id', myUnreadIds).then(({ error }) => {
+          if (error) console.warn('mark mention read error', error);
+        });
+      const nowIso = new Date().toISOString();
+      (mentionRows || []).forEach(m => { if (myUnreadIds.includes(m.id)) m.read_at = nowIso; });
+    }
+
+    _lastLoad = { pk, rootRow, topLevel, byParent, projRow, attachmentsByComment, mentionsByComment };
     renderSignoffReviewModal();
   } catch (err) {
     console.warn('loadSignoffReviewModal error', err);
@@ -329,6 +357,18 @@ function commentHeaderHTML(c) {
 function attsFor(id) {
   return (_lastLoad && _lastLoad.attachmentsByComment[id]) || [];
 }
+/** read-log ใต้คอมเมนต์ที่มีคนถูก @tag — เหมือน signoff-review.html หน้าเต็ม (2026-08-18)
+ *  ใช้ shortEmail() แทนชื่อเต็ม ให้ตรงกับ convention การโชว์ชื่อของ modal นี้ (commentHeaderHTML) */
+function mentionLogHTML(commentId) {
+  const rows = (_lastLoad && _lastLoad.mentionsByComment && _lastLoad.mentionsByComment[commentId]) || [];
+  if (!rows.length) return '';
+  const seen = rows.filter(r => r.read_at).map(r => shortEmail(r.mentioned_email));
+  const unseen = rows.filter(r => !r.read_at).map(r => shortEmail(r.mentioned_email));
+  const parts = [];
+  if (seen.length) parts.push(`เห็นแล้ว: ${seen.map(n => esc(n) + ' ✓').join(', ')}`);
+  if (unseen.length) parts.push(`ยังไม่เห็น: ${unseen.map(esc).join(', ')}`);
+  return `<div class="sr-mention-log">🏷️ ${parts.join(' · ')}</div>`;
+}
 function commentEditBoxHTML(c) {
   return `
     <div class="sr-modal-edit-box">
@@ -347,7 +387,7 @@ function buildCommentGroupHTML(c, byParent) {
   const editing = _editingCommentId === c.id;
   const body = editing
     ? `<div class="sr-modal-comment-top"><b>${esc(shortEmail(c.author_email))}</b></div>${commentEditBoxHTML(c)}`
-    : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}`;
+    : `<div class="sr-modal-comment-top">${commentHeaderHTML(c)}</div><div class="sr-modal-comment-text">${esc(c.body)}</div>${attachmentThumbsHTML(attsFor(c.id), _lookup.me)}${mentionLogHTML(c.id)}`;
   return `
     <div class="sr-modal-comment" data-cid="${c.id}">
       ${body}
@@ -358,7 +398,7 @@ function buildReplyGroupHTML(r) {
   const editing = _editingCommentId === r.id;
   const body = editing
     ? `<b>${esc(shortEmail(r.author_email))}</b>${commentEditBoxHTML(r)}`
-    : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>${attachmentThumbsHTML(attsFor(r.id), _lookup.me)}`;
+    : `${commentHeaderHTML(r)}<div>${esc(r.body)}</div>${attachmentThumbsHTML(attsFor(r.id), _lookup.me)}${mentionLogHTML(r.id)}`;
   return `<div class="sr-modal-reply" data-cid="${r.id}">${body}</div>`;
 }
 
@@ -390,6 +430,11 @@ function renderSignoffReviewModal() {
   _commentAttach = _editingCommentId != null
     ? createAttachComposer($('srmCommentAttRow'), document.querySelector('.sr-modal-comment-edit-text'))
     : null;
+
+  // @ autocomplete ในช่องแก้ไขที่เปิดอยู่ตอนนี้ (2026-08-18) — modal นี้ไม่มีช่องคอมเมนต์ใหม่/reply
+  // ใหม่ (ดูคอมเมนต์หัวไฟล์) มีแค่แก้ไข root/comment/reply เท่านั้นที่แท็กได้
+  if (_rootEditing) initMentionAutocomplete($('signoffReviewText'), _lookup.taggable);
+  if (_editingCommentId != null) initMentionAutocomplete(document.querySelector('.sr-modal-comment-edit-text'), _lookup.taggable);
 }
 
 /**
@@ -436,6 +481,7 @@ function buildRootCardHTML(pk, rootRow) {
       </div>
       <div class="sr-modal-card-body">${esc(rootRow.body || '')}</div>
       ${attachmentThumbsHTML(attsFor(rootRow.id), _lookup.me)}
+      ${mentionLogHTML(rootRow.id)}
     </div>`;
 }
 
@@ -495,6 +541,20 @@ async function saveSignoffUrl(pk) {
   }
 }
 
+/** สแกน body หา @email ที่แท็กแล้ว insert เป็นแถว pqa.signoff_mention (2026-08-18) — เรียกหลัง
+ *  update comment สำเร็จ ก่อน loadSignoffReviewModal() เสมอ (เหมือน signoff-review.html) */
+async function insertMentions(pk, commentId, body) {
+  if (commentId == null) return;
+  const emails = getMentionedEmails(body, _lookup.taggable, _lookup.me);
+  if (!emails.length) return;
+  const rows = emails.map(email => ({
+    comment_id: commentId, project_key: pk, mentioned_email: email, author_email: _lookup.me
+  }));
+  const { error } = await supabase.from('signoff_mention')
+    .upsert(rows, { onConflict: 'comment_id,mentioned_email', ignoreDuplicates: true });
+  if (error) console.warn('insert signoff_mention error', error);
+}
+
 async function saveCommentEdit(id) {
   const ta = document.querySelector('.sr-modal-comment-edit-text');
   const errEl = document.querySelector('.sr-modal-comment-edit-err');
@@ -511,12 +571,13 @@ async function saveCommentEdit(id) {
       if (errEl) errEl.textContent = 'บันทึกไม่สำเร็จ — แก้ไขได้เฉพาะความคิดเห็นของตัวเอง';
       return;
     }
+    const pkForUpload = _lastLoad ? _lastLoad.pk : null;
     const blobs = _commentAttach ? _commentAttach.getBlobs() : [];
     if (blobs.length) {
-      const pkForUpload = _lastLoad ? _lastLoad.pk : null;
       const { failCount } = await uploadSignoffAttachments(pkForUpload, id, _lookup.me, blobs);
       if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปเพิ่มไม่สำเร็จ ${failCount} รูป`, true);
     }
+    await insertMentions(pkForUpload, id, v);
     if (_commentAttach) _commentAttach.clear();
     toast('บันทึกความคิดเห็นแล้ว ✓');
     _editingCommentId = null;
@@ -537,18 +598,19 @@ window.saveSignoffReviewModal = async function (pk) {
     const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: pk, p_body: body });
     if (error) throw error;
 
+    // RPC ไม่คืน id ของแถว root กลับมา — select หา id จริงอีกที (ใช้ทั้งตอนแนบรูปและ insert @tag)
     const blobs = _rootAttach ? _rootAttach.getBlobs() : [];
-    if (blobs.length) {
-      // RPC ไม่คืน id ของแถว root กลับมา — select หา id จริงอีกทีก่อนผูกรูป (ปลอดภัยกว่าเดา)
-      const { data: rootRow, error: selErr } = await supabase.from('signoff_comment')
-        .select('id').eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle();
-      if (selErr || !rootRow) {
-        console.warn('saveSignoffReviewModal: could not resolve root id for attachments', selErr);
-        toast('บันทึกข้อความแล้ว แต่แนบรูปไม่สำเร็จ (หา id ไม่เจอ)', true);
-      } else {
+    const { data: rootRow, error: selErr } = await supabase.from('signoff_comment')
+      .select('id').eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle();
+    if (selErr || !rootRow) {
+      console.warn('saveSignoffReviewModal: could not resolve root id', selErr);
+      if (blobs.length) toast('บันทึกข้อความแล้ว แต่แนบรูปไม่สำเร็จ (หา id ไม่เจอ)', true);
+    } else {
+      if (blobs.length) {
         const { failCount } = await uploadSignoffAttachments(pk, rootRow.id, _lookup.me, blobs);
         if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปไม่สำเร็จ ${failCount} รูป`, true);
       }
+      await insertMentions(pk, rootRow.id, body);
     }
     if (_rootAttach) _rootAttach.clear();
 

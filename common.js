@@ -1113,3 +1113,255 @@ document.addEventListener('keydown', (e) => {
     e.stopImmediatePropagation();
   }
 }, true);
+
+/* ============ @MENTION AUTOCOMPLETE (Signoff Review tag, 2026-08-18) ============
+ * ใช้ทั้งใน signoff-review.html (คอมเมนต์หลัก/reply/แก้ไข) และ signoffReviewModal.js
+ * เก็บ tag เป็นข้อความ literal "@email" ตรงๆ ใน body ของ signoff_comment (ไม่ใช่ rich-text/
+ * markup แยก) — ตัดสินใจแบบนี้เพราะกิ๊บระบุ "tag ด้วย email address" ชัดเจน และอีเมลไม่ซ้ำกัน
+ * ระหว่างคน 100% (ต่างจาก display_name ที่อาจซ้ำ) ตอนส่งคอมเมนต์ให้เรียก getMentionedEmails()
+ * สแกนหา "@" + อีเมลจริงของ user ที่ active อยู่ใน body แล้ว insert เป็นแถว pqa.signoff_mention
+ * (ดู sql/patch_2026-08-18_signoff_mention.sql) — ไม่ผูกกับตอนเลือกจาก autocomplete โดยตรง
+ * เพราะถ้าผู้ใช้ลบข้อความ "@email" ทิ้งก่อนส่ง ก็ไม่ควรนับเป็นการแท็กอีกต่อไป
+ */
+
+/** โหลดรายชื่อคนที่แท็กได้ — ต้องเป็น app_user ที่ active เท่านั้น (ต้องมีบัญชีถึงจะมีกระดิ่งให้เห็น noti) */
+export async function loadTaggableUsers() {
+  const { data, error } = await supabase.from('app_user')
+    .select('email,display_name').eq('is_active', true);
+  if (error) { console.warn('loadTaggableUsers error', error); return []; }
+  return data || [];
+}
+
+/**
+ * ผูก @ autocomplete ให้ input/textarea ตัวหนึ่ง — พิมพ์ "@" ที่ต้นคำ (หลังช่องว่าง/ต้นข้อความ
+ * เท่านั้น กันชนกับอีเมลที่พิมพ์ปกติกลางประโยค) แล้วพิมพ์ต่อ ระบบกรองจาก taggableUsers
+ * (email/display_name) คลิกเลือกแล้ว insert "@email " ที่ตำแหน่งเคอร์เซอร์ทันที (เก็บเป็นอีเมล
+ * ตรงๆ ไม่ใช่ label ชื่อ — อ่าน comment ที่คอมเมนต์ dropdown ด้านบน)
+ *
+ * panel เป็น position:fixed อิงตำแหน่งกล่อง input/textarea เอง (ไม่ใช่ตำแหน่ง caret จริง —
+ * เพียงพอสำหรับ use case นี้ ไม่ทำ mirror-div คำนวณตำแหน่ง caret ที่ซับซ้อนเกินจำเป็น) เรียกซ้ำ
+ * ได้ปลอดภัยทุกครั้งที่ element ใหม่ถูกสร้าง (เช่นหลัง re-render ทั้งก้อนของ signoff-review.html)
+ * เพราะ listener ผูกกับ element instance ใหม่ทุกครั้งอยู่แล้ว ไม่มีของเก่าค้าง
+ * @param {HTMLInputElement|HTMLTextAreaElement} el
+ * @param {{email:string,display_name:string}[]} taggableUsers
+ */
+export function initMentionAutocomplete(el, taggableUsers) {
+  if (!el) return;
+  const users = taggableUsers || [];
+  let panel = null, wordStart = -1;
+  const closePanel = () => { if (panel) { panel.remove(); panel = null; } };
+  const openPanel = (matches) => {
+    closePanel();
+    panel = document.createElement('div');
+    panel.className = 'mention-panel';
+    if (!matches.length) {
+      panel.innerHTML = `<div class="mention-empty">ไม่พบชื่อ</div>`;
+    } else {
+      matches.slice(0, 8).forEach(u => {
+        const opt = document.createElement('div');
+        opt.className = 'mention-opt';
+        opt.innerHTML = `${esc(u.display_name || u.email)}<span class="em">${esc(u.email)}</span>`;
+        // mousedown (ไม่ใช่ click) เพราะ blur ของ input/textarea ยิงก่อน click เสมอ — แพทเทิร์น
+        // เดียวกับ initLeadSearch() ด้านบน
+        opt.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          const val = el.value;
+          const cursor = el.selectionStart;
+          const before = val.slice(0, wordStart);
+          const after = val.slice(cursor);
+          const insert = '@' + u.email + ' ';
+          el.value = before + insert + after;
+          const newPos = (before + insert).length;
+          el.focus();
+          el.setSelectionRange(newPos, newPos);
+          closePanel();
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        panel.appendChild(opt);
+      });
+    }
+    const rect = el.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + 'px';
+    panel.style.minWidth = Math.max(220, rect.width) + 'px';
+    document.body.appendChild(panel);
+  };
+  const checkTrigger = () => {
+    const cursor = el.selectionStart;
+    const val = el.value.slice(0, cursor);
+    const at = val.lastIndexOf('@');
+    if (at === -1) { closePanel(); return; }
+    const beforeAt = val.slice(0, at);
+    const query = val.slice(at + 1, cursor);
+    if (/\s/.test(query)) { closePanel(); return; } // เคาะ space แล้ว = คำนี้จบแล้ว ไม่ใช่ query ต่อ
+    if (beforeAt && !/\s$/.test(beforeAt)) { closePanel(); return; } // "@" ต้องอยู่ต้นคำเท่านั้น
+    wordStart = at;
+    const q = query.toLowerCase();
+    const matches = !q ? users.slice(0, 8) : users.filter(u =>
+      String(u.email || '').toLowerCase().includes(q) ||
+      String(u.display_name || '').toLowerCase().includes(q));
+    openPanel(matches);
+  };
+  el.addEventListener('input', checkTrigger);
+  el.addEventListener('click', checkTrigger);
+  el.addEventListener('blur', () => setTimeout(closePanel, 150));
+  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+}
+
+/**
+ * สแกน body หา "@email" ของ user ที่ active จริงเท่านั้น (เทียบ exact กับ taggableUsers ไม่ใช่
+ * regex เดารูปแบบอีเมลเอง) กันแท็กมั่วๆ/false-positive กับอีเมลที่ไม่มีบัญชีในระบบ ตัดชื่อผู้เขียน
+ * เองออกเสมอ (แท็กตัวเองไม่ต้องเด้ง noti หาตัวเอง)
+ * @param {string} body
+ * @param {{email:string}[]} taggableUsers
+ * @param {string} authorEmail
+ * @returns {string[]} อีเมลที่ควร insert เป็น signoff_mention (ไม่ซ้ำกัน)
+ */
+export function getMentionedEmails(body, taggableUsers, authorEmail) {
+  const text = String(body || '').toLowerCase();
+  const out = new Set();
+  (taggableUsers || []).forEach(u => {
+    const email = String(u.email || '');
+    if (!email) return;
+    if (email.toLowerCase() === String(authorEmail || '').toLowerCase()) return;
+    if (text.includes('@' + email.toLowerCase())) out.add(email);
+  });
+  return [...out];
+}
+
+/* ============ NOTIFICATION BELL (Signoff Review @mention, 2026-08-18) ============
+ * markup ที่คาดหวังใน topbar ทุกหน้า (ก่อน span#who) — ก๊อปเหมือนกันทุกหน้า (topbar เองก็
+ * duplicate อยู่แล้วทุกหน้า ดู memory "pqa-gantt-admin-parallel-logic"):
+ *   <div class="noti-bell">
+ *     <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">
+ *       🔔<span class="noti-dot" id="notiDot" style="display:none"></span>
+ *     </button>
+ *     <div class="noti-panel" id="notiPanel" style="display:none">
+ *       <div class="noti-panel-head">การแจ้งเตือน</div>
+ *       <div class="noti-panel-list" id="notiList"></div>
+ *     </div>
+ *   </div>
+ * เรียก initNotificationBell() ครั้งเดียวหลังล็อกอินสำเร็จ (ตอน showApp()/wireStaticControls()
+ * ของแต่ละหน้า) — เช็ค unread ทันที + poll ทุก 60 วิ (ตามที่กิ๊บยืนยัน — หยุด poll เมื่อ tab ไม่
+ * active ผ่าน document.hidden กันยิง query เปล่าตอนไม่มีใครดู + เช็คซ้ำทันทีตอนสลับกลับมา active
+ * ไม่ต้องรอครบ 1 นาที) ปิด panel เองเมื่อคลิกนอกกล่อง
+ *
+ * mark-as-read: กระดิ่งนี้ "อ่านอย่างเดียว" ไม่ยิง update ตรงๆ — กด noti row แล้ว navigate ไป
+ * signoff-review.html?project=..&comment=.. ตัว loadRoom() ปลายทางเป็นคนมาร์ค read_at ให้เอง
+ * (ครอบคลุมทั้งเข้าห้องผ่านกระดิ่ง และเข้าห้องผ่าน rail list ปกติ — เปิดห้องแล้ว mention ทุกอัน
+ * ของฉันในห้องนั้นถือว่า "เห็นแล้ว" เหมือนกันหมด ไม่ต้องแยกเคส)
+ */
+let _notiPollTimer = null;
+let _notiMe = null;
+
+async function notiCheckUnread() {
+  if (!_notiMe) return;
+  const dot = $('notiDot');
+  if (!dot) return;
+  const { count, error } = await supabase.from('signoff_mention')
+    .select('id', { count: 'exact', head: true })
+    .eq('mentioned_email', _notiMe).is('read_at', null);
+  if (error) { console.warn('notiCheckUnread error', error); return; }
+  dot.style.display = (count && count > 0) ? '' : 'none';
+}
+
+function notiSnippet(text) {
+  const s = String(text || '');
+  return s.length > 60 ? s.slice(0, 60) + '…' : s;
+}
+
+function notiTimeLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const p2 = n => String(n).padStart(2, '0');
+  return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
+async function notiLoadList() {
+  const list = $('notiList');
+  if (!list || !_notiMe) return;
+  list.innerHTML = '<div class="noti-empty">กำลังโหลด...</div>';
+  const { data: mentions, error } = await supabase.from('signoff_mention')
+    .select('id,comment_id,project_key,author_email,created_at,read_at')
+    .eq('mentioned_email', _notiMe)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) { console.warn('notiLoadList error', error); list.innerHTML = '<div class="noti-empty">โหลดไม่สำเร็จ</div>'; return; }
+  if (!mentions || !mentions.length) { list.innerHTML = '<div class="noti-empty">ยังไม่มีการแจ้งเตือน</div>'; return; }
+
+  // fetch แยก 3 ก้อนแล้ว join เอง (ไม่ใช้ PostgREST embed syntax — โค้ดฐานนี้ไม่เคยใช้ pattern
+  // นั้นที่ไหนเลย ทำแบบเดียวกับที่อื่นๆ ทั้งหมดในระบบเพื่อความชัวร์)
+  const commentIds = [...new Set(mentions.map(m => m.comment_id))];
+  const projectKeys = [...new Set(mentions.map(m => m.project_key))];
+  const [cmtRes, projRes, userRes] = await Promise.all([
+    supabase.from('signoff_comment').select('id,body,deleted_at').in('id', commentIds),
+    supabase.from('project').select('project_key,project_name').in('project_key', projectKeys),
+    supabase.from('app_user').select('email,display_name'),
+  ]);
+  const cmtMap = {}; (cmtRes.data || []).forEach(c => { cmtMap[c.id] = c; });
+  const projMap = {}; (projRes.data || []).forEach(p => { projMap[p.project_key] = p; });
+  const userMap = {}; (userRes.data || []).forEach(u => { userMap[u.email] = u.display_name; });
+  const nameOf = e => userMap[e] || String(e || '').split('@')[0];
+
+  list.innerHTML = mentions.map(m => {
+    const cmt = cmtMap[m.comment_id];
+    const proj = projMap[m.project_key];
+    const bodyTxt = cmt ? (cmt.deleted_at ? '(ความคิดเห็นถูกลบแล้ว)' : notiSnippet(cmt.body)) : '(ไม่พบข้อความ)';
+    const unread = !m.read_at;
+    return `
+      <button class="noti-row ${unread ? 'unread' : ''}" data-pk="${esc(m.project_key)}" data-cid="${m.comment_id}">
+        <span class="noti-row-mark">${unread ? '<span class="noti-row-dot"></span>' : '✓'}</span>
+        <span class="noti-row-body">
+          <span class="noti-row-title">${esc(nameOf(m.author_email))} แท็กคุณใน ${esc(proj ? proj.project_name : m.project_key)}</span>
+          <span class="noti-row-snippet">${esc(bodyTxt)}</span>
+          <span class="noti-row-time">${esc(notiTimeLabel(m.created_at))}</span>
+        </span>
+      </button>`;
+  }).join('');
+}
+
+/**
+ * เริ่มระบบกระดิ่ง — เรียกครั้งเดียวหลังล็อกอินสำเร็จ ข้ามเงียบๆ ถ้าหน้านั้นไม่มี markup กระดิ่ง
+ * (กันพังถ้าลืมใส่ topbar ในหน้าใดหน้าหนึ่ง)
+ *
+ * กัน re-init ซ้ำเองด้วย _notiInitedEl (เทียบ element instance ไม่ใช่แค่ boolean) — บางหน้า
+ * (เช่น gantt.html) เรียก showApp() ได้มากกว่า 1 ครั้งต่อการโหลดหน้าเดียว เพราะ
+ * supabase.auth.onAuthStateChange ยิง SIGNED_IN ซ้ำได้ (เจอบั๊กแบบเดียวกันมาแล้วกับ login_log
+ * — ดู logLogin() ด้านบน) ถ้าไม่กันไว้ listener ของกระดิ่งจะถูกผูกซ้ำ กดหนึ่งครั้งพาไปหลายที่/
+ * mark-read ซ้ำๆ ได้ เทียบกับ element เดิม (ไม่ใช่ true/false เฉยๆ) เผื่อกรณี DOM ถูกสร้างใหม่
+ * จริงๆ (ไม่น่าเกิดกับ topbar แต่กันไว้ก่อน)
+ */
+let _notiInitedEl = null;
+export function initNotificationBell() {
+  const btn = $('notiBellBtn'), panel = $('notiPanel');
+  if (!btn || !panel) return;
+  if (_notiInitedEl === btn) return;
+  _notiInitedEl = btn;
+
+  supabase.auth.getSession().then(({ data }) => {
+    _notiMe = data?.session?.user?.email || null;
+    if (_notiMe) notiCheckUnread();
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = panel.style.display === 'none';
+    panel.style.display = willOpen ? '' : 'none';
+    if (willOpen) notiLoadList();
+  });
+  document.addEventListener('click', (e) => {
+    if (panel.style.display !== 'none' && !panel.contains(e.target) && e.target !== btn) {
+      panel.style.display = 'none';
+    }
+  });
+  panel.addEventListener('click', (e) => {
+    const row = e.target.closest('.noti-row');
+    if (!row) return;
+    const pk = row.dataset.pk, cid = row.dataset.cid;
+    location.href = `signoff-review.html?project=${encodeURIComponent(pk)}&comment=${encodeURIComponent(cid)}`;
+  });
+
+  if (_notiPollTimer) clearInterval(_notiPollTimer);
+  _notiPollTimer = setInterval(() => { if (!document.hidden) notiCheckUnread(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) notiCheckUnread(); });
+}

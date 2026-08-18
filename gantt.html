@@ -302,6 +302,13 @@
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
+    <div class="noti-bell">
+      <button class="noti-bell-btn" id="notiBellBtn" type="button" aria-label="การแจ้งเตือน">🔔<span class="noti-dot" id="notiDot" style="display:none"></span></button>
+      <div class="noti-panel" id="notiPanel" style="display:none">
+        <div class="noti-panel-head">การแจ้งเตือน</div>
+        <div class="noti-panel-list" id="notiList"></div>
+      </div>
+    </div>
     <span class="who" id="who"></span>
     <button class="btn sm" id="logoutBtn">ออกจากระบบ</button>
   </div>
@@ -316,7 +323,7 @@
           <div class="ms-list" id="releaseScheduleList"></div>
         </div>
       </div>
-      <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
+      <button class="btn" id="toggleFilterBtn">🔎 Open Filter</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -553,7 +560,8 @@ import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, 
          initLeadSearch, getLeadSearchValue, leadSearchHasUnresolvedText,
          loadProjectStatuses, statusOptionsHTML,
          loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
-         getCachedRole, setCachedRole, paintNavAdmin } from './common.js';
+         getCachedRole, setCachedRole, paintNavAdmin,
+         initNotificationBell } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -702,6 +710,7 @@ async function showApp(session){
   // paint เมนู Admin แบบ optimistic จาก cache ทันที (sync) ก่อนรอ query role จาก DB เสร็จ
   // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
   paintNavAdmin(getCachedRole(session.user.email));
+  initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js) ต่อให้ showApp() ถูกเรียกซ้ำ
   let who=session.user.email, role='';
   const { data:u } = await supabase.from('app_user')
     .select('display_name,app_role,pqa_emp_id').eq('email', session.user.email).maybeSingle();
@@ -752,8 +761,16 @@ function restoreFilterPrefs(){
   $('fOrder').value = S.filter.order;
 
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
+  updateToggleFilterBtnLabel();
 
   return true;
+}
+
+// sync ข้อความปุ่ม toggle ให้ตรงกับสถานะ filterPanel เสมอ (Open Filter/Close Filter)
+// — เรียกทุกจุดที่แก้ class 'hidden' ของ #filterPanel
+function updateToggleFilterBtnLabel(){
+  const open = !$('filterPanel').classList.contains('hidden');
+  $('toggleFilterBtn').textContent = open ? '🔎 Close Filter' : '🔎 Open Filter';
 }
 
 // dump S.filter (+panelOpen จาก DOM) ทั้งก้อนลง sessionStorage — เรียกทุกจุดที่ filter เปลี่ยน
@@ -1638,12 +1655,13 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 window.collapseAllProjects = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
 window.expandAllProjects   = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
-$('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); saveFilterPrefs(); };
+$('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); updateToggleFilterBtnLabel(); saveFilterPrefs(); };
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
   renderGantt();
   $('filterPanel').classList.add('hidden');   // req 6: auto-collapse after search
+  updateToggleFilterBtnLabel();
   saveFilterPrefs();
 };
 $('fOrder').onchange   = () => { S.filter.order = $('fOrder').value; renderGantt(); saveFilterPrefs(); };
