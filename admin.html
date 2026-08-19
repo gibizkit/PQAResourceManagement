@@ -116,6 +116,31 @@
     max-height: none;
   }
 
+  /* ---- ให้ horizontal scrollbar ของตารางเห็นตลอดเวลา (ไม่ต้อง hover ก่อน) ----
+     ปกติ macOS/Safari/Chrome ใช้ overlay scrollbar ที่ซ่อนจนกว่าจะ hover/scroll ทำให้
+     ผู้ใช้ไม่รู้ว่าตารางเลื่อนซ้าย-ขวาได้ — บังคับด้วย overflow-x: scroll (จองพื้นที่ไว้เสมอ)
+     และ custom scrollbar (webkit) / scrollbar-color (firefox) ให้เป็น "classic" scrollbar
+     ที่แสดงตลอด แทน overlay ที่จางหายไป ---- */
+  .table-wrap {
+    overflow-x: scroll;
+    scrollbar-width: auto;
+    scrollbar-color: var(--dk-text3, #b0b0b0) var(--dk-bg, #f0f0f0);
+  }
+  .table-wrap::-webkit-scrollbar {
+    height: 12px;
+  }
+  .table-wrap::-webkit-scrollbar-track {
+    background: var(--dk-bg, #f0f0f0);
+  }
+  .table-wrap::-webkit-scrollbar-thumb {
+    background: var(--dk-text3, #b0b0b0);
+    border-radius: 6px;
+    border: 2px solid var(--dk-bg, #f0f0f0);
+  }
+  .table-wrap::-webkit-scrollbar-thumb:hover {
+    background: var(--dk-text2, #888);
+  }
+
   .is-active-pill {
     display: inline-block;
     padding: 2px 8px;
@@ -346,11 +371,12 @@
               <th class="sortable" data-table="project" data-key="uat_start" onclick="sortAdminTable(this)">UAT Start<span class="sort-ico"></span></th>
               <th class="sortable" data-table="project" data-key="uat_end" onclick="sortAdminTable(this)">UAT End<span class="sort-ico"></span></th>
               <th class="sortable" data-table="project" data-key="signoff_date" onclick="sortAdminTable(this)">Signoff<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="project" data-key="created_at" onclick="sortAdminTable(this)">Created Date<span class="sort-ico"></span></th>
               <th class="sortable" data-table="project" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
-          <tbody id="rows-project"><tr><td colspan="10" class="loading">กำลังโหลด...</td></tr></tbody>
+          <tbody id="rows-project"><tr><td colspan="11" class="loading">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -962,12 +988,12 @@ async function loadProjectApps() {
 }
 
 async function loadProjects() {
-  $('rows-project').innerHTML = '<tr><td colspan="10" class="loading">กำลังโหลด...</td></tr>';
+  $('rows-project').innerHTML = '<tr><td colspan="11" class="loading">กำลังโหลด...</td></tr>';
   // req: แสดงทุกโปรเจกต์ ทั้ง is_active = Y และ N (ไม่กรอง active only)
   const { data, error } = await supabase.from('v_project_wide').select('*')
     .order('project_key', { ascending: false });
   if (error) {
-    $('rows-project').innerHTML = `<tr><td colspan="10" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(error.message)}</td></tr>`;
+    $('rows-project').innerHTML = `<tr><td colspan="11" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(error.message)}</td></tr>`;
     return;
   }
   allProjects = data || [];
@@ -1001,7 +1027,7 @@ function renderProjectRows() {
   rows = applySortGeneric('project', rows);
   $('projCount').textContent = rows.length;
   if (!rows.length) {
-    $('rows-project').innerHTML = '<tr><td colspan="10" class="loading">ไม่พบข้อมูล</td></tr>';
+    $('rows-project').innerHTML = '<tr><td colspan="11" class="loading">ไม่พบข้อมูล</td></tr>';
     return;
   }
   $('rows-project').innerHTML = rows.map(p => `
@@ -1014,11 +1040,24 @@ function renderProjectRows() {
       <td>${fmtDate(p.uat_start)}</td>
       <td>${fmtDate(p.uat_end)}</td>
       <td>${fmtDate(p.signoff_date)}</td>
+      <td>${fmtCreatedAt(p.created_at)}</td>
       <td><span class="is-active-pill ${p.is_active ? 'yes' : 'no'}">${p.is_active ? 'Y' : 'N'}</span></td>
       <td class="center">
         <button class="btn sm" onclick="openEditProject('${esc(p.project_key)}')">✏️</button>
       </td>
     </tr>`).join('');
+}
+
+// created_at เป็น timestamptz (ไม่ใช่ 'yyyy-MM-dd' เหมือนคอลัมน์วันที่อื่น) — ใช้ Date object
+// แปลงเป็น dd/mm/yyyy ตาม timezone เครื่อง user (Asia/Bangkok) ให้ format เดียวกับ fmtDate อื่นๆ
+function fmtCreatedAt(ts) {
+  if (!ts) return '<span class="muted">—</span>';
+  const dt = new Date(ts);
+  if (isNaN(dt.getTime())) return '<span class="muted">—</span>';
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const yyyy = dt.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 const _projectSearchEl = document.getElementById('projectSearch');
@@ -1495,6 +1534,7 @@ const SORT_KEYFNS = {
     uat_start: r => r.uat_start || '',
     uat_end: r => r.uat_end || '',
     signoff_date: r => r.signoff_date || '',
+    created_at: r => r.created_at || '',
     is_active: r => r.is_active ? 1 : 0
   },
   holiday: {
