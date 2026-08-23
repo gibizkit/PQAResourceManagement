@@ -1230,8 +1230,11 @@ async function saveCommentEdit(id){
   const ta = document.querySelector(`.sr-edit-textarea[data-cid="${id}"]`);
   const errBox = document.querySelector(`.sr-edit-err[data-cid="${id}"]`);
   const v = (ta && ta.value || '').trim();
+  const newBlobs = editAttach ? editAttach.getBlobs() : [];
   if (errBox) errBox.textContent = '';
-  if (!v) { if (errBox) errBox.textContent = 'กรุณากรอกข้อความ ห้ามเว้นว่าง'; return; }
+  // ต้องมีข้อความ "หรือ" มีรูปแนบอย่างน้อย 1 รูป — เดิมเช็คแค่ !v เลยบล็อกเคส "วางแต่ screenshot
+  // ไม่พิมพ์อะไรเลย" กด บันทึก แล้วไม่มีอะไรลง DB สักอย่าง (ทั้งข้อความและรูป)
+  if (!v && !newBlobs.length) { if (errBox) errBox.textContent = 'กรุณากรอกข้อความ หรือแนบรูปอย่างน้อย 1 รูป'; return; }
 
   const isRoot = S.room.rootId != null && id === S.room.rootId;
   _srBusy = true;
@@ -1253,7 +1256,6 @@ async function saveCommentEdit(id){
       }
     }
     await insertMentions(id, v);
-    const newBlobs = editAttach ? editAttach.getBlobs() : [];
     if (newBlobs.length) {
       const { failCount } = await uploadSignoffAttachments(S.room.pk, id, S.me, newBlobs);
       if (failCount) toast(`บันทึกข้อความแล้ว แต่แนบรูปเพิ่มไม่สำเร็จ ${failCount} รูป`, true);

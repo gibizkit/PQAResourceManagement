@@ -573,7 +573,12 @@ async function saveCommentEdit(id) {
   const errEl = document.querySelector('.sr-modal-comment-edit-err');
   if (errEl) errEl.textContent = '';
   const v = ta ? ta.value.trim() : '';
-  if (!v) { if (errEl) errEl.textContent = 'กรุณากรอกข้อความ'; return; }
+  // ต้องมีข้อความ "หรือ" มีรูปแนบอย่างน้อย 1 รูป (เดิมเช็คแค่ !v เลยบล็อกเคส "วางแต่ screenshot
+  // ไม่พิมพ์อะไรเลย" ทั้งที่มีรูปรออัปโหลดอยู่ — กด บันทึก แล้วไม่มีอะไรลง DB เลยสักอย่าง)
+  if (!v && !(_commentAttach && _commentAttach.getBlobs().length)) {
+    if (errEl) errEl.textContent = 'กรุณากรอกข้อความ หรือแนบรูปอย่างน้อย 1 รูป';
+    return;
+  }
   try {
     const { data, error } = await supabase.from('signoff_comment')
       .update({ body: v, edited_at: new Date().toISOString() })
@@ -634,13 +639,14 @@ window.saveSignoffReviewModal = async function (pk) {
   const ta = $('signoffReviewText');
   const err = $('signoffReviewErr'); if (err) err.textContent = '';
   const body = ta ? ta.value.trim() : '';
-  if (!body) { if (err) err.textContent = 'กรุณากรอกข้อความ Signoff Review'; return; }
+  const blobs = _rootAttach ? _rootAttach.getBlobs() : [];
+  // เหมือน saveCommentEdit ด้านบน — วางแต่รูปไม่พิมพ์ข้อความก็ต้องบันทึกได้ ไม่ใช่โดนบล็อกเงียบๆ
+  if (!body && !blobs.length) { if (err) err.textContent = 'กรุณากรอกข้อความ Signoff Review หรือแนบรูปอย่างน้อย 1 รูป'; return; }
   try {
     const { error } = await supabase.rpc('fn_upsert_signoff_review', { p_project_key: pk, p_body: body });
     if (error) throw error;
 
     // RPC ไม่คืน id ของแถว root กลับมา — select หา id จริงอีกที (ใช้ทั้งตอนแนบรูปและ insert @tag)
-    const blobs = _rootAttach ? _rootAttach.getBlobs() : [];
     const { data: rootRow, error: selErr } = await supabase.from('signoff_comment')
       .select('id').eq('project_key', pk).eq('is_root', true).is('deleted_at', null).maybeSingle();
     if (selErr || !rootRow) {
