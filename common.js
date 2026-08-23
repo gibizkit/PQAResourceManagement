@@ -1114,6 +1114,53 @@ document.addEventListener('keydown', (e) => {
   }
 }, true);
 
+/* ============ ATTACHMENT DISPLAY SIZE (S/M/L, 2026-08-23) ============
+ * ผู้ใช้ขอให้รูปที่แนบใน Signoff Review โชว์ใหญ่ขึ้น (เดิม thumbnail 120×90 ครอปเล็กมาก) พร้อมปุ่ม
+ * เลือกขนาดความกว้าง S/M/L — ทำเป็น preference เดียวใช้ร่วมทั้งหน้า (ไม่ใช่ต่อรูป/ต่อคอมเมนต์)
+ * เก็บใน localStorage คีย์เดียว 'pqa.attSize' ใช้ร่วมทั้ง signoff-review.html + signoffReviewModal.js
+ * กลไก: ปรับ CSS custom property --att-w ที่ documentElement แล้ว .att-thumb (theme.css) อ่านค่านี้
+ * ผ่าน width:var(--att-w,...) — เปลี่ยนขนาดรูปทุกรูปบนหน้าทันทีโดยไม่ต้อง re-render thread ใหม่
+ */
+const ATT_SIZE_PX = { S: 140, M: 260, L: 420 };
+const ATT_SIZE_KEY = 'pqa.attSize';
+
+/** อ่านค่าที่เลือกไว้ล่าสุด (fail-safe: storage พังก็ยัง fallback เป็น 'M' ไม่ทำหน้าเว็บล้ม) */
+export function getAttSizePref() {
+  let v;
+  try { v = localStorage.getItem(ATT_SIZE_KEY); } catch { v = null; }
+  return (v === 'S' || v === 'M' || v === 'L') ? v : 'M';
+}
+/** บันทึกขนาดที่เลือก + ปรับรูปบนหน้าให้ตรงทันที */
+export function setAttSizePref(v) {
+  if (v !== 'S' && v !== 'M' && v !== 'L') return;
+  try { localStorage.setItem(ATT_SIZE_KEY, v); } catch { /* storage ปิด/เต็ม — ไม่ทำหน้าเว็บล้ม */ }
+  applyAttSizeCss();
+}
+/** ตั้ง --att-w ที่ documentElement ตาม pref ปัจจุบัน — เรียกครั้งเดียวตอนโหลดโมดูล (กันรูปกระพริบ
+ *  ขนาดผิดก่อน JS ทำงาน) และทุกครั้งที่ setAttSizePref() ถูกเรียก */
+export function applyAttSizeCss() {
+  document.documentElement.style.setProperty('--att-w', ATT_SIZE_PX[getAttSizePref()] + 'px');
+}
+applyAttSizeCss();
+
+/** ปุ่ม S/M/L — วางไว้ตรงไหนก็ได้ในหน้า (เช่น หัวห้อง Signoff Review / หัว modal)
+ *  คลิกจัดการโดย document-level delegation ด้านล่าง ไม่ต้องผูก listener เพิ่มเอง */
+export function attSizeControlHTML() {
+  const cur = getAttSizePref();
+  return `<div class="att-size-ctrl" title="ขนาดรูปที่แนบ">${['S', 'M', 'L'].map(s =>
+    `<button type="button" class="att-size-btn${s === cur ? ' active' : ''}" data-size="${s}">${s}</button>`
+  ).join('')}</div>`;
+}
+// คลิกปุ่ม S/M/L ที่ไหนบนหน้าก็ได้ (document-level เหมือน lightbox ด้านบน — ใช้ร่วมทุกหน้า/ทุก modal
+// โดยไม่ต้องเพิ่ม case ในตัว delegated click handler เฉพาะของแต่ละหน้า)
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.att-size-btn');
+  if (!btn) return;
+  setAttSizePref(btn.dataset.size);
+  // ปุ่มขนาดอาจมีมากกว่า 1 ชุดพร้อมกันบนหน้าเดียว (เช่น เผื่ออนาคต) — sync active state ให้ตรงกันหมด
+  document.querySelectorAll('.att-size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === btn.dataset.size));
+});
+
 /* ============ @MENTION AUTOCOMPLETE (Signoff Review tag, 2026-08-18) ============
  * ใช้ทั้งใน signoff-review.html (คอมเมนต์หลัก/reply/แก้ไข) และ signoffReviewModal.js
  * เก็บ tag เป็นข้อความ literal "@email" ตรงๆ ใน body ของ signoff_comment (ไม่ใช่ rich-text/

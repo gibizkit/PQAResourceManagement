@@ -799,11 +799,14 @@ input.lead-search.invalid {
 }
 .att-chip-x:hover { background: var(--dk-hover); color: var(--dk-text); }
 
-.att-thumb-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.att-thumb-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .att-thumb-wrap { position: relative; display: inline-block; }
+/* 2026-08-23: เดิม 120×90 crop แบบ thumbnail เล็ก — ตอนนี้โชว์ใหญ่ขึ้นตามสัดส่วนจริง (height:auto,
+   ไม่ครอปแล้ว) กว้างคุมด้วย --att-w (custom property, ตั้งค่าจาก common.js applyAttSizeCss() ตาม
+   S/M/L ที่ผู้ใช้เลือก — ดู .att-size-ctrl ด้านล่าง) ค่า fallback 260px ใช้ตอน JS ยังไม่รัน */
 .att-thumb {
-  width: 120px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--dk-border);
-  cursor: pointer; display: block; background: var(--dk-surface);
+  width: var(--att-w, 260px); max-width: 100%; height: auto; border-radius: 10px;
+  border: 1px solid var(--dk-border); cursor: zoom-in; display: block; background: var(--dk-surface);
 }
 .att-thumb:hover { filter: brightness(.96); }
 .att-thumb-del {
@@ -812,6 +815,16 @@ input.lead-search.invalid {
   line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
 }
 .att-thumb-del:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* ขนาดรูปที่แนบ S/M/L (2026-08-23) — toggle ปรับ --att-w ที่ :root ผ่าน common.js applyAttSizeCss(),
+   ค่าเดียวใช้ร่วมทั้งหน้า (persist ผ่าน localStorage คีย์ pqa.attSize) ปุ่มเองแค่โชว์ state active */
+.att-size-ctrl { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 10px; flex: 0 0 auto; }
+.att-size-btn {
+  border: 1px solid var(--dk-border-s); background: var(--dk-card); color: var(--dk-text2);
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; cursor: pointer; line-height: 1;
+}
+.att-size-btn:hover { background: var(--dk-hover); }
+.att-size-btn.active { background: var(--dk-accent); color: #fff; border-color: var(--dk-accent); }
 
 .att-lightbox {
   position: fixed; inset: 0; background: rgba(20, 16, 11, .86); z-index: 90;

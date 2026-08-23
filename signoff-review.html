@@ -282,7 +282,7 @@ import {
   loadPrefs, savePrefs, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin,
   createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
-  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment,
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment, attSizeControlHTML,
   initNotificationBell, loadTaggableUsers, initMentionAutocomplete, getMentionedEmails
 } from './common.js';
 
@@ -863,6 +863,7 @@ function buildRoomHeaderHTML(proj){
       <div class="sr-room-header-actions">
         ${statusHTML(proj)}
         ${docBtn}
+        ${attSizeControlHTML()}
       </div>
     </div>`;
 }

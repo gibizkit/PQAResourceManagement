@@ -36,7 +36,7 @@
 import {
   supabase, $, toast, esc, dDisp, getSession,
   createAttachComposer, uploadSignoffAttachments, fetchSignoffAttachments,
-  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment,
+  attachmentThumbsHTML, hydrateAttachmentThumbs, deleteSignoffAttachment, attSizeControlHTML,
   loadTaggableUsers, initMentionAutocomplete, getMentionedEmails
 } from './common.js';
 
@@ -157,6 +157,7 @@ function ensureModal() {
       <div class="modal">
         <div class="modal-head">
           <h3 id="signoffReviewTitle">Signoff Review</h3>
+          ${attSizeControlHTML()}
           <button class="x" onclick="closeSignoffReviewModal()">×</button>
         </div>
         <div class="modal-body" id="signoffReviewBody">
