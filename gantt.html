@@ -78,7 +78,13 @@
 
   /* ============ gantt table ============ */
   .gantt-scroll {
-    overflow:auto; height:calc(100vh - 200px); min-height:340px;
+    /* overflow-x:scroll (not auto) so the horizontal scrollbar track is always
+       reserved/visible even when content doesn't currently overflow — matches the
+       literal "แสดงตลอดเวลา" (always show) ask. Same pattern as .table-wrap in
+       admin.html (2026-08-19) and .phase-table-scroll in theme.css (2026-08-14):
+       styled ::-webkit-scrollbar below makes Chrome/Edge render a classic
+       (non-overlay) scrollbar instead of the macOS auto-hide overlay one. */
+    overflow-x:scroll; overflow-y:auto; height:calc(100vh - 200px); min-height:340px;
     border:1px solid var(--dk-border); border-radius:14px; background:#fff;
     box-shadow:0 1px 3px rgba(34,28,21,.05);
     scrollbar-gutter: stable;
