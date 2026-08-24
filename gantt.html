@@ -78,23 +78,41 @@
 
   /* ============ gantt table ============ */
   .gantt-scroll {
-    /* overflow-x:scroll (not auto) so the horizontal scrollbar track is always
-       reserved/visible even when content doesn't currently overflow — matches the
-       literal "แสดงตลอดเวลา" (always show) ask. Same pattern as .table-wrap in
-       admin.html (2026-08-19) and .phase-table-scroll in theme.css (2026-08-14):
-       styled ::-webkit-scrollbar below makes Chrome/Edge render a classic
-       (non-overlay) scrollbar instead of the macOS auto-hide overlay one. */
-    overflow-x:scroll; overflow-y:auto; height:calc(100vh - 200px); min-height:340px;
-    border:1px solid var(--dk-border); border-radius:14px; background:#fff;
+    /* 2026-08-24 update: overflow-x:scroll + styled ::-webkit-scrollbar (the fix that
+       worked for admin.html/.table-wrap and the phase modal) turned out NOT enough here
+       — confirmed by Gibb that it still disappears when an external/extension display
+       is connected (macOS re-evaluates overlay-vs-classic scrollbar rendering per
+       display/input config, and CSS has no hook to force that either way). So the
+       horizontal scrollbar is now fully custom-drawn (.gantt-hsb below, a sibling under
+       this panel, never a native scrollbar) — see the wiring script near the end of
+       this file. The native HORIZONTAL scrollbar is hidden (::-webkit-scrollbar:horizontal
+       height:0) so there's only one control, not two; native VERTICAL scrollbar is kept
+       as-is (only the horizontal one was ever reported as disappearing). */
+    overflow:auto; height:calc(100vh - 218px); min-height:340px;
+    border:1px solid var(--dk-border); border-radius:14px 14px 0 0; background:#fff;
     box-shadow:0 1px 3px rgba(34,28,21,.05);
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: #d8c6b8 transparent;
   }
-  .gantt-scroll::-webkit-scrollbar { height:12px; width:12px; }
+  .gantt-scroll::-webkit-scrollbar:vertical { width:12px; }
+  .gantt-scroll::-webkit-scrollbar:horizontal { height:0; }
   .gantt-scroll::-webkit-scrollbar-track { background:transparent; }
   .gantt-scroll::-webkit-scrollbar-thumb { background:#d8c6b8; border-radius:8px; border:3px solid #fff; }
   .gantt-scroll::-webkit-scrollbar-thumb:hover { background:#c4a892; }
+
+  /* ---- always-visible horizontal scrollbar (custom-drawn, not native) ---- */
+  .gantt-hsb {
+    display:none; position:relative; height:14px;
+    border:1px solid var(--dk-border); border-top:none;
+    border-radius:0 0 14px 14px; background:#f6efe4;
+  }
+  .gantt-hsb.show { display:block; }
+  .gantt-hsb-thumb {
+    position:absolute; top:2px; height:10px; min-width:30px;
+    background:#d8c6b8; border-radius:6px; cursor:pointer;
+  }
+  .gantt-hsb-thumb:hover, .gantt-hsb-thumb.dragging { background:#c4a892; }
 
   table.gantt { border-collapse:separate; border-spacing:0; font-size:12px; table-layout:fixed; }
   table.gantt th, table.gantt td {
@@ -372,6 +390,7 @@
     <div class="gantt-scroll" id="ganttScroll">
       <div class="empty" id="ganttEmpty">กำลังโหลด...</div>
     </div>
+    <div class="gantt-hsb" id="ganttHsb"><div class="gantt-hsb-thumb" id="ganttHsbThumb"></div></div>
   </div>
 </div>
 
@@ -2293,6 +2312,93 @@ window.bkCoSave = async function(){
     btn.disabled=false; btn.textContent='💾 Save ทั้งหมด';
   }
 };
+
+/* ============ always-visible custom horizontal scrollbar for gantt table ============
+   2026-08-24: plain CSS (overflow-x:scroll + styled ::-webkit-scrollbar) — the fix
+   reused from admin.html/.table-wrap — was NOT enough: confirmed by Gibb it still
+   disappears when an external/extension display is connected. CSS has no reliable
+   cross-display hook to force macOS off overlay-scrollbar rendering, so this draws its
+   own thin bar (#ganttHsb, pinned right under the table panel — see CSS) and keeps it
+   in sync with #ganttScroll's real scrollLeft in both directions. It never fades
+   because it isn't a native scrollbar at all — nothing macOS/display-related to
+   auto-hide. */
+(function(){
+  const scrollEl = () => $('ganttScroll');
+  const barEl = () => $('ganttHsb');
+  const thumbEl = () => $('ganttHsbThumb');
+
+  function syncGanttHsb(){
+    const sc = scrollEl(), bar = barEl(), thumb = thumbEl();
+    if (!sc || !bar || !thumb) return;
+    const viewW = sc.clientWidth, contentW = sc.scrollWidth;
+    if (contentW <= viewW + 1){ bar.classList.remove('show'); return; }
+    bar.classList.add('show');
+    const trackW = bar.clientWidth;
+    const thumbW = Math.max(30, trackW * (viewW / contentW));
+    const maxThumbX = Math.max(0, trackW - thumbW);
+    const maxScroll = contentW - viewW;
+    const ratio = maxScroll > 0 ? sc.scrollLeft / maxScroll : 0;
+    thumb.style.width = thumbW + 'px';
+    thumb.style.left = (ratio * maxThumbX) + 'px';
+  }
+
+  let dragging = false, dragStartX = 0, dragStartLeft = 0;
+
+  function onThumbPointerDown(e){
+    const sc = scrollEl(), thumb = thumbEl();
+    if (!sc || !thumb) return;
+    dragging = true;
+    thumb.classList.add('dragging');
+    dragStartX = e.clientX;
+    dragStartLeft = sc.scrollLeft;
+    e.preventDefault();
+    document.addEventListener('pointermove', onDragMove);
+    document.addEventListener('pointerup', onDragEnd);
+  }
+  function onDragMove(e){
+    if (!dragging) return;
+    const sc = scrollEl(), bar = barEl(), thumb = thumbEl();
+    if (!sc || !bar || !thumb) return;
+    const trackW = bar.clientWidth, thumbW = thumb.offsetWidth;
+    const maxThumbX = Math.max(1, trackW - thumbW);
+    const maxScroll = sc.scrollWidth - sc.clientWidth;
+    const dx = e.clientX - dragStartX;
+    sc.scrollLeft = Math.min(maxScroll, Math.max(0, dragStartLeft + dx * (maxScroll / maxThumbX)));
+  }
+  function onDragEnd(){
+    dragging = false;
+    const thumb = thumbEl();
+    if (thumb) thumb.classList.remove('dragging');
+    document.removeEventListener('pointermove', onDragMove);
+    document.removeEventListener('pointerup', onDragEnd);
+  }
+  function onTrackMouseDown(e){
+    if (e.target && e.target.id === 'ganttHsbThumb') return; // drag handled separately
+    const sc = scrollEl(), bar = barEl(), thumb = thumbEl();
+    if (!sc || !bar || !thumb) return;
+    const rect = bar.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const trackW = bar.clientWidth, thumbW = thumb.offsetWidth;
+    const maxThumbX = Math.max(1, trackW - thumbW);
+    const maxScroll = sc.scrollWidth - sc.clientWidth;
+    const targetThumbX = Math.min(Math.max(0, clickX - thumbW / 2), maxThumbX);
+    sc.scrollLeft = (targetThumbX / maxThumbX) * maxScroll;
+  }
+
+  const sc = scrollEl(), bar = barEl(), thumb = thumbEl();
+  if (sc && bar && thumb){
+    sc.addEventListener('scroll', syncGanttHsb, { passive:true });
+    thumb.addEventListener('pointerdown', onThumbPointerDown);
+    bar.addEventListener('mousedown', onTrackMouseDown);
+    window.addEventListener('resize', syncGanttHsb);
+    // #ganttScroll's content is rebuilt via innerHTML on every render (filter/collapse/
+    // reload), which can change scrollWidth without any 'resize' or 'scroll' event —
+    // watch the DOM directly so the bar stays correct after every re-render.
+    new MutationObserver(syncGanttHsb).observe(sc, { childList:true, subtree:true });
+    syncGanttHsb();
+  }
+  window.syncGanttHsb = syncGanttHsb;
+})();
 </script>
 </body>
 </html>
