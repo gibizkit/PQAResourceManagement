@@ -505,6 +505,10 @@
         <div class="sub-head" id="bkFormTitle">➕ Book Outsource</div>
         <div id="bkResPickWrap">
           <label style="font-size:11px;color:var(--dk-text3);font-weight:600">เลือก Outsource (เลือกได้หลายคน)</label>
+          <div class="ms-search-wrap" style="padding:6px 0 8px 0">
+            <input type="text" class="ms-search" id="bkResSearch" placeholder="พิมพ์ชื่อเพื่อค้นหา...">
+            <button type="button" class="ms-search-x hidden" id="bkResSearchX" title="ล้างคำค้นหา">×</button>
+          </div>
           <div class="res-pick" id="bkResPick"></div>
         </div>
         <div id="bkEditName" class="hidden" style="font-size:13px;margin:6px 0">
@@ -2138,9 +2142,23 @@ window.bkStartAdd = function(){
   $('bkFormTitle').textContent='➕ Book Outsource';
   $('bkResPickWrap').classList.remove('hidden');
   $('bkEditName').classList.add('hidden');
-  $('bkResPick').innerHTML = S.outsourceList.map(r =>
-    `<label><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(fmtResName(r.nickname, r.full_name_en))}</span></label>`).join('')
+  $('bkResPick').innerHTML = S.outsourceList.map(r => {
+    const label = fmtResName(r.nickname, r.full_name_en);
+    return `<label data-label="${esc(label.toLowerCase())}"><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(label)}</span></label>`;
+  }).join('')
     || '<div style="color:var(--dk-text3);padding:8px">ไม่มี Outsource ที่ active</div>';
+  const bkSearch = $('bkResSearch'), bkSearchX = $('bkResSearchX');
+  bkSearch.value = '';
+  bkSearchX.classList.add('hidden');
+  const bkApplyResSearch = () => {
+    const q = bkSearch.value.trim().toLowerCase();
+    bkSearchX.classList.toggle('hidden', !q);
+    $('bkResPick').querySelectorAll('label[data-label]').forEach(el => {
+      el.style.display = (!q || el.dataset.label.includes(q)) ? '' : 'none';
+    });
+  };
+  bkSearch.oninput = bkApplyResSearch;
+  bkSearchX.onclick = () => { bkSearch.value = ''; bkApplyResSearch(); bkSearch.focus(); };
   $('bkStart').value = popCtx.phStart;
   $('bkEnd').value   = popCtx.phEnd;
   $('bkMd').value    = '1';
