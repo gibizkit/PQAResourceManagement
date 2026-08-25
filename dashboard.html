@@ -772,10 +772,10 @@ async function loadMasterData(){
   const [holidays, projRes, allProjRes, appRes, resRes, leadRes, plRes, phaseRes] = await Promise.all([
     loadHolidays(),
     supabase.from('v_project_wide')
-      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active,project_note')
       .eq('is_active', true),
     supabase.from('v_project_wide')
-      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active'),
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active,project_note'),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
     supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,email').eq('is_active', true),
@@ -1714,6 +1714,13 @@ function fileTimeStamp(d){
   return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
 }
 
+/** 'yyyy-MM-dd' -> 'YYYYMM' text (Excel export: Start_YYYYMM/End_YYYYMM, 2026-08-25 ตามคำขอพี่กิ๊บ).
+ *  ใช้ substring ตรงๆ (ไม่ผ่าน Date) เพื่อเลี่ยงปัญหา timezone shift เหมือน dDisp() ด้านบน */
+function yyyymm(s){
+  if (!s) return '';
+  return s.slice(0, 4) + s.slice(5, 7);
+}
+
 /** Sheet3 "Project" rows for one role — 1 แถวต่อ (lead × matched project ที่ lead คนนั้นดูแล
  *  ในบทบาทนี้ × phase ของ project นั้น) — project set มาจาก roleRows (ผลลัพธ์
  *  buildLeadRoleRows() ตัวเดียวกับที่ตาราง/Summary sheet ใช้ ไม่มีชุดข้อมูลที่สอง) MD ต่อ phase
@@ -1733,7 +1740,7 @@ function buildLeadProjectPhaseRows(roleTitle, roleRows, agg){
       const pAgg = byProjectPhase[pk] || {};
       if (!phases.length) {
         // edge case: project ไม่มี project_phase เลย — ยังคง 1 แถวไว้ไม่ให้ project นี้หายไปเงียบๆ
-        out.push([r.name, r.email, roleTitle, domainLabel, app, pk, proj.project_name || '', periodDisp, '—', '', '', '']);
+        out.push([r.name, r.email, roleTitle, domainLabel, app, pk, proj.project_name || '', periodDisp, '—', '', '', '', '', '', proj.project_note || '']);
         return;
       }
       phases.forEach(ph => {
@@ -1742,8 +1749,11 @@ function buildLeadProjectPhaseRows(roleTitle, roleRows, agg){
           r.name, r.email, roleTitle, domainLabel, app, pk, proj.project_name || '', periodDisp,
           ph.phase_label || phaseName(ph.phase_code),
           ph.start_date ? dDisp(ph.start_date) : '',
+          yyyymm(ph.start_date),
           ph.end_date ? dDisp(ph.end_date) : '',
+          yyyymm(ph.end_date),
           md ? Number(fmtMD(md)) : 0,
+          proj.project_note || '',
         ]);
       });
     });
@@ -1782,7 +1792,7 @@ async function downloadLeadExcel(){
 
     // ---- Sheet2: Summary + Sheet3: Project — buildLeadRoleRows() ต่อ role ป้อนทั้งคู่ ----
     const summaryAoa = [['Name', 'Email', 'Type', 'Domain', 'Total MD', 'Total Project', ...apps]];
-    const projectAoa = [['Name', 'Email', 'Type', 'Domain', 'App', 'Project Key', 'Project Name', 'Project Period', 'Phase', 'Phase Start', 'Phase End', 'MD']];
+    const projectAoa = [['Name', 'Email', 'Type', 'Domain', 'App', 'Project Key', 'Project Name', 'Project Period', 'Phase', 'Phase Start', 'Start_YYYYMM', 'Phase End', 'End_YYYYMM', 'MD', 'Note']];
     roleKeys.forEach(roleKey => {
       const meta = LEAD_ROLE_META[roleKey];
       const rows = buildLeadRoleRows(coverage[roleKey], mainProjectsByLead, apps, agg, meta.withMD);
