@@ -606,7 +606,7 @@ import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, 
          loadProjectStatuses, statusOptionsHTML,
          loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
          getCachedRole, setCachedRole, paintNavAdmin,
-         initNotificationBell } from './common.js';
+         initNotificationBell, fetchAllRows } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -844,7 +844,11 @@ async function loadAll(){
       supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
       supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
       supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
-      supabase.from('booking').select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true),
+      fetchAllRows((from, to) => supabase.from('booking')
+        .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md')
+        .eq('is_active', true)
+        .order('booking_id', { ascending: true })
+        .range(from, to)),   // 2026-08-25: paginated — unbounded select() silently drops rows past Supabase's Max Rows cap, see fetchAllRows() in common.js
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
@@ -2302,8 +2306,11 @@ function isMdErr(e){ return e && /เกิน MD|MD เกิน/.test(e.messag
 function isPermErr(e){ return e && /ไม่มีสิทธิ์/.test(e.message||''); }
 
 async function afterBookingSave(msg){
-  const { data, error } = await supabase.from('booking')
-    .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md').eq('is_active', true);
+  const { data, error } = await fetchAllRows((from, to) => supabase.from('booking')
+    .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md')
+    .eq('is_active', true)
+    .order('booking_id', { ascending: true })
+    .range(from, to));   // 2026-08-25: paginated — see fetchAllRows() in common.js
   if (!error) { S.bookings = data || []; buildEffFactorMap(); }   // §5.38 — booking เปลี่ยน ต้อง rebuild factor map ด้วย ไม่งั้น Effective MD ค้างค่าเก่า
   toast(msg);
   showArea('list');

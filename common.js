@@ -16,6 +16,37 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'pqa' }
 });
 
+/* ============ PAGINATED FETCH ============
+ * Supabase/PostgREST caps every request at the project's "Max Rows" setting
+ * (default 1000) and silently DROPS anything beyond it — no error, no warning.
+ * Any unbounded `.select()` on a table that can grow past that cap will quietly
+ * return an incomplete result.
+ *
+ * 2026-08-25: this exact gap hid real booking rows from the Gantt page — the
+ * `booking` table had grown past 1000 active rows, and the newest bookings
+ * (added that day) fell outside the returned page, so the 👤 booked/required
+ * badge showed 0 even though the booking existed (confirmed via direct SQL).
+ *
+ * Use this for any `booking`/`leave_plan`/`project_comment`-style fetch that
+ * has no per-project or per-date-range filter narrow enough to guarantee it
+ * stays under the cap.
+ */
+export async function fetchAllRows(buildQuery, { pageSize = 1000 } = {}) {
+  // buildQuery(from, to) must return a FRESH PostgrestFilterBuilder each call
+  // (builders are single-use) ending in .order(<stable column>).range(from, to)
+  // — .range() pagination is only correct with a deterministic ORDER BY.
+  let rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    rows = rows.concat(data || []);
+    if (!data || data.length < pageSize) break;   // last page — stop
+    from += pageSize;
+  }
+  return { data: rows, error: null };
+}
+
 /* ============ LOGIN LOG ============ */
 export const APP_VERSION = '1.0.0';
 const LOGIN_LOGGED_KEY = 'pqa.login_logged.v1';
