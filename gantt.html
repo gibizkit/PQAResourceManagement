@@ -399,6 +399,7 @@
         <label>Phase</label>
         <div class="ms" id="msPhase"></div>
       </div>
+      <button class="btn" id="clearFilterBtn">ล้าง</button>
       <button class="btn" id="applyBtn">ค้นหา</button>
     </div>
 
@@ -1700,6 +1701,28 @@ window.collapseAllProjects = function(){ filteredProjects().forEach(p => S.colla
 window.expandAllProjects   = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
 $('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); updateToggleFilterBtnLabel(); saveFilterPrefs(); };
+// req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมดกลับเป็นค่า default
+// (เหมือนตอนเพิ่งล็อกอิน/ยังไม่ตั้ง filter อะไรเลย) ไม่ auto-collapse panel ให้ (ต่างจาก applyBtn)
+// เพราะผู้ใช้มักจะเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
+$('clearFilterBtn').onclick = () => {
+  S.filter.projects = new Set();
+  S.filter.leads    = new Set();
+  S.filter.apps     = new Set();
+  S.filter.phases   = new Set();
+  syncMultiSelect('msProject', S.filter.projects);
+  syncMultiSelect('msLead',    S.filter.leads);
+  syncMultiSelect('msApp',     S.filter.apps);
+  syncMultiSelect('msPhase',   S.filter.phases);
+  S.filter.order = '';
+  $('fOrder').value = '';
+  S.filter.start = addDays(TODAY, -7);
+  S.filter.end   = defaultFilterEndStr();
+  $('fStart').value = S.filter.start;
+  $('fEnd').value   = S.filter.end;
+  renderGantt();
+  updateToggleFilterBtnLabel();
+  saveFilterPrefs();
+};
 $('applyBtn').onclick = () => {
   const s=$('fStart').value, e=$('fEnd').value;
   if (s) S.filter.start=s; if (e) S.filter.end=e;
@@ -1941,7 +1964,7 @@ function readPhaseInputs(){
 
 window.saveProj = async function(){
   const err = $('projFormErr'); err.textContent='';
-  const key = $('fKey').value.trim();
+  let key = $('fKey').value.trim();
   const name = $('fName').value.trim();
   const app = $('fApp').value || null;
   const otherApp = $('fOtherApp').value.trim() || null;
@@ -1970,11 +1993,24 @@ window.saveProj = async function(){
     project_note:$('fNote').value.trim() || null,
   };
 
-  // .select() ให้ Supabase คืนแถวที่เขียนจริง — กันเคส RLS บล็อก (viewer)
-  // ที่ error=null แต่ data=[] แล้วขึ้น "สำเร็จ" ปลอม
-  let res = editingKey
-    ? await supabase.from('project').update(payload).eq('project_key', editingKey).select('project_key')
-    : await supabase.from('project').insert(payload).select('project_key');
+  let res;
+  if (editingKey) {
+    // .select() ให้ Supabase คืนแถวที่เขียนจริง — กันเคส RLS บล็อก (viewer) ที่ error=null
+    // แต่ data=[] แล้วขึ้น "สำเร็จ" ปลอม
+    res = await supabase.from('project').update(payload).eq('project_key', editingKey).select('project_key');
+  } else {
+    // ออกเลข project_key จริงฝั่ง DB แบบ atomic ผ่าน RPC (pg_advisory_xact_lock กันชนตอนมีคนกด
+    // "+ เพิ่ม Project" พร้อมกันหลายคน) — key ที่ suggestKey() เดาไว้โชว์หัว modal เป็นแค่ preview
+    // ไม่ผูกมัด ส่ง project_key:null ไปให้ fn_save_project เรียก fn_next_project_key() เองแล้ว
+    // insert ในทรานแซคชันเดียวกัน กันชนแบบเดียวกับ booking_id/signoff_id (sql/06_rpc.sql)
+    const rpcRes = await supabase.rpc('fn_save_project', { p: { ...payload, project_key: null } });
+    if (!rpcRes.error && rpcRes.data && rpcRes.data.project_key) {
+      key = rpcRes.data.project_key;
+      res = { error: null, data: [{ project_key: key }] };
+    } else {
+      res = { error: rpcRes.error, data: [] };
+    }
+  }
 
   if (res.error){
     btn.disabled=false; btn.textContent='บันทึก';

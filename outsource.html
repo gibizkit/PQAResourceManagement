@@ -436,6 +436,7 @@
         <label>Skill</label>
         <input class="search" id="fSkills" placeholder="ค้นหา Skills...">
       </div>
+      <button class="btn" id="clearFilterBtn">ล้าง</button>
       <button class="btn" id="applyBtn">ค้นหา</button>
       <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ Show only conflict</label>
     </div>
@@ -1336,6 +1337,23 @@ $('toggleFilterBtn').addEventListener('click', () => {
   $('filterPanel').classList.toggle('hidden');
   updateToggleFilterBtnLabel();
   saveFilterPrefs();
+});
+// req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมดกลับเป็นค่า default
+// (ไม่ auto-collapse panel ต่างจาก applyBtn เพราะมักเลือกตัวกรองใหม่ต่อทันที)
+$('clearFilterBtn').addEventListener('click', async () => {
+  S.filter.projects.clear();
+  S.filter.leads.clear();
+  S.filter.apps.clear();
+  buildFilterMultiSelects();
+  $('selGroupBy').value = 'project';
+  $('fName').value = '';
+  $('fSkills').value = '';
+  $('chkConflict').checked = false;
+  const today = new Date();
+  $('fStart').value = d2s(addDaysToDate(today, -10));
+  $('fEnd').value = defaultFilterEndStr();
+  const ok = await onRangeChange();   // ตั้ง S.range จากค่า default ด้านบน + reload + render + save
+  if (!ok) { renderGrid(); saveFilterPrefs(); }
 });
 $('applyBtn').addEventListener('click', async () => {
   const ok = await onRangeChange();

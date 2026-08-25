@@ -447,6 +447,7 @@
         <label>End Date</label>
         <input type="date" id="ovEnd">
       </div>
+      <button class="btn" id="clearFilterBtn">ล้าง</button>
       <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
     </div>
 
@@ -2074,6 +2075,34 @@ function wireToolbar(){
     if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
   $('downloadLeadBtn').addEventListener('click', downloadLeadExcel);
+  // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
+  // Lead/App/Type/Domain/Start-End) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
+  // panel (ต่างจาก ovApplyBtn) เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
+  $('clearFilterBtn').addEventListener('click', () => {
+    S.filter.projects.clear();
+    S.filter.leads.clear();
+    S.filter.apps.clear();
+    buildFilterMultiSelects();
+    saveFilterPrefs();
+
+    S.leadRoleFilter = 'main';
+    S.leadDomainFilter = 'all';
+    $('leadRoleSelect').value = S.leadRoleFilter;
+    $('leadDomainSelect').value = S.leadDomainFilter;
+    savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter, leadDomainFilter: S.leadDomainFilter });
+
+    const now = new Date();
+    const monthStart = d2s(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd = d2s(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    S.overallRange = { s: monthStart, e: monthEnd };
+    $('ovStart').value = monthStart;
+    $('ovEnd').value = monthEnd;
+    savePrefs(PAGE, { rangeS: monthStart, rangeE: monthEnd });
+
+    // force=false ให้ loadPeriod แค่ recompute+render จาก cache (เหมือน ovApplyBtn) — ครอบคลุม
+    // ทั้ง Project/Lead/App filter (ผ่าน recomputeAggregates()) และ Start/End range ในคราวเดียว
+    loadPeriod(false);
+  });
   $('ovApplyBtn').addEventListener('click', () => {
     const s = $('ovStart').value, e = $('ovEnd').value;
     if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }

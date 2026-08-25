@@ -1250,7 +1250,7 @@ function readProjectPhases() {
 window.saveProject = async function() {
   const err = $('pfFormErr');
   err.textContent = '';
-  const key = $('pfKey').value.trim();
+  let key = $('pfKey').value.trim();
   const name = $('pfName').value.trim();
   const app = $('pfApp').value || null;
   const otherApp = $('pfOtherApp').value.trim() || null;
@@ -1310,7 +1310,13 @@ window.saveProject = async function() {
   if (editingProjectKey) {
     res = await supabase.from('project').update(payload).eq('project_key', editingProjectKey);
   } else {
-    res = await supabase.from('project').insert(payload);
+    // ออกเลข project_key จริงฝั่ง DB แบบ atomic ผ่าน RPC (pg_advisory_xact_lock กันชนตอนมีคนกด
+    // "+ เพิ่ม Project" พร้อมกันหลายคน) — key ที่ suggestProjectKey() เดาไว้โชว์หัว modal เป็นแค่
+    // preview ไม่ผูกมัด ส่ง project_key:null ไปให้ fn_save_project เรียก fn_next_project_key()
+    // เองแล้ว insert ในทรานแซคชันเดียวกัน กันชนแบบเดียวกับ booking_id/signoff_id (sql/06_rpc.sql)
+    const rpcRes = await supabase.rpc('fn_save_project', { p: { ...payload, project_key: null } });
+    if (!rpcRes.error && rpcRes.data && rpcRes.data.project_key) key = rpcRes.data.project_key;
+    res = { error: rpcRes.error };
   }
 
   if (res.error) {
