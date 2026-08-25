@@ -1883,7 +1883,10 @@ async function suggestKey(){
 window.openProjAdd = async function(){
   editingKey = null; existingPhases = {};
   const key = await suggestKey();
-  $('projModalTitle').textContent = 'New Project : ' + key;
+  // เลข project_key จริงออกจาก DB ตอนกดบันทึกเท่านั้น (RPC fn_save_project — ดูงานแก้ race
+  // condition 2026-08-25) — key ตัวนี้เป็นแค่ placeholder ภายในไว้ผ่าน validation เท่านั้น
+  // ไม่ใช่เลขจริง เลยไม่โชว์ที่หัว modal แล้ว กันสับสนว่าเป็นเลขที่ผูกมัด
+  $('projModalTitle').textContent = 'New Project';
   $('projDeleteBtn').style.display = 'none';
   fillAppOptions('');
   $('fKey').value = key; $('fKey').disabled = false;
