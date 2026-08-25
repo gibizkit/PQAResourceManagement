@@ -369,12 +369,15 @@
            คู่กันเสมอใน renderSummaryToggle() เพราะมีผลแค่ By Project/By OS เท่านั้น. -->
       <span class="toolbar-sep hidden" id="chartSep">|</span>
       <button class="btn hidden" id="summaryToggleBtn">Show chart</button>
-      <!-- Download Excel (2026-08-14, ตามคำขอพี่กิ๊บ) — By Lead tab เท่านั้น, export สิ่งที่กำลัง
-           แสดงอยู่จริง (Project/UAT Lead/App/Type/Domain/Start-End ที่เลือกอยู่ตอนนี้) ออกเป็น
-           .xlsx 3 sheet (Filter/Summary/Project) — ดู downloadLeadExcel(). ซ่อน/โชว์คู่กับ
-           leadRoleFld/leadDomainFld ใน switchDashView(). -->
-      <span class="toolbar-sep hidden" id="leadDownloadSep">|</span>
-      <button class="btn hidden" id="downloadLeadBtn">📥 Download Excel</button>
+      <!-- Download Excel (เดิม 2026-08-14 By Lead tab เท่านั้น — 2026-08-25 ตามคำขอพี่กิ๊บ: ให้มี
+           ปุ่มนี้ทุกแท็บของ Dashboard แล้ว) — export สิ่งที่กำลังแสดงอยู่จริงบนแท็บที่เปิดอยู่ตอนนี้
+           (ตัวกรอง Project/UAT Lead/App/Start-End เสมอ, บวก Type/Domain เฉพาะ By Lead) ออกเป็น
+           .xlsx — ปุ่มเดียวกันทุกแท็บ, คลิกแล้วไป downloadDashboardExcel() ซึ่งเลือกฟังก์ชัน export
+           ตาม S.dashView (downloadProjectExcel/downloadOsExcel/downloadLeadExcel/
+           downloadSignoffExcel) โชว์ตลอด ไม่ต้องซ่อน/โชว์ตามแท็บอีกต่อไป (ต่างจาก leadRoleFld/
+           leadDomainFld ที่ยังเฉพาะ By Lead). -->
+      <span class="toolbar-sep" id="downloadSep">|</span>
+      <button class="btn" id="downloadExcelBtn">📥 Download Excel</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -519,7 +522,8 @@ import {
   getCachedRole, setCachedRole, paintNavAdmin,
   initNotificationBell
 } from './common.js';
-// SheetJS — ใช้เฉพาะ "Download Excel" ใน By Lead tab (2026-08-14), ดู downloadLeadExcel()
+// SheetJS — ใช้กับปุ่ม "Download Excel" ทุกแท็บ (เดิม 2026-08-14 เฉพาะ By Lead tab, 2026-08-25 ขยาย
+// ไปทุกแท็บ) ดู downloadDashboardExcel()
 // ใช้ CDN ทางการของ SheetJS เอง (ไม่ใช่ jsdelivr +esm แบบ supabase-js ด้านบน) เพราะ xlsx เป็น
 // UMD bundle ตัวใหญ่ — SheetJS มี .mjs build ของตัวเองที่ import ตรงแบบนี้ได้เสถียรกว่า
 import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs';
@@ -737,7 +741,7 @@ async function showApp(session){
   initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js)
   let who = session.user.email, role = '';
   // pqa_emp_id เพิ่มเข้ามา 2026-08-14 — ใช้ตั้งชื่อไฟล์ + บันทึกลง download_log ตอนกด
-  // "Download Excel" ใน By Lead tab (ดู downloadLeadExcel()) ไม่กระทบของเดิม (who/role)
+  // "Download Excel" ทุกแท็บ (ดู downloadDashboardExcel()) ไม่กระทบของเดิม (who/role)
   const { data:u } = await supabase.from('app_user').select('display_name,app_role,pqa_emp_id')
     .eq('email', session.user.email).maybeSingle();
   if (u) { who = u.display_name; role = u.app_role; }
@@ -1686,16 +1690,25 @@ function renderLeadView(container){
 }
 
 /* =====================================================================
-   DOWNLOAD EXCEL (By Lead tab only — "📥 Download Excel" button, 2026-08-14 ตามคำขอพี่กิ๊บ)
-   Exports what's currently on screen: honors Project/UAT Lead/App/Type/Domain/Start-End —
-   computeLeadCoverage()/buildLeadRoleRows() below mirror the same matching rules
-   renderLeadView() uses (§5.37), kept as separate functions rather than a shared refactor
-   so tests/run_tests.mjs's isolated vm-eval of renderLeadView()/buildProjectRows() keeps
-   working unmodified (see the doc comments on computeLeadCoverage()/projectPeriodDisp()
-   above). 3 sheets: Filter (ตัวกรองที่เลือก) / Summary (เหมือน By Lead matrix แต่รวมทุก role
-   ที่เลือกเป็นตารางเดียว) / Project (1 แถวต่อ Lead×Project×Phase, MD จาก
-   S.periodAgg.byProjectPhase เหมือน By Project tab). Also logs the download to
-   pqa.download_log (sql/patch_2026-08-14_download_log.sql — ต้องรันบน Supabase ก่อน). ===== */
+   DOWNLOAD EXCEL ("📥 Download Excel" button — เดิม 2026-08-14 By Lead tab เท่านั้น, 2026-08-25
+   ตามคำขอพี่กิ๊บ ขยายให้มีปุ่มเดียวกันทุกแท็บของ Dashboard) แต่ละแท็บ export "สิ่งที่กำลังแสดงอยู่
+   จริง" บนแท็บนั้น (ตัวกรอง Project/UAT Lead/App/Start-End เสมอ ทุกแท็บ, บวก Type/Domain เฉพาะ By
+   Lead) — downloadDashboardExcel() (ผูกกับปุ่มใน wireToolbar()) เลือกฟังก์ชัน export ตาม
+   S.dashView: downloadProjectExcel() / downloadOsExcel() / downloadLeadExcel() /
+   downloadSignoffExcel(). ทุกฟังก์ชันแชร์ helper 4 ตัวด้านล่าง (buildDownloadFilterAoa/
+   downloadFilename/writeWorkbookAndDownload/logExcelDownload) ให้ Filter sheet/ชื่อไฟล์/การสั่ง
+   ดาวน์โหลด/การ log หน้าตาเหมือนกันทุกแท็บ — logExcelDownload() บันทึกลง pqa.download_log
+   (sql/patch_2026-08-14_download_log.sql — ต้องรันบน Supabase ก่อน) เหมือนเดิม
+   computeLeadCoverage()/buildLeadRoleRows() (By Lead) mirror the same matching rules
+   renderLeadView() uses (§5.37); downloadOsExcel()/downloadSignoffExcel() mirror the inline
+   row-building in renderOsView()/renderSignoffView() the same way — kept as separate
+   functions rather than refactoring the render functions themselves, so tests/run_tests.mjs's
+   isolated vm-eval of renderLeadView()/renderSignoffView()/buildProjectRows() keeps working
+   unmodified (see the doc comments on computeLeadCoverage()/projectPeriodDisp() above).
+   By Lead's export stays 3 sheets: Filter / Summary (เหมือน By Lead matrix แต่รวมทุก role ที่
+   เลือกเป็นตารางเดียว) / Project (1 แถวต่อ Lead×Project×Phase, MD จาก S.periodAgg.byProjectPhase
+   เหมือน By Project tab). By Project/By OS/Signoff are 2 sheets: Filter + 1 data sheet mirroring
+   that tab's on-screen table (+ totals row where the table has one). ===== */
 /** Human-readable label for a multiselect's current selection — used in the exported
  *  "Filter" sheet. Empty Set = "All" (same convention as makeMultiSelect() itself). */
 function selectedLabelsText(selectedSet, items, valueKey, labelKey){
@@ -1712,6 +1725,63 @@ const LEAD_DOMAIN_LABELS = { all:'All', infinitas:'Infinitas', arise:'Arise', ot
 function fileTimeStamp(d){
   const p2 = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+}
+
+/** Sheet1 "Filter" rows ที่เลือกอยู่ตอนนี้ — ใช้ร่วมกันทุก tab (2026-08-25). `includeLeadFields`
+ *  = true เติม Type/Domain ต่อท้าย Project/UAT Lead/App (By Lead tab เท่านั้น — ตัวกรอง 2 อันนี้
+ *  มีผลแค่แท็บนั้น เหมือนที่ #leadRoleFld/#leadDomainFld ซ่อน/โชว์ตามแท็บ). */
+function buildDownloadFilterAoa(includeLeadFields){
+  const projectLabel = selectedLabelsText(S.filter.projects, S.activeProjects, 'project_key', 'project_name');
+  const leadItems = S.leadsAll.map(l => ({ emp_id: l.emp_id, label: l.short_name || l.nickname || l.emp_id }));
+  const leadLabel = selectedLabelsText(S.filter.leads, leadItems, 'emp_id', 'label');
+  const appLabel = S.filter.apps.size ? [...S.filter.apps].sort().join(', ') : 'All';
+  const rows = [
+    ['Project', projectLabel],
+    ['UAT Lead', leadLabel],
+    ['App', appLabel],
+  ];
+  if (includeLeadFields) {
+    const roleKey = Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? S.leadRoleFilter : 'main';
+    rows.push(['Type', S.leadRoleFilter === 'all' ? 'All' : LEAD_ROLE_META[roleKey].title]);
+    rows.push(['Domain', LEAD_DOMAIN_LABELS[S.leadDomainFilter || 'all'] || 'All']);
+  }
+  rows.push(['Start Date', S.overallRange.s ? dDisp(S.overallRange.s) : '']);
+  rows.push(['End Date', S.overallRange.e ? dDisp(S.overallRange.e) : '']);
+  return rows;
+}
+
+/** ชื่อไฟล์ export — เหมือนเดิมทุกประการ (pqaResourceManagement_<emp_id>_<timestamp>.xlsx) บวก
+ *  ชื่อแท็บ (`viewTag`) คั่นกลาง เพื่อแยกไฟล์จากคนละแท็บออกจากกันได้เวลาดาวน์โหลดหลายรอบ
+ *  (2026-08-25 ตามคำขอพี่กิ๊บ — เดิมมีแค่ By Lead แท็บเดียวเลยไม่ต้องแยก). */
+function downloadFilename(viewTag){
+  const empId = (S.user && S.user.pqaEmpId) || 'NA';
+  return `pqaResourceManagement_${viewTag}_${empId}_${fileTimeStamp(new Date())}.xlsx`;
+}
+
+/** ประกอบ workbook → .xlsx ไฟล์ → สั่งดาวน์โหลดผ่าน temp <a download> — เหมือนเดิมทุกประการ
+ *  (ย้ายมาเป็น helper เดียวใช้ร่วมกันทุก export function, 2026-08-25). */
+function writeWorkbookAndDownload(wb, filename){
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** บันทึกลง pqa.download_log — best-effort, fire-and-forget เหมือน logLogin() ใน common.js ไม่
+ *  block การดาวน์โหลด (ไฟล์ดาวน์โหลดไปแล้วก่อนเรียกอันนี้เสมอไม่ว่า insert จะสำเร็จหรือไม่) ต้องรัน
+ *  sql/patch_2026-08-14_download_log.sql บน Supabase ก่อนถึงจะบันทึกได้ (เหมือนเดิม). */
+function logExcelDownload(){
+  if (S.user && S.user.userId) {
+    supabase.from('download_log').insert({
+      user_id: S.user.userId,
+      pqa_emp_id: S.user.pqaEmpId,
+    }).then(({ error }) => {
+      if (error) console.warn('download_log insert failed:', error.message);
+    });
+  }
 }
 
 /** 'yyyy-MM-dd' -> 'YYYYMM' text (Excel export: Start_YYYYMM/End_YYYYMM, 2026-08-25 ตามคำขอพี่กิ๊บ).
@@ -1762,7 +1832,7 @@ function buildLeadProjectPhaseRows(roleTitle, roleRows, agg){
 }
 
 async function downloadLeadExcel(){
-  const btn = $('downloadLeadBtn');
+  const btn = $('downloadExcelBtn');
   btn.disabled = true;
   try {
     const { coverage, mainProjectsByLead, apps, agg } = computeLeadCoverage();
@@ -1774,21 +1844,7 @@ async function downloadLeadExcel(){
       : (Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? [S.leadRoleFilter] : ['main']);
 
     // ---- Sheet1: Filter ที่เลือก ----
-    const projectLabel = selectedLabelsText(S.filter.projects, S.activeProjects, 'project_key', 'project_name');
-    const leadItems = S.leadsAll.map(l => ({ emp_id: l.emp_id, label: l.short_name || l.nickname || l.emp_id }));
-    const leadLabel = selectedLabelsText(S.filter.leads, leadItems, 'emp_id', 'label');
-    const appLabel = S.filter.apps.size ? [...S.filter.apps].sort().join(', ') : 'All';
-    const typeLabel = S.leadRoleFilter === 'all' ? 'All' : (LEAD_ROLE_META[roleKeys[0]] || LEAD_ROLE_META.main).title;
-    const domainLabel = LEAD_DOMAIN_LABELS[S.leadDomainFilter || 'all'] || 'All';
-    const filterAoa = [
-      ['Project', projectLabel],
-      ['UAT Lead', leadLabel],
-      ['App', appLabel],
-      ['Type', typeLabel],
-      ['Domain', domainLabel],
-      ['Start Date', S.overallRange.s ? dDisp(S.overallRange.s) : ''],
-      ['End Date', S.overallRange.e ? dDisp(S.overallRange.e) : ''],
-    ];
+    const filterAoa = buildDownloadFilterAoa(true);
 
     // ---- Sheet2: Summary + Sheet3: Project — buildLeadRoleRows() ต่อ role ป้อนทั้งคู่ ----
     const summaryAoa = [['Name', 'Email', 'Type', 'Domain', 'Total MD', 'Total Project', ...apps]];
@@ -1816,27 +1872,9 @@ async function downloadLeadExcel(){
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryAoa), 'Summary');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projectAoa), 'Project');
 
-    const empId = (S.user && S.user.pqaEmpId) || 'NA';
-    const filename = `pqaResourceManagement_${empId}_${fileTimeStamp(new Date())}.xlsx`;
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // ---- บันทึกลง pqa.download_log — best-effort, fire-and-forget เหมือน logLogin() ใน
-    //      common.js ไม่ block การดาวน์โหลด (ไฟล์ดาวน์โหลดไปแล้วข้างบนไม่ว่า insert นี้จะสำเร็จ
-    //      หรือไม่) ต้องรัน sql/patch_2026-08-14_download_log.sql บน Supabase ก่อนถึงจะบันทึกได้ ----
-    if (S.user && S.user.userId) {
-      supabase.from('download_log').insert({
-        user_id: S.user.userId,
-        pqa_emp_id: S.user.pqaEmpId,
-      }).then(({ error }) => {
-        if (error) console.warn('download_log insert failed:', error.message);
-      });
-    }
+    const filename = downloadFilename('ByLead');
+    writeWorkbookAndDownload(wb, filename);
+    logExcelDownload();
 
     toast(`ดาวน์โหลด ${filename} สำเร็จ`);
   } catch (err) {
@@ -1845,6 +1883,164 @@ async function downloadLeadExcel(){
   } finally {
     btn.disabled = false;
   }
+}
+
+/** By Project tab export — Sheet1 Filter (ไม่มี Type/Domain, มีผลแค่ By Lead) + Sheet2 "Project"
+ *  1 แถวต่อ project เหมือนตาราง By Project บนจอทุกคอลัมน์ + แถวรวมท้ายตาราง เรียก
+ *  buildProjectRows() ตรงๆ (เป็น standalone function อยู่แล้ว ไม่ต้อง duplicate ตรรกะเหมือนที่
+ *  By Lead ทำกับ renderLeadView() — ดู comment หัวบล็อก DOWNLOAD EXCEL ด้านบน). 2026-08-25 ตามคำขอพี่กิ๊บ. */
+async function downloadProjectExcel(){
+  const btn = $('downloadExcelBtn');
+  btn.disabled = true;
+  try {
+    const rows = buildProjectRows();
+    if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+    const filterAoa = buildDownloadFilterAoa(false);
+    const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
+    let gTotal=0, gTcprep=0, gUat=0, gReg=0, gOther1=0, gOther2=0, gSupport=0;
+    rows.forEach(r => {
+      gTotal+=r.totalMD; gTcprep+=r.tcprep; gUat+=r.uat; gReg+=r.reg; gOther1+=r.other1; gOther2+=r.other2; gSupport+=r.support;
+      projectAoa.push([
+        r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp,
+        Number(fmtMD(r.totalMD)), Number(fmtMD(r.tcprep)), Number(fmtMD(r.uat)), Number(fmtMD(r.reg)),
+        Number(fmtMD(r.other1)), Number(fmtMD(r.other2)), Number(fmtMD(r.support)),
+      ]);
+    });
+    projectAoa.push([
+      `รวมทั้งหมด (${rows.length} projects)`, '', '', '', '', '',
+      Number(fmtMD(gTotal)), Number(fmtMD(gTcprep)), Number(fmtMD(gUat)), Number(fmtMD(gReg)),
+      Number(fmtMD(gOther1)), Number(fmtMD(gOther2)), Number(fmtMD(gSupport)),
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projectAoa), 'Project');
+
+    const filename = downloadFilename('ByProject');
+    writeWorkbookAndDownload(wb, filename);
+    logExcelDownload();
+
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** By OS tab export — Sheet1 Filter + Sheet2 "OS" pivot (OS × App) เหมือนตาราง By OS บนจอ +
+ *  แถวรวมท้ายตาราง คำนวณซ้ำตรรกะเดียวกับ renderOsView() แบบ inline (renderOsView() ไม่ได้แยก
+ *  เป็นฟังก์ชันคำนวณต่างหากให้เรียกตรงๆ ได้ — pattern เดียวกับที่ downloadLeadExcel() ทำกับ
+ *  renderLeadView() ผ่าน computeLeadCoverage() ก่อนหน้านี้แล้ว). 2026-08-25 ตามคำขอพี่กิ๊บ. */
+async function downloadOsExcel(){
+  const btn = $('downloadExcelBtn');
+  btn.disabled = true;
+  try {
+    // §6: By OS counts MD only on bookings whose project is_active = true — เหมือน renderOsView()
+    const agg = S.periodAggActiveOnly || { byOsApp:{}, byOsTotal:{} };
+    const appSet = new Set();
+    Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
+    const apps = sortedApps([...appSet]);
+
+    const osRows = Object.values(S.resourceMap)
+      .filter(r => r.resource_type === 'outsource')
+      .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
+      .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
+
+    if (!apps.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+    const filterAoa = buildDownloadFilterAoa(false);
+    const osAoa = [['OS', 'Role', 'Total MD', ...apps]];
+    const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
+    let grandTotal = 0;
+    osRows.forEach(r => {
+      grandTotal += r.total;
+      const cells = apps.map(a => {
+        const v = (agg.byOsApp[r.resource_id] || {})[a] || 0;
+        colTotals[a] += v;
+        return v ? Number(fmtMD(v)) : 0;
+      });
+      osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
+    });
+    osAoa.push(['รวมทั้งหมด', '', Number(fmtMD(grandTotal)), ...apps.map(a => Number(fmtMD(colTotals[a])))]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(osAoa), 'OS');
+
+    const filename = downloadFilename('ByOS');
+    writeWorkbookAndDownload(wb, filename);
+    logExcelDownload();
+
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** Signoff tab export — Sheet1 Filter + Sheet2 "Signoff" เหมือนตาราง Signoff บนจอ (App/Lead/
+ *  Signoff Date/Project Name + Signoff URL) คำนวณซ้ำตรรกะเดียวกับ renderSignoffView() แบบ inline
+ *  (เหตุผลเดียวกับ downloadOsExcel() ด้านบน — renderSignoffView() ไม่ได้แยกเป็นฟังก์ชันคำนวณ
+ *  ต่างหาก และไม่แตะ renderSignoffView() เองเพราะ tests/run_tests.mjs vm-eval extract ฟังก์ชันนี้
+ *  แบบ standalone). 2026-08-25 ตามคำขอพี่กิ๊บ. */
+async function downloadSignoffExcel(){
+  const btn = $('downloadExcelBtn');
+  btn.disabled = true;
+  try {
+    const { first, last } = currentRange();
+    const subLeads = subLeadMap();
+    const executors = executorMap();
+    const rows = currentProjectsList()
+      .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
+      .filter(p => projectPassesExtraFilters(p.project_key))
+      .map(p => ({
+        app: p.app || p.other_app || '',
+        lead: p.uat_lead || '',
+        subLeads: subLeads[p.project_key] || [],
+        executors: executors[p.project_key] || [],
+        signoff_date: p.signoff_date,
+        projectName: p.project_name || '',
+        signoff_url: p.signoff_url || '',
+      }));
+
+    if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+    const filterAoa = buildDownloadFilterAoa(false);
+    const signoffAoa = [['App', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Signoff Date', 'Project Name', 'Signoff URL']];
+    rows.forEach(r => {
+      signoffAoa.push([r.app, r.lead, r.subLeads.join(', '), r.executors.join(', '), dDisp(r.signoff_date), r.projectName, r.signoff_url]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(signoffAoa), 'Signoff');
+
+    const filename = downloadFilename('Signoff');
+    writeWorkbookAndDownload(wb, filename);
+    logExcelDownload();
+
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** ปุ่ม #downloadExcelBtn เดียวกันทุกแท็บ — เลือกฟังก์ชัน export ตาม S.dashView ที่เปิดอยู่ตอนนี้
+ *  (2026-08-25 ตามคำขอพี่กิ๊บ). ผูก listener ตัวนี้ตัวเดียวใน wireToolbar() แทนที่จะผูกแยกฟังก์ชัน
+ *  ต่อแท็บ. */
+function downloadDashboardExcel(){
+  if (S.dashView === 'project') return downloadProjectExcel();
+  if (S.dashView === 'os') return downloadOsExcel();
+  if (S.dashView === 'lead') return downloadLeadExcel();
+  if (S.dashView === 'signoff') return downloadSignoffExcel();
 }
 
 /* ---- Signoff ---- */
@@ -2084,7 +2280,7 @@ function wireToolbar(){
     savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
     if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
-  $('downloadLeadBtn').addEventListener('click', downloadLeadExcel);
+  $('downloadExcelBtn').addEventListener('click', downloadDashboardExcel);
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
   // Lead/App/Type/Domain/Start-End) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
   // panel (ต่างจาก ovApplyBtn) เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
@@ -2135,9 +2331,9 @@ function switchDashView(view){
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
-  // Download Excel — By Lead tab เท่านั้น (2026-08-14) เหตุผลเดียวกับ leadRoleFld/leadDomainFld
-  $('leadDownloadSep').classList.toggle('hidden', view !== 'lead');
-  $('downloadLeadBtn').classList.toggle('hidden', view !== 'lead');
+  // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
+  // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
+  // S.dashView ตอนกดคลิก
   // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
   // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
   // same "hidden while (re)building, revealed only after" contract as loadPeriod).
