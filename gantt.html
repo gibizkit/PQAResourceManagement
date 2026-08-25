@@ -270,7 +270,21 @@
   .bk-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px; }
   .bk-table th, .bk-table td { padding:7px 9px; border-bottom:1px solid var(--dk-border); text-align:left; white-space:nowrap; }
   .bk-table th { color:var(--dk-text3); font-weight:600; font-size:11.5px; }
+  /* co-edit OS column: let long names wrap instead of stretching the table and
+     pushing the Start/End date fields off-screen; the tag drops to its own line */
+  .bk-table td.bk-os-cell { white-space:normal; word-break:break-word; max-width:150px; }
   .bk-table input, .bk-table select { padding:5px 7px; border-radius:6px; border:1px solid var(--dk-border-s); font-size:12.5px; }
+  /* co-edit Start/End: native <input type="date"> renders in the browser's own locale
+     (often mm/dd/yyyy), which doesn't match the dd/mm/yyyy header above it. Hide the
+     native text and overlay our own dd/mm/yyyy label so both places always match. */
+  .date-disp { position:relative; display:inline-block; }
+  .date-disp input[type="date"] { color:transparent; }
+  .date-disp input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+  .date-disp input[type="date"]::-webkit-datetime-edit { color:transparent; }
+  .date-disp::after {
+    content:attr(data-display); position:absolute; left:7px; top:50%; transform:translateY(-50%);
+    font-size:12.5px; color:var(--dk-text); pointer-events:none;
+  }
   .sub-head { font-weight:700; font-size:13px; margin:14px 0 6px; color:var(--dk-accent); }
   .res-pick { max-height:180px; overflow:auto; border:1px solid var(--dk-border); border-radius:8px; padding:6px; }
   .res-pick label { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; font-size:12.5px; cursor:pointer; }
@@ -281,6 +295,7 @@
   .form-grid input, .form-grid select { padding:8px 9px; border-radius:8px; border:1px solid var(--dk-border-s); font-size:13px; }
   .row-btns { display:flex; gap:6px; }
   .tag { display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:5px; margin-left:6px; }
+  .bk-os-cell .tag { margin-left:0; margin-top:3px; }
   .tag.edit { background:#fff4e0; color:#a15c12; }
   .tag.new  { background:#e8f5e9; color:#2e7d32; }
   .area.hidden { display:none; }
@@ -2282,11 +2297,11 @@ function renderCoRows(){
     const proj = S.projects.find(p=>p.project_key===r.project_key);
     const tag = r.tag==='edit' ? '<span class="tag edit">กำลังแก้</span>' : r.tag==='new' ? '<span class="tag new">กำลังเพิ่มใหม่</span>' : '';
     return `<tr>
-      <td>${esc(resName(r.resource_id))}${tag}</td>
+      <td class="bk-os-cell">${esc(resName(r.resource_id))}${tag ? '<br>'+tag : ''}</td>
       <td>${esc(proj?proj.project_name:r.project_key)}</td>
       <td>${esc(phaseName(r.phase_code))}</td>
-      <td><input type="date" value="${r.start}" onchange="coEdit(${i},'start',this.value)"></td>
-      <td><input type="date" value="${r.end}" onchange="coEdit(${i},'end',this.value)"></td>
+      <td><span class="date-disp" data-display="${dDisp(r.start)}"><input type="date" value="${r.start}" onchange="coEdit(${i},'start',this.value,this)"></span></td>
+      <td><span class="date-disp" data-display="${dDisp(r.end)}"><input type="date" value="${r.end}" onchange="coEdit(${i},'end',this.value,this)"></span></td>
       <td><select onchange="coEdit(${i},'md',this.value)">
         <option value="1"${r.md===1?' selected':''}>1</option>
         <option value="0.5"${r.md===0.5?' selected':''}>0.5</option>
@@ -2304,7 +2319,14 @@ document.addEventListener('keydown', e => {
   // lazily injected, so it may not exist in the DOM yet).
 });
 
-window.coEdit = function(i, field, val){ coRows[i][field] = field==='md'?Number(val):val; };
+window.coEdit = function(i, field, val, inputEl){
+  coRows[i][field] = field==='md'?Number(val):val;
+  // keep the overlaid dd/mm/yyyy label in sync with whatever the native picker set
+  if (inputEl && (field==='start' || field==='end')) {
+    const wrap = inputEl.closest('.date-disp');
+    if (wrap) wrap.dataset.display = dDisp(val);
+  }
+};
 window.bkCoCancel = function(){ showArea('form'); };
 window.bkCoSave = async function(){
   const err=$('bkCoErr'); err.textContent='';
