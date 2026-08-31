@@ -1202,10 +1202,13 @@ document.addEventListener('click', (e) => {
  * เพราะถ้าผู้ใช้ลบข้อความ "@email" ทิ้งก่อนส่ง ก็ไม่ควรนับเป็นการแท็กอีกต่อไป
  */
 
-/** โหลดรายชื่อคนที่แท็กได้ — ต้องเป็น app_user ที่ active เท่านั้น (ต้องมีบัญชีถึงจะมีกระดิ่งให้เห็น noti) */
+/** โหลดรายชื่อคนที่แท็กได้ — ต้องเป็น app_user ที่ active เท่านั้น (ต้องมีบัญชีถึงจะมีกระดิ่งให้เห็น noti)
+ * 2026-08-31 แก้บั๊ก: เดิม select ตรงจาก app_user โดน RLS (app_user_read_self) บล็อก — role ที่ไม่ใช่
+ * admin เห็นได้แค่แถวตัวเอง เลยแท็กคนอื่นไม่เจอ ("ไม่พบชื่อ" เสมอ) เปลี่ยนมาเรียกผ่าน RPC
+ * security-definer แทน (ดู sql/patch_2026-08-31_taggable_users_rpc.sql) — คืนแค่ email/display_name
+ * ของ user ที่ active เท่านั้น ไม่เปิดคอลัมน์อื่นของ app_user ให้ทุก role */
 export async function loadTaggableUsers() {
-  const { data, error } = await supabase.from('app_user')
-    .select('email,display_name').eq('is_active', true);
+  const { data, error } = await supabase.rpc('fn_taggable_users');
   if (error) { console.warn('loadTaggableUsers error', error); return []; }
   return data || [];
 }
@@ -1374,7 +1377,7 @@ async function notiLoadList() {
   const [cmtRes, projRes, userRes] = await Promise.all([
     supabase.from('signoff_comment').select('id,body,deleted_at').in('id', commentIds),
     supabase.from('project').select('project_key,project_name').in('project_key', projectKeys),
-    supabase.from('app_user').select('email,display_name'),
+    supabase.rpc('fn_taggable_users'), // 2026-08-31: RLS บล็อก role ที่ไม่ใช่ admin เห็นแค่แถวตัวเอง — ใช้ RPC เดียวกับ loadTaggableUsers()
   ]);
   const cmtMap = {}; (cmtRes.data || []).forEach(c => { cmtMap[c.id] = c; });
   const projMap = {}; (projRes.data || []).forEach(p => { projMap[p.project_key] = p; });

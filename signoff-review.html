@@ -529,7 +529,7 @@ async function loadMasterData(){
       .not('signoff_date', 'is', null)
       .eq('is_active', true),   // req: แสดงเฉพาะโปรเจกต์ที่ยัง active (isActive=Y)
     supabase.from('app').select('app_code,app_name'),
-    supabase.from('app_user').select('email,display_name'),
+    supabase.rpc('fn_taggable_users'), // 2026-08-31: RLS บล็อก role ที่ไม่ใช่ admin เห็นแค่แถวตัวเอง — ใช้ RPC เดียวกับ loadTaggableUsers()
     // ดึงคอมเมนต์ "ทุกแถว" (รวม root) มาคำนวณ Last Update — root เดี่ยวๆ ที่ยังไม่มีใครตอบ
     // ก็ต้องนับเป็นอัปเดตด้วย (ไม่ใช่แค่ reply) ดู loadMasterData() ด้านล่าง
     supabase.from('signoff_comment')
