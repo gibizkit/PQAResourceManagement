@@ -944,7 +944,20 @@ async function reloadRangeData() {
   ]);
   if (bkRes.error) { toast('โหลด Booking ไม่สำเร็จ: ' + bkRes.error.message, true); }
   if (lvRes.error) { toast('โหลด Leave ไม่สำเร็จ: ' + lvRes.error.message, true); }
-  S.bookings = bkRes.data || [];
+  // 2026-09-01 (รายงานโดย Gibb): ตัด booking ที่ผูกกับ project ที่ถูกปิดใช้งาน (is_active=false)
+  // ออกตั้งแต่จุดโหลดข้อมูล — S.projMap โหลดมาจาก v_project_wide แบบ .eq('is_active', true)
+  // อยู่แล้ว (loadAll() ด้านบน) ดังนั้น "ไม่มีใน S.projMap" = project inactive/ไม่มีอยู่จริง
+  // เหตุผล: หน้า Dashboard > By OS (dashboard.html computeAgg({restrict:true}) กับ
+  // S.periodAggActiveOnly) นับ MD เฉพาะ booking ที่ project ยัง active เท่านั้นมาตั้งแต่ §5.43
+  // (ยืนยันโดย Gibb) แต่หน้านี้เดิมนับ/ระบายสีทุก booking ที่ is_active=true (แค่ตัว booking เอง
+  // ไม่เช็ค project) โดยไม่สนว่า project จะถูกปิดใช้งานไปแล้วหรือยัง → ตัวเลขรวมของวันเดียวกัน
+  // (แถวรวมบนหัวตาราง, MD ต่อคน, ป้ายสี Booked) ต่างจาก Dashboard > By OS ได้ทั้งที่กรองช่วงวันที่
+  // เดียวกัน กรองตรงนี้จุดเดียวทำให้ทุกที่ที่อ่านจาก S.bookings/S.bookingsByResource (สีเซลล์,
+  // MD ต่อวัน/ต่อคน, Booked/Vacant grouping, conflict check, Manage Booking modal) เห็นชุดเดียวกัน
+  // กับ Dashboard ผลข้างเคียงที่ตั้งใจรับไว้: booking เก่าที่ยังค้างอยู่กับ project ที่ปิดใช้งานแล้ว
+  // จะไม่โชว์ให้จัดการผ่าน Manage Booking modal ของหน้านี้อีกต่อไป (ต้องไปเปิด project นั้นกลับมา
+  // active ชั่วคราว หรือจัดการผ่าน Admin/SQL โดยตรง ถ้าต้องการลบ/แก้ booking ค้างนั้น)
+  S.bookings = (bkRes.data || []).filter(b => !!S.projMap[b.project_key]);
   S.leaves = lvRes.data || [];
   reindexBookings();
 }
