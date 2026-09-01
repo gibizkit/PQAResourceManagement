@@ -969,7 +969,7 @@ function canWrite(){ return !!(S.user && (S.user.app_role === 'admin' || S.user.
 
 /* ============ DEFAULT LEAD FILTER ============ */
 function applyDefaultLeadFilter(){
-  S.filter.leads = new Set();
+  S.filter.leads.clear();  // mutate in place — reassigning would orphan the msLead checkbox handler's closure (see makeMultiSelect)
   // admin เห็นทุก project เสมอ ไม่ต้องตั้ง default filter แม้จะผูก pqa_emp_id ไว้
   if (S.user && S.user.app_role === 'admin') return;
   const me = S.user && S.user.pqa_emp_id;
@@ -989,7 +989,7 @@ function applyDefaultLeadFilter(){
 /* ============ DEFAULT PHASE FILTER ============ */
 // default ตอน login = "Not Start" + "In-Progress" ติ๊กไว้ (ยังไม่รวม "Completed")
 function applyDefaultPhaseFilter(){
-  S.filter.phases = new Set(['NOTSTART', 'INPROGRESS']);
+  S.filter.phases.clear(); S.filter.phases.add('NOTSTART'); S.filter.phases.add('INPROGRESS');  // mutate in place — see applyDefaultLeadFilter comment
   syncMultiSelect('msPhase', S.filter.phases);
 }
 
@@ -1709,10 +1709,13 @@ $('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden
 // (เหมือนตอนเพิ่งล็อกอิน/ยังไม่ตั้ง filter อะไรเลย) ไม่ auto-collapse panel ให้ (ต่างจาก applyBtn)
 // เพราะผู้ใช้มักจะเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
 $('clearFilterBtn').onclick = () => {
-  S.filter.projects = new Set();
-  S.filter.leads    = new Set();
-  S.filter.apps     = new Set();
-  S.filter.phases   = new Set();
+  // mutate in place — reassigning would orphan the msProject/msLead/msApp/msPhase
+  // checkbox handlers' closures (wired in buildFilters()/makeMultiSelect), which would
+  // silently stop affecting filteredProjects() for the rest of the session
+  S.filter.projects.clear();
+  S.filter.leads.clear();
+  S.filter.apps.clear();
+  S.filter.phases.clear();
   syncMultiSelect('msProject', S.filter.projects);
   syncMultiSelect('msLead',    S.filter.leads);
   syncMultiSelect('msApp',     S.filter.apps);
