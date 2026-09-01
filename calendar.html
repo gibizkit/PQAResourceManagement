@@ -189,7 +189,7 @@ import {
   isWknd, loadHolidays, getSession, getProfile, onAuth, signIn, signOut,
   resName, monthLabel, MONTH_ABBR, loadPrefs, savePrefs, setPrefsOwner,
   getCachedRole, setCachedRole, paintNavAdmin,
-  initNotificationBell
+  initNotificationBell, fetchAllRows
 } from './common.js';
 
 const PAGE = 'calendar';
@@ -320,9 +320,23 @@ async function loadMaster() {
       loadHolidays(),
       supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
       supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
-      supabase.from('v_project_wide').select('project_key,project_name,app,other_app,uat_lead').eq('is_active', true),
+      // 2026-09-02: paginated with fetchAllRows() — unbounded select() silently drops rows past
+      // Supabase's Max Rows cap (1000, see fetchAllRows() in common.js). v_project_wide is 1 row
+      // per project (low-risk today) but paginated too, same rationale as dashboard.html §5.49.
+      fetchAllRows((from, to) => supabase.from('v_project_wide')
+        .select('project_key,project_name,app,other_app,uat_lead')
+        .eq('is_active', true)
+        .order('project_key', { ascending: true })
+        .range(from, to)),
       supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type'),
-      supabase.from('project_phase').select('project_key,phase_code,start_date,end_date,resource_count')
+      // project_phase = projects × up to 7 phases — easily > 1000 rows as the project list grows
+      // (dashboard.html paginated the identical query in §5.49 for the same reason).
+      fetchAllRows((from, to) => supabase.from('project_phase')
+        .select('project_key,phase_code,start_date,end_date,resource_count')
+        .order('project_key', { ascending: true })
+        .order('phase_code', { ascending: true })
+        .order('phase_label', { ascending: true })
+        .range(from, to)),   // unique index (project_key, phase_code, coalesce(phase_label,'')) — sql/01_schema.sql
     ]);
 
     S.holidays = holidays || {};
@@ -381,11 +395,16 @@ async function loadMonthData(y, m, force) {
   if (!force && S.monthCache[key]) return S.monthCache[key];
 
   const { days, gridStartStr, gridEndStr } = computeGridDays(y, m);
-  const { data, error } = await supabase
-    .from('v_booking_daily')
+  // 2026-09-02: paginated with fetchAllRows() — a full month grid is ~42 days × every active OS,
+  // easily past Supabase's Max Rows cap (1000, see fetchAllRows() in common.js); an unbounded
+  // select() here would silently truncate the grid instead of erroring.
+  const { data, error } = await fetchAllRows((from, to) => supabase.from('v_booking_daily')
     .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
     .gte('work_date', gridStartStr)
-    .lte('work_date', gridEndStr);
+    .lte('work_date', gridEndStr)
+    .order('booking_id', { ascending: true })
+    .order('work_date', { ascending: true })
+    .range(from, to));   // unique pair (booking_id, work_date) — sql/05_views.sql §3
   if (error) throw error;
 
   const byDate = {};

@@ -577,7 +577,7 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, dDispShort, parseInputDate,
   leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
-  loadPrefs, savePrefs, setPrefsOwner, signIn, prefSet,
+  loadPrefs, savePrefs, setPrefsOwner, signIn, fetchAllRows, prefSet,
   getCachedRole, setCachedRole, paintNavAdmin,
   initNotificationBell
 } from './common.js';
@@ -857,8 +857,22 @@ async function loadAll() {
         .eq('is_active', true),
       supabase.from('resource').select('resource_id,outsource_eid')
         .eq('resource_type', 'outsource').eq('is_active', true),
-      supabase.from('v_project_wide').select('project_key,project_name,uat_lead,app,other_app').eq('is_active', true),
-      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date'),
+      // 2026-09-02: paginated with fetchAllRows() — unbounded select() silently drops rows past
+      // Supabase's Max Rows cap (1000, see fetchAllRows() in common.js). v_project_wide is 1 row
+      // per project (low-risk today) but paginated too, same rationale as dashboard.html §5.49.
+      fetchAllRows((from, to) => supabase.from('v_project_wide')
+        .select('project_key,project_name,uat_lead,app,other_app')
+        .eq('is_active', true)
+        .order('project_key', { ascending: true })
+        .range(from, to)),
+      // project_phase = projects × up to 7 phases — easily > 1000 rows as the project list grows
+      // (dashboard.html paginated the identical query in §5.49 for the same reason).
+      fetchAllRows((from, to) => supabase.from('project_phase')
+        .select('project_key,phase_code,phase_label,start_date,end_date')
+        .order('project_key', { ascending: true })
+        .order('phase_code', { ascending: true })
+        .order('phase_label', { ascending: true })
+        .range(from, to)),   // unique index (project_key, phase_code, coalesce(phase_label,'')) — sql/01_schema.sql
       supabase.from('outsource_skill').select('eid,skills'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('pqa_lead').select('emp_id,short_name').eq('is_active', true).order('short_name', { ascending: true })
@@ -934,13 +948,22 @@ async function loadAll() {
 
 async function reloadRangeData() {
   const s = S.range.s, e = S.range.e;
+  // 2026-09-02: paginated with fetchAllRows() — the `booking` table already passed 1000 active
+  // rows by 2026-08-25 (see fetchAllRows() comment in common.js, and the gantt.html fix that
+  // followed it) and a wide Start–End range here can easily sweep past that cap; an unbounded
+  // select() would silently truncate instead of erroring. leave_plan gets the same treatment
+  // since it shares the identical date-range shape.
   const [bkRes, lvRes] = await Promise.all([
-    supabase.from('booking')
+    fetchAllRows((from, to) => supabase.from('booking')
       .select('booking_id,project_key,resource_id,phase_code,start_date,end_date,md,is_active')
-      .eq('is_active', true).lte('start_date', e).gte('end_date', s),
-    supabase.from('leave_plan')
+      .eq('is_active', true).lte('start_date', e).gte('end_date', s)
+      .order('booking_id', { ascending: true })
+      .range(from, to)),   // booking_id = PK — sql/01_schema.sql (mirror gantt.html's booking query)
+    fetchAllRows((from, to) => supabase.from('leave_plan')
       .select('leave_id,resource_id,start_date,end_date,leave_slot,md,is_active,is_deleted,source_system')
       .eq('is_active', true).eq('is_deleted', false).lte('start_date', e).gte('end_date', s)
+      .order('leave_id', { ascending: true })
+      .range(from, to)),   // leave_id = PK — sql/01_schema.sql
   ]);
   if (bkRes.error) { toast('โหลด Booking ไม่สำเร็จ: ' + bkRes.error.message, true); }
   if (lvRes.error) { toast('โหลด Leave ไม่สำเร็จ: ' + lvRes.error.message, true); }
@@ -1702,6 +1725,11 @@ window.lpSaveSkills = async function () {
 async function lpLoad() {
   // แสดงเฉพาะวันลาที่ "คาบเกี่ยว" ช่วง filter (Start–End) เท่านั้น
   // เงื่อนไข overlap: leave.start_date <= filter.End และ leave.end_date >= filter.Start
+  // 2026-09-02: reviewed for the Max Rows cap sweep (see fetchAllRows() in common.js) — NOT
+  // paginated, on purpose. Unlike reloadRangeData()'s query above, this one is scoped to a
+  // single .eq('resource_id', LP_RESOURCE_ID) (one OS person's own Leave Plan modal) — even that
+  // person's entire leave history stays orders of magnitude under the 1000-row cap, so there's no
+  // realistic path to truncation here.
   let q = supabase.from('leave_plan')
     .select('leave_id,resource_id,start_date,end_date,leave_slot,md,is_active,is_deleted,source_system')
     .eq('resource_id', LP_RESOURCE_ID)

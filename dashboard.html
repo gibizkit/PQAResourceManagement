@@ -7,14 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="theme.css">
-<!-- Chart.js 4.4.1 — plain CDN <script>, NOT an ES module import. Exposes the global `Chart`. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  /* ---- page-local phase color (theme.css has no --ph-support, mirrors gantt.html) ---- */
-  :root {
-    --ph-support: #CBB8A0;
-  }
-
   /* ---- topbar nav (canonical, same markup/classes as other pages) ---- */
   .topbar .nav { display:flex; gap:4px; margin-left:6px; }
   .topbar .nav a {
@@ -33,9 +26,10 @@
   .view-tab:hover { background:var(--dk-hover); }
   .view-tab.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
 
-  /* ---- toolbar row: view tabs + ตัวกรอง + Show chart, all on one line, กั้นด้วย "|"
+  /* ---- toolbar row: view tabs + ตัวกรอง, all on one line, กั้นด้วย "|"
      (2026-08-14, ตามคำขอพี่กิ๊บ — เดิม ตัวกรอง อยู่ชิดขวาแยกจาก tabs ด้วย justify-content:
-     space-between, และ Show chart อยู่คนละแถวด้านล่าง #summaryToggleRow) ---- */
+     space-between. 2026-09-01 (§5.50): ปุ่ม "Show chart"/#summaryToggleBtn ที่เคยอยู่แถวนี้
+     ถูกลบไปพร้อมกับกราฟ+การ์ด KPI ทั้งชุด — ดู §5.50) ---- */
   .dash-toolbar-row {
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   }
@@ -94,7 +88,9 @@
      2026-08-14 (ตามคำขอพี่กิ๊บ): เพิ่ม card boundary (background/border/shadow) + margin-bottom
      ให้เหมือน gantt.html/outsource.html's .filters — เดิมหน้านี้ไม่มีกรอบ/เว้นระยะกับหัวตารางเลย.
      ลด gap + ความกว้างของแต่ละ field (ดู .ms-btn/.filters select/input ด้านล่าง) ให้ทุก field
-     (Project/UAT Lead/App/Type/Domain/Start/End/ค้นหา — 8 ชิ้น ตอนนี้แสดงทุก tab แล้ว) พอดี 1 บรรทัด. */
+     พอดี 1 บรรทัด. 2026-09-01 (§5.50): Start/End (input[type=date] ×2) + ปุ่ม "ค้นหา" ถูกแทนที่
+     ด้วย month picker ช่องเดียว (ดู .dash-month-picker ด้านล่าง) — เหลือ Project/UAT Lead/App/
+     Type/Domain/เดือน/ล้าง. */
   .filters {
     display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
     background:var(--dk-card); border:1px solid var(--dk-border); border-radius:14px;
@@ -102,11 +98,37 @@
   }
   .filters .fld { display:flex; flex-direction:column; gap:5px; }
   .filters label { font-size:11px; color:var(--dk-text3); font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
-  .filters input[type=date] {
-    width:128px; box-sizing:border-box; padding:7px 9px; border-radius:9px; border:1px solid var(--dk-border-s);
-    font-size:13px; background:#fff; color:var(--dk-text);
+
+  /* ---- month picker ("เดือน" ตัวกรอง — mirrors calendar.html's .cal-month-picker/.cal-*
+     ทั้งชุด, ตามที่โจทย์ระบุ, 2026-09-01 §5.50) — ใช้ prefix .dash-month-*/.dash-picker-*
+     แทน .cal-* เดิม (คลาสเป็น page-local อยู่แล้วในทั้ง 2 ไฟล์ ไม่ชนกัน แค่ตั้งชื่อแยกให้ชัดว่า
+     เป็นของหน้านี้) โครง/พฤติกรรมเหมือน calendar.html เป๊ะ: ปุ่ม ‹ / ปุ่มกลางโชว์เดือน (กดเปิด
+     picker ปี+เดือน) / ปุ่ม › ---- */
+  .dash-month-picker { position:relative; display:flex; align-items:center; gap:6px; }
+  .dash-nav-btn { padding:7px 12px; font-size:15px; font-weight:700; min-width:38px; text-align:center; }
+  .dash-month-btn {
+    min-width:128px; font-size:13px; font-weight:700; color:var(--dk-accent);
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:9px; padding:7px 12px;
   }
-  .filters input[type=date]:focus { outline:none; border-color:var(--dk-accent); }
+  .dash-month-btn:hover { background:var(--dk-hover); }
+  .dash-month-panel {
+    position:absolute; top:calc(100% + 6px); left:0; z-index:40;
+    background:#fff; border:1px solid var(--dk-border-s); border-radius:10px;
+    box-shadow:0 12px 30px rgba(34,28,21,.15); padding:10px; width:230px;
+  }
+  .dash-month-panel.hidden { display:none; }
+  .dash-picker-year {
+    display:flex; align-items:center; justify-content:space-between;
+    font-weight:700; font-size:13px; color:var(--dk-text); margin-bottom:8px;
+  }
+  .dash-picker-year button { padding:3px 9px; }
+  .dash-picker-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .dash-picker-month {
+    padding:8px 4px; border-radius:7px; border:1px solid var(--dk-border-s);
+    background:#fff; color:var(--dk-text); font-size:12.5px; font-weight:600; text-align:center; cursor:pointer;
+  }
+  .dash-picker-month:hover { background:var(--dk-hover); }
+  .dash-picker-month.active { background:var(--dk-accent); border-color:var(--dk-accent); color:#fff; }
 
   /* ---- sortable table headers ---- */
   table.dash-table th.sortable { cursor:pointer; user-select:none; }
@@ -120,31 +142,6 @@
   .ico-btn:hover { background:var(--dk-hover); }
   .ico-btn[disabled] { opacity:.35; cursor:default; }
   .ico-btn[disabled]:hover { background:#fff; }
-
-  /* ---- KPI cards ---- */
-  .kpi-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:16px; }
-  .kpi-card {
-    background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px 16px;
-    border-left:4px solid var(--dk-accent);
-  }
-  .kpi-card.kc-teal   { border-left-color:var(--dk-accent); }
-  .kpi-card.kc-purple { border-left-color:var(--ph-reg); }
-  .kpi-card.kc-blue   { border-left-color:var(--btn-blue); }
-  .kpi-card.kc-green  { border-left-color:var(--today); }
-  .kpi-label { font-size:11px; color:var(--dk-text3); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
-  .kpi-value { font-size:24px; font-weight:800; color:var(--dk-text); margin-top:4px; }
-  .kpi-sub { font-size:11.5px; color:var(--dk-text3); margin-top:2px; }
-
-  /* ---- charts ---- */
-  .chart-row { display:grid; grid-template-columns:3fr 2fr; gap:14px; margin-bottom:16px; }
-  .chart-card { background:#fff; border:1px solid var(--dk-border); border-radius:12px; padding:14px 16px; }
-  .chart-card-title { font-size:13px; font-weight:700; color:var(--dk-text); margin-bottom:10px; }
-  .donut-row { display:flex; align-items:center; gap:16px; }
-  .donut-canvas-wrap { flex:0 0 auto; }
-  .donut-legend { display:flex; flex-direction:column; gap:6px; flex:1; }
-  .donut-legend-row { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dk-text2); }
-  .donut-legend-sw { width:11px; height:11px; border-radius:3px; flex:0 0 auto; }
-  .donut-legend-val { margin-left:auto; font-weight:700; color:var(--dk-text); }
 
   /* ---- dashboard tables (generic) ---- */
   .dash-table-wrap { background:#fff; border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
@@ -170,9 +167,6 @@
     font-weight:800; color:var(--dk-text); background:var(--dk-hover); border-top:2px solid var(--dk-accent-d);
   }
   .toggle-ico { display:inline-block; width:14px; }
-
-  /* ---- collapsible chart-row toggle — By Project / By OS only (KPI cards stay visible) ---- */
-  .summary-toggle-row { display:flex; justify-content:flex-end; margin-bottom:8px; }
 
   /* ---- By OS pivot: frozen left columns ----
      Fixed widths on the 3 frozen columns (name/role/total) make their `left` offsets below
@@ -282,14 +276,14 @@
 
   .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
 
-  /* ---- loading wrapper: KPI grid + chart-row + viewContainer (task 1) ----
-     visibility:hidden (NOT display:none) on the real content while loading — this keeps
-     the element's normal box/layout size so Chart.js still measures a real canvas width
-     when a chart is (re)built underneath the overlay. display:none would collapse the
-     canvas to 0×0 and produce a mis-sized/invisible chart once revealed. The overlay sits
-     on top via position:absolute so nothing is ever visibly "stale" mid-fetch, and nothing
-     stacks/duplicates because charts.bar/charts.donut are still destroy()'d before every
-     recreate (unchanged, see renderCharts). */
+  /* ---- loading wrapper: viewContainer (task 1) ----
+     visibility:hidden (NOT display:none) on the real content while loading — keeps the
+     element's normal box/layout size so nothing visibly jumps/reflows once the overlay is
+     lifted. The overlay sits on top via position:absolute so nothing is ever visibly
+     "stale" mid-fetch. (2026-09-01, §5.50: this used to ALSO matter for Chart.js, which
+     needed a real non-zero canvas width to size the bar/donut charts correctly even while
+     hidden underneath the overlay — that reason is gone now that the KPI grid + chart row
+     have been removed entirely; visibility:hidden is kept purely for the no-reflow behavior.) */
   .dash-content { position:relative; min-height:80px; }
   .dash-content.is-loading > *:not(.dash-loading-overlay) { visibility:hidden; }
   .dash-loading-overlay {
@@ -359,19 +353,14 @@
       <span class="toolbar-sep">|</span>
       <!-- ปุ่มตัวกรอง (2026-08-14, ตามคำขอพี่กิ๊บ) — เอา pattern เดียวกับ gantt.html/outsource.html
            มาใช้: default หุบ, กดเปิด/ปิดได้, จำสถานะเปิด/ปิดผ่าน panelOpen ใน prefs. Panel เดียวใช้
-           ร่วมกันทุก tab ของ Dashboard (ไม่แยก panel ต่อ tab) — ตัวกรอง "ค้นหา Project" (ช่วงวันที่)
-           มีผลกับทุก tab อยู่แล้วโดยธรรมชาติ (S.overallRange เป็น global state เดียว, ดู
+           ร่วมกันทุก tab ของ Dashboard (ไม่แยก panel ต่อ tab) — ตัวกรอง "ค้นหา Project" (เดือน,
+           §5.50) มีผลกับทุก tab อยู่แล้วโดยธรรมชาติ (S.overallRange เป็น global state เดียว, ดู
            projectMatchesRange()), ส่วน "Type/Domain" เกี่ยวกับ By Lead tab เท่านั้นจึงยังซ่อน/โชว์
            ตามแท็บที่เลือกอยู่ (switchDashView()) แม้ panel ใหญ่จะเปิดอยู่ก็ตาม -->
       <button class="btn" id="toggleFilterBtn">🔎 ตัวกรอง</button>
-      <!-- 2026-08-14 (ตามคำขอพี่กิ๊บ): ย้าย Show/Hide chart ขึ้นมาอยู่บรรทัดเดียวกับ subtab —
-           เดิมอยู่แถวแยกด้านล่าง (#summaryToggleRow, ตอนนี้เอาออกแล้ว). ปุ่ม + separator ซ่อน/โชว์
-           คู่กันเสมอใน renderSummaryToggle() เพราะมีผลแค่ By Project/By OS เท่านั้น. -->
-      <span class="toolbar-sep hidden" id="chartSep">|</span>
-      <button class="btn hidden" id="summaryToggleBtn">Show chart</button>
       <!-- Download Excel (เดิม 2026-08-14 By Lead tab เท่านั้น — 2026-08-25 ตามคำขอพี่กิ๊บ: ให้มี
            ปุ่มนี้ทุกแท็บของ Dashboard แล้ว) — export สิ่งที่กำลังแสดงอยู่จริงบนแท็บที่เปิดอยู่ตอนนี้
-           (ตัวกรอง Project/UAT Lead/App/Start-End เสมอ, บวก Type/Domain เฉพาะ By Lead) ออกเป็น
+           (ตัวกรอง Project/UAT Lead/App/เดือน เสมอ, บวก Type/Domain เฉพาะ By Lead) ออกเป็น
            .xlsx — ปุ่มเดียวกันทุกแท็บ, คลิกแล้วไป downloadDashboardExcel() ซึ่งเลือกฟังก์ชัน export
            ตาม S.dashView (downloadProjectExcel/downloadOsExcel/downloadLeadExcel/
            downloadSignoffExcel) โชว์ตลอด ไม่ต้องซ่อน/โชว์ตามแท็บอีกต่อไป (ต่างจาก leadRoleFld/
@@ -385,9 +374,9 @@
            เอา pattern เดียวกับ gantt.html/outsource.html (.fld + .ms checkbox-multiselect,
            makeMultiSelect()) มาใช้ ให้หน้าตาตัวกรองสอดคล้องกันทั้ง 3 หน้า — เดิม Dashboard มีแค่
            "ค้นหา Project:" (ช่วงวันที่) อย่างเดียว ไม่มีตัวกรองรายชื่อ Project/Lead/App เลย. การ
-           เลือกที่นี่กรอง "project ไหนถูกนับ" ร่วมกับช่วงวันที่ (ดู matchProjectDiscovery()) มีผล
-           กับทุก tab ของ Dashboard ทันทีที่เปลี่ยน (apply-on-change เหมือน Gantt/Outsource) ต่าง
-           จาก Start/End ที่ยังต้องกด "ค้นหา" -->
+           เลือกที่นี่กรอง "project ไหนถูกนับ" ร่วมกับเดือนที่เลือก (ดู matchProjectDiscovery())
+           มีผลกับทุก tab ของ Dashboard ทันทีที่เปลี่ยน (apply-on-change) — 2026-09-01 (§5.50):
+           เดือน (เดิม Start/End) ก็ apply ทันทีเหมือนกันแล้ว ไม่มีฟิลด์ไหนต้องกด "ค้นหา" รออีก -->
       <div class="fld">
         <label>Project</label>
         <div class="ms" id="msProject"></div>
@@ -435,74 +424,39 @@
         </select>
       </div>
 
-      <!-- Custom Start–End range ("ค้นหา Project") — decides WHICH projects show up in every
-           tab (phase dates OR signoff_date overlap this window — see projectMatchesRange()).
-           It no longer restricts the MD numbers themselves: once a project matches, its MD is
-           its full/all-time Effective (Booked − Leave) total, not clipped to this range — see
+      <!-- เดือน ("ค้นหา Project") — decides WHICH projects show up in every tab (phase dates
+           OR signoff_date overlap this month — see projectMatchesRange()). It does NOT
+           restrict the MD numbers themselves: once a project matches, its MD is its
+           full/all-time Effective (Booked − Leave) total, not clipped to this month — see
            recomputeAggregates(). Shared across every tab (By Project/By OS/By Lead/Signoff)
-           since S.overallRange is a single global filter. Still requires "ค้นหา" (Apply) —
-           unlike Project/UAT Lead/App/Type/Domain above which apply immediately on change. -->
+           since S.overallRange is a single global filter, derived here from S.y/S.m (see
+           overallRangeFromYM()). 2026-09-01 (§5.50, ยืนยันโดย Gibb): เปลี่ยนจาก Start/End
+           (input[type=date] ×2 + ปุ่ม "ค้นหา") เป็น month picker ช่องเดียว mirror
+           calendar.html's ‹/เดือน/› — เปลี่ยนเดือนแล้ว apply ทันที ไม่ต้องกดปุ่มรออีกต่อไป
+           (ตรงข้ามกับ Project/UAT Lead/App ด้านบนที่ apply-on-change อยู่แล้วเหมือนเดิม). -->
       <div class="fld">
-        <label>Start Date</label>
-        <input type="date" id="ovStart">
-      </div>
-      <div class="fld">
-        <label>End Date</label>
-        <input type="date" id="ovEnd">
+        <label>เดือน</label>
+        <div class="dash-month-picker" id="dashMonthPicker">
+          <button type="button" class="btn dash-nav-btn" id="dashPrevBtn">‹</button>
+          <button type="button" class="btn dash-month-btn" id="dashMonthBtn">—</button>
+          <button type="button" class="btn dash-nav-btn" id="dashNextBtn">›</button>
+          <div class="dash-month-panel hidden" id="dashMonthPanel"></div>
+        </div>
       </div>
       <button class="btn" id="clearFilterBtn">ล้าง</button>
-      <button class="btn accent" id="ovApplyBtn">ค้นหา</button>
     </div>
 
-    <!-- ===== Loading wrapper: KPI + charts + view table ============================
+    <!-- ===== Loading wrapper: view table ============================
          Starts with "is-loading" already in the markup so the very first paint (before
          any data/JS has run) shows the overlay, not a flash of empty/zero content. JS
          toggles this class off only once a period's data has been fetched AND fully
-         rendered (see showDashLoading/hideDashLoading). Uses visibility:hidden (not
-         display:none) on the real content so Chart.js still sees a real canvas size
-         while charts are (re)built underneath the overlay — see CSS comment. ===== -->
+         rendered (see showDashLoading/hideDashLoading). visibility:hidden (not display:none)
+         on the real content — see CSS comment. 2026-09-01 (§5.50): the KPI grid (4 cards)
+         and chart row (MD-by-App bar + Phase donut, Chart.js) that used to live in here have
+         been removed entirely (ยืนยันโดย Gibb — "ตัด KPI ทิ้งด้วย เหลือแค่ตาราง") — this
+         wrapper now only covers #viewContainer. ===== -->
     <div class="dash-content is-loading" id="dashContent">
       <div class="dash-loading-overlay" id="dashLoadingOverlay"><span class="dash-spinner"></span>กำลังโหลดข้อมูล...</div>
-
-      <!-- ===== KPI (computed over ALL projects matched by "ค้นหา Project", full/all-time
-           MD per matched project — hidden on By Lead + Signoff) ===== -->
-      <div class="kpi-grid" id="kpiGrid">
-        <div class="kpi-card kc-teal">
-          <div class="kpi-label">Total MD</div>
-          <div class="kpi-value" id="kpiTotalMD">0</div>
-          <div class="kpi-sub">Effective MD = Booked − Leave</div>
-        </div>
-        <div class="kpi-card kc-purple">
-          <div class="kpi-label">Total Booked OS</div>
-          <div class="kpi-value" id="kpiBookedOs">0</div>
-          <div class="kpi-sub">คนที่ถูกจองใน Project ที่ค้นพบ</div>
-        </div>
-        <div class="kpi-card kc-blue">
-          <div class="kpi-label">Active Projects</div>
-          <div class="kpi-value" id="kpiActiveProj">0</div>
-          <div class="kpi-sub">Project ที่ยัง Active</div>
-        </div>
-        <div class="kpi-card kc-green">
-          <div class="kpi-label">Working Days</div>
-          <div class="kpi-value" id="kpiWorkDays">0</div>
-          <div class="kpi-sub">ไม่รวมเสาร์-อาทิตย์ + วันหยุด</div>
-        </div>
-      </div>
-
-      <!-- ===== Charts: By Project / By OS ===== -->
-      <div class="chart-row hidden" id="chartRow">
-        <div class="chart-card">
-          <div class="chart-card-title">MD by App (แยกตาม Phase)</div>
-          <canvas id="dashBarChart" height="90"></canvas>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Phase Breakdown</div>
-          <div class="donut-row">
-            <div class="donut-canvas-wrap"><canvas id="dashDonutChart" width="170" height="170"></canvas></div>
-            <div class="donut-legend" id="donutLegend"></div>
-          </div>
-        </div>
-      </div>
 
       <!-- ===== View content (shared — monthly & overall) ===== -->
       <div id="viewContainer"></div>
@@ -520,7 +474,7 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin,
-  initNotificationBell
+  initNotificationBell, fetchAllRows, monthLabel, MONTH_ABBR
 } from './common.js';
 // SheetJS — ใช้กับปุ่ม "Download Excel" ทุกแท็บ (เดิม 2026-08-14 เฉพาะ By Lead tab, 2026-08-25 ขยาย
 // ไปทุกแท็บ) ดู downloadDashboardExcel()
@@ -533,25 +487,19 @@ const PAGE = 'dashboard';
 /* =====================================================================
    CONSTANTS
    ===================================================================== */
+// 2026-09-01 (§5.50): PHASE_META เดิมมี `color` (var(--ph-*)) ต่อเฟส ใช้แค่กับ renderCharts()
+// (bar/donut, ผ่าน cssVar()) — ทั้งกราฟ, cssVar(), และ PHASE_CODES (เรียงเฟสตาม `order` ให้
+// renderCharts()) ถูกลบไปด้วยกันพร้อมกราฟทั้งชุด `name` ยังใช้อยู่ (phaseName() — Excel export
+// ใน buildLeadProjectPhaseRows()) จึงเก็บ PHASE_META ไว้ แค่ตัด `color`/`order`/PHASE_CODES ทิ้ง
 const PHASE_META = {
-  SIT:     { name:'SIT',     color:'var(--ph-sit)',     order:10 },
-  TCPREP:  { name:'TC Prep', color:'var(--ph-tcprep)',  order:20 },
-  UAT:     { name:'UAT',     color:'var(--ph-uat)',     order:30 },
-  REG:     { name:'Reg',     color:'var(--ph-reg)',     order:40 },
-  SUPPORT: { name:'Support', color:'var(--ph-support)', order:50 },
+  SIT:     { name:'SIT' },
+  TCPREP:  { name:'TC Prep' },
+  UAT:     { name:'UAT' },
+  REG:     { name:'Reg' },
+  SUPPORT: { name:'Support' },
 };
-const PHASE_CODES = Object.keys(PHASE_META).sort((a,b)=>PHASE_META[a].order-PHASE_META[b].order);
 function phaseName(c){ return (PHASE_META[c]||{}).name || c; }
-function phaseColorVar(c){ return (PHASE_META[c]||{}).color || '--dk-text3'; }
 function roleRank(code){ return code==='SENIOR'?1 : code==='TESTER'?2 : code==='JUNIOR'?3 : 4; }
-function cssVar(nameWithVar){
-  // nameWithVar looks like 'var(--ph-uat)' — resolve to an actual color string
-  // because Chart.js / canvas fillStyle cannot resolve var() the way CSS can.
-  const m = /var\((--[a-z0-9-]+)\)/i.exec(nameWithVar);
-  const varName = m ? m[1] : nameWithVar;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  return v || '#999';
-}
 /* Effective MD ผ่านการคูณสัดส่วน (computeAgg pass 2) จึงมี float noise ได้
    เช่น 12 → 11.999999999999998 ถ้าเช็ค isInteger ตรงๆ จะโชว์ "12.0" → ปัดทศนิยม 1 ตำแหน่งก่อนเสมอ */
 function fmtMD(v){
@@ -576,8 +524,7 @@ const S = {
 
   // "master" data — loaded once at app start, re-fetched on Refresh
   activeProjects: [],           // v_project_wide rows where is_active = true — used by By Project,
-                                 // By Lead, Signoff (currentProjectsList/currentProjMap, §5.43) and
-                                 // the "Active Projects" KPI count
+                                 // By Lead, Signoff (currentProjectsList/currentProjMap, §5.43)
   activeProjMap: {},            // project_key -> row, active only (see above)
   allProjectsFull: [],           // v_project_wide rows for ALL projects incl. inactive — kept only
                                  // for internal date lookups (projectMatchesRange) that need a
@@ -603,8 +550,15 @@ const S = {
   leadRoleFilter: 'main',       // By Lead tab grouping: 'all' | 'main' | 'sub' | 'exec' (#leadRoleSelect) — 'all' (2026-08-14) stacks all 3 role tables, see renderLeadView()
   leadDomainFilter: 'all',      // By Lead tab email-domain filter: 'all' | 'infinitas' | 'arise' | 'other' (#leadDomainSelect)
   filter: { projects: new Set(), leads: new Set(), apps: new Set() }, // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — ANDed with S.overallRange in matchProjectDiscovery(); empty Set = no restriction (same convention as gantt.html/outsource.html)
-  chartCollapsed: true,         // KPI cards + chart row (MD-by-App bar + Phase donut) hidden? (By Project / By OS only) — default hidden
-  overallRange: { s:'', e:'' }, // selected Start/End — "ค้นหา Project" search window (project match only, NOT an MD date filter)
+  // 2026-09-01 (§5.50): "ค้นหา Project" เปลี่ยนจาก Start/End (2 input[type=date]) เป็น month
+  // picker ช่องเดียว (mirrors calendar.html) — y/m คือ source of truth ใหม่ (1-based month,
+  // คู่กับ calendar.html's S.y/S.m) ส่วน overallRange ยังเป็น {s,e} เหมือนเดิมทุกประการ (derive
+  // จาก y/m ผ่าน overallRangeFromYM() ทุกครั้งที่เดือนเปลี่ยน) — ห้ามลบ/เปลี่ยนรูปร่าง overallRange
+  // เด็ดขาด: projectMatchesRange()/recomputeAggregates()/matchProjectDiscovery() (§5.37/§5.39)
+  // ทั้งหมดอ่าน S.overallRange.s/.e ตรงๆ และฟังก์ชันเหล่านี้ไม่ถูกแตะในงานนี้เลย
+  y: 0,                          // ปีที่เลือก (ตัวเลขเต็ม เช่น 2026)
+  m: 0,                          // เดือนที่เลือก 1-12
+  overallRange: { s:'', e:'' }, // derived จาก y/m — "ค้นหา Project" search window (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
   bookingDaily: [],             // v_booking_daily rows — ALL rows, unrestricted by S.overallRange
   leaveDaily: [],                // v_leave_daily rows — ALL rows, unrestricted by S.overallRange
@@ -616,23 +570,7 @@ const S = {
   signoffSort: { key:'signoffDate', dir:'asc' },
 };
 
-const charts = { bar:null, donut:null };
-
-/* =====================================================================
-   DATE HELPERS
-   ===================================================================== */
-function isWkndDate(ds){
-  const dow = new Date(ds+'T00:00:00').getDay();
-  return dow===0 || dow===6 || (ds in S.holidays);
-}
-function workingDaysInRange(first, last){
-  if (!first || !last) return 0;
-  let d = new Date(first+'T00:00:00');
-  const end = new Date(last+'T00:00:00');
-  let n = 0;
-  while (d <= end) { if (!isWkndDate(d2s(d))) n++; d.setDate(d.getDate()+1); }
-  return n;
-}
+let dashPickerYear = null; // ปีที่กำลังเลือกอยู่ใน month picker panel (#dashMonthPanel, §5.50)
 
 /* =====================================================================
    AUTH (copied pattern from pqaResourceManagement.html / gantt.html)
@@ -669,24 +607,27 @@ function showLogin(){
 
 // Supabase's auth listener + the initial getSession() call can both resolve to the same
 // session on first load (and onAuthStateChange may itself fire more than once) — without
-// this guard that means loadMasterData()/loadPeriod() (and therefore chart create/destroy)
-// running 2-3x in a row, which is exactly what caused the chart-flicker bug (task 6).
+// this guard loadMasterData()/loadPeriod() would run 2-3x in a row (historically this also
+// re-created/destroyed the Chart.js bar/donut each time, causing a visible flicker — task 6;
+// the charts themselves are gone as of 2026-09-01/§5.50, but the double-fetch this guard
+// prevents is still wasteful, so the guard stays).
 let sessionBooted = false;
 
 /* จำ Applied filter/มุมมองตอนสลับหน้า (sessionStorage ผ่าน common.js) — restore ต้องเกิด
-   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange (ค้นหา Project) เป็นตัวกำหนดว่า project ไหนถูกนับใน
-   recomputeAggregates() ค่าที่อ่านจาก storage ไม่น่าไว้ใจ → validate ชนิด/ช่วงก่อนใช้เสมอ
-   เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ (ensureOverallRangeDefaults จะไม่ทับถ้า overallRange
-   ถูก set ไว้แล้วจากตรงนี้) */
+   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange (ค้นหา Project, derive จาก S.y/S.m) เป็นตัวกำหนดว่า
+   project ไหนถูกนับใน recomputeAggregates() ค่าที่อ่านจาก storage ไม่น่าไว้ใจ → validate
+   ชนิด/ช่วงก่อนใช้เสมอ เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ (ensureOverallRangeDefaults() จะ
+   ไม่ทับ S.y/S.m ถ้าถูก set ไว้แล้วจากตรงนี้)
+   2026-09-01 (§5.50): เดิมเก็บ `rangeS`/`rangeE` (yyyy-mm-dd ×2) ตอนนี้เก็บ `y`/`m` แทน (แบบ
+   เดียวกับ calendar.html) — ค่าเก่ารูปแบบ rangeS/rangeE ที่อาจค้างใน sessionStorage จากก่อนวันนี้
+   จะไม่ match เงื่อนไข y/m ด้านล่างเลย (คนละคีย์) จึงตกไปใช้ default เงียบๆ ใน
+   ensureOverallRangeDefaults() โดยอัตโนมัติ ไม่ทำให้หน้าเว็บพัง */
 function restoreDashPrefs(){
   const p = loadPrefs(PAGE);
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 
-  if (typeof p.rangeS === 'string' && typeof p.rangeE === 'string' &&
-      dateRe.test(p.rangeS) && dateRe.test(p.rangeE) && p.rangeS <= p.rangeE) {
-    S.overallRange = { s: p.rangeS, e: p.rangeE };
-    $('ovStart').value = p.rangeS;
-    $('ovEnd').value = p.rangeE;
+  const py = Number(p.y), pm = Number(p.m);
+  if (Number.isInteger(py) && py >= 2000 && py <= 2100 && Number.isInteger(pm) && pm >= 1 && pm <= 12) {
+    S.y = py; S.m = pm;
   }
 
   if (['project', 'os', 'lead', 'signoff'].includes(p.dashView)) {
@@ -713,8 +654,6 @@ function restoreDashPrefs(){
     S.leadDomainFilter = p.leadDomainFilter;
   }
   $('leadDomainSelect').value = S.leadDomainFilter;
-
-  if (typeof p.chartCollapsed === 'boolean') S.chartCollapsed = p.chartCollapsed;
 
   // ปุ่มตัวกรอง (2026-08-14) — เหมือน gantt.html/outsource.html: จำว่า panel เปิดค้างไว้ไหม
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
@@ -757,7 +696,13 @@ async function showApp(session){
   // (logout → login again re-runs this full boot sequence).
   showDashLoading();
   wireToolbar();
+  wireMonthPicker();
   await loadMasterData();
+  // เดือนปัจจุบัน = default ตั้งต้น (mirrors calendar.html's showApp()) — ตั้งก่อนเสมอ แล้วค่าที่
+  // จำไว้ (ถ้ามี y/m ที่สมเหตุสมผลใน sessionStorage) จะมาทับทีหลังผ่านการ restore ด้านล่าง
+  const today = new Date();
+  S.y = today.getFullYear();
+  S.m = today.getMonth() + 1;
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreDashPrefs เสมอ)
   setPrefsOwner(session.user.email);
   restoreDashPrefs();
@@ -765,7 +710,7 @@ async function showApp(session){
   // S.activeProjects/S.leadsAll/S.appList) และหลัง restoreDashPrefs() (ใช้ S.filter.* ที่
   // restore แล้วเป็น selected set เริ่มต้นตอนสร้าง widget)
   buildFilterMultiSelects();
-  await ensureOverallRangeDefaults();
+  ensureOverallRangeDefaults();
   await loadPeriod(true);
 }
 
@@ -773,18 +718,41 @@ async function showApp(session){
    MASTER DATA (loaded once, cached — Refresh reloads it)
    ===================================================================== */
 async function loadMasterData(){
+  // 2026-09-01: project_lead/project_phase paginated with fetchAllRows() — unbounded select()
+  // silently drops rows past Supabase's Max Rows cap (1000, see fetchAllRows() in common.js).
+  // project_phase = projects × up to 7 phases, easily > 1000 as the project list grows; a
+  // truncated result here would silently corrupt projectMatchesRange()'s phase-date matching
+  // (§5.23/§5.37) for whichever projects fell outside the returned page. project_lead similarly
+  // grows with each Main/Sub Lead/Internal Executor row per project (§5.42).
+  // v_project_wide is 1 row per project (group by project_key in sql/05_views.sql) — project
+  // count grows far slower than booking/phase/lead rows (45 at initial migration, still nowhere
+  // near 1000) so it's low-risk, but paginated too since the extra request costs nothing once
+  // the table is under the cap (fetchAllRows stops after the first short page) and it removes
+  // one more silent-truncation failure mode as the project list grows over time.
   const [holidays, projRes, allProjRes, appRes, resRes, leadRes, plRes, phaseRes] = await Promise.all([
     loadHolidays(),
-    supabase.from('v_project_wide')
+    fetchAllRows((from, to) => supabase.from('v_project_wide')
       .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active,project_note')
-      .eq('is_active', true),
-    supabase.from('v_project_wide')
-      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active,project_note'),
+      .eq('is_active', true)
+      .order('project_key', { ascending: true })
+      .range(from, to)),
+    fetchAllRows((from, to) => supabase.from('v_project_wide')
+      .select('project_key,project_name,app,other_app,uat_lead,status,signoff_date,signoff_url,is_active,project_note')
+      .order('project_key', { ascending: true })
+      .range(from, to)),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
     supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,email').eq('is_active', true),
-    supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
-    supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,sort_order'),
+    fetchAllRows((from, to) => supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor')
+      .order('project_key', { ascending: true })
+      .order('pqa_emp_id', { ascending: true })
+      .range(from, to)),   // PK (project_key, pqa_emp_id) — sql/01_schema.sql
+    fetchAllRows((from, to) => supabase.from('project_phase')
+      .select('project_key,phase_code,phase_label,start_date,end_date,sort_order')
+      .order('project_key', { ascending: true })
+      .order('phase_code', { ascending: true })
+      .order('phase_label', { ascending: true })
+      .range(from, to)),   // unique index (project_key, phase_code, coalesce(phase_label,'')) — sql/01_schema.sql
   ]);
 
   S.holidays = holidays || {};
@@ -857,9 +825,28 @@ async function loadPeriod(force){
   showDashLoading();
   try {
     if (force || !S.bookingLeaveLoaded) {
+      // 2026-09-01 🔴 root cause of "By OS shows 0 for most people": these two queries have no
+      // .gte/.lte at all (intentional, §5.37 — MD must be full-Phase-span, not clipped to the
+      // search box) and v_booking_daily explodes each booking row into one row per working day
+      // (sql/05_views.sql §3) — strictly bigger than the `booking` table, which itself already
+      // passed 1000 active rows by 2026-08-25 (see fetchAllRows() comment in common.js, and the
+      // gantt.html fix that followed it). Being unbounded, the old `.select()` here silently hit
+      // Supabase's default "Max Rows" cap (1000) and returned only the first page — most
+      // resources' MD then computed from a truncated slice of their real bookings, landing at 0
+      // whenever none of their rows happened to survive into that first page. Paginate with
+      // fetchAllRows() exactly like gantt.html's booking queries — do NOT add .gte/.lte back in,
+      // that would undo §5.37's full-span-MD invariant.
       const [bkRes, lvRes] = await Promise.all([
-        supabase.from('v_booking_daily').select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day'),
-        supabase.from('v_leave_daily').select('leave_id,resource_id,leave_date,leave_slot,leave_md'),
+        fetchAllRows((from, to) => supabase.from('v_booking_daily')
+          .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
+          .order('booking_id', { ascending: true })
+          .order('work_date', { ascending: true })
+          .range(from, to)),   // unique pair (booking_id, work_date) — sql/05_views.sql §3
+        fetchAllRows((from, to) => supabase.from('v_leave_daily')
+          .select('leave_id,resource_id,leave_date,leave_slot,leave_md')
+          .order('leave_id', { ascending: true })
+          .order('leave_date', { ascending: true })
+          .range(from, to)),   // unique pair (leave_id, leave_date)
       ]);
       if (bkRes.error) throw bkRes.error;
       if (lvRes.error) throw lvRes.error;
@@ -869,8 +856,9 @@ async function loadPeriod(force){
       S.bookingLeaveLoaded = true;
     }
     recomputeAggregates();
-    // render FIRST (while still hidden behind the overlay — charts get a real canvas
-    // size because the content uses visibility:hidden, not display:none), THEN reveal.
+    // render FIRST (while still hidden behind the overlay — the content uses
+    // visibility:hidden, not display:none, so the table keeps its real box size and
+    // doesn't reflow/jump when the overlay lifts), THEN reveal.
     renderAll();
     hideDashLoading();
   } catch (err) {
@@ -1082,16 +1070,19 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
 /* =====================================================================
    RENDER — ORCHESTRATION
    ===================================================================== */
+// 2026-09-01 (§5.50, ยืนยันโดย Gibb "ตัด KPI ทิ้งด้วย เหลือแค่ตาราง"): renderSummaryToggle()/
+// renderKPI()/renderCharts() (KPI grid 4 กล่อง + Chart.js bar/donut ของ By Project/By OS) ถูกลบ
+// ทิ้งทั้งชุด — renderAll() ตอนนี้เหลือแค่ renderView() ต้นเหตุที่คำนวณตัวเลข (computeAgg()'s
+// kpiEffectiveMD/bookedOsCount) ยังอยู่ครบใน computeAgg() (ห้ามลบ — เป็น invariant หลักของ
+// §5.20/§5.39 ที่มี test คุมอยู่: sum(byProject) === sum(phaseTotals) === kpiEffectiveMD) แค่ไม่มี
+// UI มาแสดงผลตัวเลขนั้นแล้วเท่านั้น
 function renderAll(){
-  renderSummaryToggle();
-  renderKPI();
-  renderCharts();
   renderView();
 }
 
-/* Show/hide the loading overlay that covers KPI grid + chart row + view table (task 1).
-   visibility:hidden keeps real box sizes so Chart.js sizes canvases correctly even while
-   hidden — see the .dash-content CSS comment above. */
+/* Show/hide the loading overlay that covers the view table. visibility:hidden keeps real
+   box sizes so nothing jumps once the overlay is lifted — see the .dash-content CSS comment
+   above (2026-09-01: no longer needs to accommodate Chart.js canvas sizing — charts removed). */
 function showDashLoading(){
   const el = $('dashContent');
   if (el) el.classList.add('is-loading');
@@ -1101,90 +1092,14 @@ function hideDashLoading(){
   if (el) el.classList.remove('is-loading');
 }
 
-/* =====================================================================
-   CHART-ROW COLLAPSE TOGGLE — By Project / By OS only (hides KPI cards + charts)
-   ===================================================================== */
-function renderSummaryToggle(){
-  const relevant = S.dashView === 'project' || S.dashView === 'os';
-  // 2026-08-14: ปุ่ม + separator ย้ายขึ้นไปอยู่ใน dash-toolbar-row แล้ว (เดิม toggle #summaryToggleRow
-  // ทั้งแถว) — toggle ทั้งสอง element คู่กันเพื่อไม่ให้เหลือ "|" ค้างเดี่ยวๆ ตอนไม่ relevant
-  $('summaryToggleBtn').classList.toggle('hidden', !relevant);
-  $('chartSep').classList.toggle('hidden', !relevant);
-  if (!relevant) return;
-  $('summaryToggleBtn').textContent = S.chartCollapsed ? 'Show chart' : 'Hide chart';
-}
-
-/* =====================================================================
-   KPI
-   ===================================================================== */
-function renderKPI(){
-  const collapsedHere = (S.dashView === 'project' || S.dashView === 'os') && S.chartCollapsed;
-  const hide = S.dashView === 'lead' || S.dashView === 'signoff' || collapsedHere;
-  $('kpiGrid').classList.toggle('hidden', hide);
-  if (hide) return;
-  const agg = S.periodAgg || { kpiEffectiveMD:0, bookedOsCount:0 };
-  const { first, last } = currentRange();
-  $('kpiTotalMD').textContent = fmtMD(agg.kpiEffectiveMD);
-  $('kpiBookedOs').textContent = agg.bookedOsCount;
-  $('kpiActiveProj').textContent = S.activeProjects.length;
-  $('kpiWorkDays').textContent = workingDaysInRange(first, last);
-}
-
-/* =====================================================================
-   CHARTS (By Project + By OS views only)
-   ===================================================================== */
+/* apps ที่ปรากฏใน byAppPhase/byOsApp ฯลฯ เรียงตาม S.appOrder (master `app` table's sort_order)
+   แล้ว fallback ตัวอักษร — ใช้ร่วมกันทั้ง By OS (renderOsView/downloadOsExcel), By Lead
+   (computeLeadCoverage/renderLeadView) — ไม่ใช่ chart-only helper */
 function sortedApps(appKeys){
   return appKeys.slice().sort((a,b) => {
     const oa = S.appOrder[a] ?? 999, ob = S.appOrder[b] ?? 999;
     return (oa-ob) || a.localeCompare(b);
   });
-}
-
-function renderCharts(){
-  const show = (S.dashView === 'project' || S.dashView === 'os') && !S.chartCollapsed;
-  $('chartRow').classList.toggle('hidden', !show);
-  if (!show) return;
-
-  const agg = S.periodAgg || { byAppPhase:{}, phaseTotals:{} };
-  const apps = sortedApps(Object.keys(agg.byAppPhase));
-
-  // ---- stacked bar: MD by App, stacked by phase ----
-  const barDatasets = PHASE_CODES.map(code => ({
-    label: phaseName(code),
-    backgroundColor: cssVar(phaseColorVar(code)),
-    data: apps.map(app => Math.round((agg.byAppPhase[app]?.[code] || 0) * 100) / 100),
-  }));
-
-  if (charts.bar) charts.bar.destroy();
-  charts.bar = new Chart($('dashBarChart').getContext('2d'), {
-    type: 'bar',
-    data: { labels: apps, datasets: barDatasets },
-    options: {
-      responsive: true,
-      plugins: { legend: { position:'bottom', labels:{ font:{ size:11 } } } },
-      scales: { x: { stacked:true, ticks:{ font:{ size:10 } } }, y: { stacked:true, beginAtZero:true } }
-    }
-  });
-
-  // ---- donut: phase breakdown ----
-  const phaseLabels = PHASE_CODES.filter(c => agg.phaseTotals[c]);
-  const phaseValues = phaseLabels.map(c => Math.round((agg.phaseTotals[c]||0)*100)/100);
-  const phaseColors = phaseLabels.map(c => cssVar(phaseColorVar(c)));
-
-  if (charts.donut) charts.donut.destroy();
-  charts.donut = new Chart($('dashDonutChart').getContext('2d'), {
-    type: 'doughnut',
-    data: { labels: phaseLabels.map(phaseName), datasets: [{ data: phaseValues, backgroundColor: phaseColors }] },
-    options: { responsive:false, plugins: { legend: { display:false } }, cutout:'62%' }
-  });
-
-  const total = phaseValues.reduce((a,b)=>a+b, 0);
-  $('donutLegend').innerHTML = phaseLabels.length ? phaseLabels.map((c,i) => `
-    <div class="donut-legend-row">
-      <span class="donut-legend-sw" style="background:${phaseColors[i]}"></span>
-      <span>${esc(phaseName(c))}</span>
-      <span class="donut-legend-val">${fmtMD(phaseValues[i])} MD${total?` (${Math.round(phaseValues[i]/total*100)}%)`:''}</span>
-    </div>`).join('') : '<div class="donut-legend-row muted">ไม่มีข้อมูล</div>';
 }
 
 /* =====================================================================
@@ -1794,8 +1709,10 @@ function buildDownloadFilterAoa(includeLeadFields){
     rows.push(['Type', S.leadRoleFilter === 'all' ? 'All' : LEAD_ROLE_META[roleKey].title]);
     rows.push(['Domain', LEAD_DOMAIN_LABELS[S.leadDomainFilter || 'all'] || 'All']);
   }
-  rows.push(['Start Date', S.overallRange.s ? dDisp(S.overallRange.s) : '']);
-  rows.push(['End Date', S.overallRange.e ? dDisp(S.overallRange.e) : '']);
+  // 2026-09-01 (§5.50): Start Date/End Date (2 แถว) → เดือน (1 แถว) ให้ตรงกับตัวกรอง month
+  // picker บนจอ — ค่าเป็น monthLabel() (Mmm-yyyy, §4.5) ไม่ใช่ dDisp() ของวันแรก/วันสุดท้ายอีก
+  // ต่อไป (S.overallRange.s ยังมีอยู่ใช้แปลงกลับเป็น 'yyyy-MM' ให้ monthLabel() พอ)
+  rows.push(['เดือน', S.overallRange.s ? monthLabel(S.overallRange.s) : '']);
   return rows;
 }
 
@@ -2158,19 +2075,104 @@ function renderSignoffView(container){
 }
 
 /* =====================================================================
-   PERIOD DEFAULTS (Start–End range)
-   ===================================================================== */
-/** Populate S.overallRange with sane defaults on first load.
- *  Dashboard-specific default (differs from the §4.2 gantt/outsource standard):
- *  Start = first day of this month, End = last day of this month. */
-async function ensureOverallRangeDefaults(){
-  if (S.overallRange.s && S.overallRange.e) return;
-  const now = new Date();
-  const monthStart = d2s(new Date(now.getFullYear(), now.getMonth(), 1));
-  const monthEnd = d2s(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-  S.overallRange = { s: monthStart, e: monthEnd };
-  $('ovStart').value = S.overallRange.s;
-  $('ovEnd').value = S.overallRange.e;
+   PERIOD DEFAULTS + MONTH PICKER (§5.50, 2026-09-01)
+   "ค้นหา Project" เดิมเป็น Start/End (2 input[type=date]) — เปลี่ยนเป็น month picker ช่องเดียว
+   (mirrors calendar.html's ‹/เดือน/› + picker panel ปี+เดือน) ตัวเลือกเดือนเก็บเป็น S.y/S.m
+   (เหมือน calendar.html) แล้ว derive S.overallRange = {s,e} จากเดือนนั้นเสมอผ่าน
+   overallRangeFromYM() — ทุกอย่างใต้ S.overallRange (projectMatchesRange()/
+   recomputeAggregates()/matchProjectDiscovery(), §5.37/§5.39) อ่าน .s/.e เหมือนเดิมทุกประการ
+   ไม่ถูกแตะเลยในงานนี้ ===================================================================== */
+/** yyyy-mm-dd first/last day of the given (y, 1-based m) month — the ONLY place S.overallRange
+ *  is derived from S.y/S.m. Kept as a pure helper (no S.* reads) so it's easy to unit-test. */
+function overallRangeFromYM(y, m){
+  return { s: d2s(new Date(y, m - 1, 1)), e: d2s(new Date(y, m, 0)) };
+}
+/** Refresh the month-picker button label to "Mmm-yyyy" (§4.5) via common.js's monthLabel(). */
+function updateMonthBtnLabel(){
+  $('dashMonthBtn').textContent = monthLabel(`${S.y}-${String(S.m).padStart(2, '0')}`);
+}
+/** Populate S.y/S.m (and the derived S.overallRange) with sane defaults on first load —
+ *  Dashboard-specific default (unchanged from before §5.50, differs from the §4.2
+ *  gantt/outsource standard): current month. Only fills in S.y/S.m when showApp()'s own
+ *  "today" default + restoreDashPrefs() didn't already leave a valid month set. */
+function ensureOverallRangeDefaults(){
+  if (!S.y || !S.m) {
+    const now = new Date();
+    S.y = now.getFullYear();
+    S.m = now.getMonth() + 1;
+  }
+  S.overallRange = overallRangeFromYM(S.y, S.m);
+  updateMonthBtnLabel();
+}
+/** Change the selected month by `delta` (±1) and apply it immediately (no "ค้นหา" button
+ *  anymore, §5.50) — mirrors calendar.html's changeMonth(), including year rollover at the
+ *  Jan/Dec boundary. */
+function changeMonth(delta){
+  let m = S.m + delta, y = S.y;
+  if (m < 1) { m = 12; y -= 1; }
+  else if (m > 12) { m = 1; y += 1; }
+  applyMonth(y, m);
+}
+/** Commit a new (y, m) selection: update state + button label + prefs, then recompute/render
+ *  from already-cached booking/leave data (loadPeriod(false) — no network round-trip, same
+ *  as the old ovApplyBtn handler, §5.37). */
+function applyMonth(y, m){
+  S.y = y; S.m = m;
+  S.overallRange = overallRangeFromYM(y, m);
+  updateMonthBtnLabel();
+  savePrefs(PAGE, { y: S.y, m: S.m });
+  loadPeriod(false);
+}
+/** Year+month picker panel (#dashMonthPanel) — mirrors calendar.html's renderMonthPanel()/
+ *  calPickerYear()/calPickMonth() exactly, using MONTH_ABBR from common.js for the grid. */
+function renderDashMonthPanel(){
+  $('dashMonthPanel').innerHTML = `
+    <div class="dash-picker-year">
+      <button type="button" class="btn sm" onclick="dashPickerYearNav(-1)">‹</button>
+      <span>${dashPickerYear}</span>
+      <button type="button" class="btn sm" onclick="dashPickerYearNav(1)">›</button>
+    </div>
+    <div class="dash-picker-grid">
+      ${MONTH_ABBR.map((nm, i) => {
+        const mm = i + 1;
+        const active = dashPickerYear === S.y && mm === S.m;
+        return `<button type="button" class="dash-picker-month${active ? ' active' : ''}" onclick="dashPickMonth(${dashPickerYear},${mm})">${nm}</button>`;
+      }).join('')}
+    </div>`;
+}
+window.dashPickerYearNav = function(delta){
+  dashPickerYear += delta;
+  renderDashMonthPanel();
+};
+window.dashPickMonth = function(y, m){
+  $('dashMonthPanel').classList.add('hidden');
+  applyMonth(y, m);
+};
+/** Wire the ‹ / เดือน / › controls + the year/month picker panel — called once from showApp()
+ *  (mirrors wireToolbar()'s one-time-wiring pattern; DOM elements are static markup, not
+ *  dynamically (re)created, so no need to re-wire on every render). */
+function wireMonthPicker(){
+  $('dashPrevBtn').addEventListener('click', () => changeMonth(-1));
+  $('dashNextBtn').addEventListener('click', () => changeMonth(1));
+  $('dashMonthBtn').addEventListener('click', e => {
+    e.stopPropagation();
+    const panel = $('dashMonthPanel');
+    if (panel.classList.contains('hidden')) {
+      dashPickerYear = S.y;
+      renderDashMonthPanel();
+      panel.classList.remove('hidden');
+    } else {
+      panel.classList.add('hidden');
+    }
+  });
+  $('dashMonthPanel').addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', e => {
+    const wrap = $('dashMonthPicker');
+    if (wrap && !wrap.contains(e.target)) $('dashMonthPanel').classList.add('hidden');
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') $('dashMonthPanel').classList.add('hidden');
+  });
 }
 
 /* =====================================================================
@@ -2309,13 +2311,6 @@ function wireToolbar(){
     $('filterPanel').classList.toggle('hidden');
     savePrefs(PAGE, { panelOpen: !$('filterPanel').classList.contains('hidden') });
   });
-  $('summaryToggleBtn').addEventListener('click', () => {
-    S.chartCollapsed = !S.chartCollapsed;
-    savePrefs(PAGE, { chartCollapsed: S.chartCollapsed });
-    showDashLoading();
-    renderAll();
-    hideDashLoading();
-  });
   $('leadRoleSelect').addEventListener('change', () => {
     S.leadRoleFilter = $('leadRoleSelect').value;
     savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter });
@@ -2331,8 +2326,10 @@ function wireToolbar(){
   });
   $('downloadExcelBtn').addEventListener('click', downloadDashboardExcel);
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
-  // Lead/App/Type/Domain/Start-End) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
-  // panel (ต่างจาก ovApplyBtn) เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
+  // Lead/App/Type/Domain/เดือน) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
+  // panel เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
+  // 2026-09-01 (§5.50): ปุ่ม "ค้นหา" (#ovApplyBtn) ถูกลบทิ้งไปพร้อม Start/End — เปลี่ยนเดือนใน
+  // month picker แล้ว apply ทันทีผ่าน applyMonth() (ดู wireMonthPicker()) ไม่มีอะไรให้กดรออีก
   $('clearFilterBtn').addEventListener('click', () => {
     S.filter.projects.clear();
     S.filter.leads.clear();
@@ -2346,30 +2343,10 @@ function wireToolbar(){
     $('leadDomainSelect').value = S.leadDomainFilter;
     savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter, leadDomainFilter: S.leadDomainFilter });
 
+    // เดือนกลับเป็นเดือนปัจจุบัน — applyMonth() ครอบทั้ง state/label/prefs/recompute+render ให้
+    // (force=false ภายใน ให้ loadPeriod แค่ recompute+render จาก cache เหมือนเดิม)
     const now = new Date();
-    const monthStart = d2s(new Date(now.getFullYear(), now.getMonth(), 1));
-    const monthEnd = d2s(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-    S.overallRange = { s: monthStart, e: monthEnd };
-    $('ovStart').value = monthStart;
-    $('ovEnd').value = monthEnd;
-    savePrefs(PAGE, { rangeS: monthStart, rangeE: monthEnd });
-
-    // force=false ให้ loadPeriod แค่ recompute+render จาก cache (เหมือน ovApplyBtn) — ครอบคลุม
-    // ทั้ง Project/Lead/App filter (ผ่าน recomputeAggregates()) และ Start/End range ในคราวเดียว
-    loadPeriod(false);
-  });
-  $('ovApplyBtn').addEventListener('click', () => {
-    const s = $('ovStart').value, e = $('ovEnd').value;
-    if (!s || !e) { toast('กรุณาระบุ Start/End', true); return; }
-    if (s > e) { toast('End ต้องไม่ก่อน Start', true); return; }
-    S.overallRange = { s, e };
-    savePrefs(PAGE, { rangeS: s, rangeE: e });
-    // req เดียวกับ gantt/outsource: auto-collapse panel หลังกดค้นหาสำเร็จ
-    $('filterPanel').classList.add('hidden');
-    savePrefs(PAGE, { panelOpen: false });
-    // range เปลี่ยน = เปลี่ยนแค่ "ค้นหา Project" ไหนถูกนับ — booking/leave data ไม่ต้อง fetch ใหม่
-    // (ไม่ขึ้นกับช่วงวันที่แล้ว) → force=false ให้ loadPeriod แค่ recompute+render จาก cache
-    loadPeriod(false);
+    applyMonth(now.getFullYear(), now.getMonth() + 1);
   });
 }
 
@@ -2383,9 +2360,9 @@ function switchDashView(view){
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก
-  // switching tabs re-renders (and, for the chart, destroy()s + recreates) synchronously
-  // from already-cached S.periodAgg — the overlay toggle here is defensive (keeps the
-  // same "hidden while (re)building, revealed only after" contract as loadPeriod).
+  // switching tabs re-renders synchronously from already-cached S.periodAgg — the overlay
+  // toggle here is defensive (keeps the same "hidden while (re)building, revealed only
+  // after" contract as loadPeriod).
   showDashLoading();
   renderAll();
   hideDashLoading();
