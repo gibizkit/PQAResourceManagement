@@ -273,7 +273,9 @@
     font-weight: 700;
     text-align: left;
     padding: 6px 10px;
-    position: static;
+    position: sticky;
+    top: 72px; /* ใต้ thead 3 แถว (24px x 3) — ให้หัวกลุ่มค้างอยู่ตอนเลื่อนลง */
+    z-index: 10;
   }
 
   /* ============ MODALS (Manage Booking / Leave Plan) ============ */
