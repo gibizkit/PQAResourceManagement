@@ -886,6 +886,12 @@ async function loadPeriod(force){
  * (S.overallRange) — see projectMatchesRange(). Cheap + synchronous (no network), so this runs
  * on every search-Apply click without re-fetching from Supabase.
  *
+ * EXCEPTION (2026-09-01): periodAggActiveOnly (By OS) does NOT use projectMatchesRange()'s
+ * phase-date-span check — only `is_active` + the Project/UAT Lead/App ตัวกรอง selections gate
+ * which projects are eligible; `dateRange` (below) does the real date filtering off each
+ * booking's own work_date instead, matching outsource.html. See the fix comment inside the
+ * function body for why.
+ *
  * `restrict:true` (both calls) makes computeAgg only count booking rows whose project_key is a
  * key of the map we pass — i.e. only projects that matched the "ค้นหา Project" search. Because
  * S.bookingDaily/S.leaveDaily are the FULL unrestricted history (§5.37), the MD each matched
@@ -912,15 +918,37 @@ function recomputeAggregates(){
   const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
   const matchedAll = {};
   Object.keys(S.allProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedAll[pk] = S.allProjMap[pk]; });
-  const matchedActive = {};
-  Object.keys(S.activeProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedActive[pk] = S.activeProjMap[pk]; });
   S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true });
   // 2026-09-01 (รายงานโดย Gibb): By OS ตัด MD ตามช่วงวันที่ที่เลือกด้วย (dateRange) ต่างจาก
   // periodAgg (By Project/By Lead/Signoff) ที่ยังนับ MD เต็มช่วง Phase เหมือน Gantt ตามเดิม —
   // ทำให้ By OS ตรงกับ webapp/outsource.html ที่นับเฉพาะ MD ในช่วงวันที่ที่เลือกเท่านั้น
   // (ยืนยันขอบเขตกับ Gibb แล้ว: เฉพาะแท็บ By OS เท่านั้น ไม่กระทบแท็บอื่น) — ดู
   // [[pqa-outsource-dashboard-active-project-mismatch-2026-09]]
-  S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActive,
+  //
+  // 🔴 FIXED 2026-09-01 (follow-up, same day, same memory topic): the project set feeding
+  // periodAggActiveOnly used to be built with matchProjectDiscovery() — same as periodAgg —
+  // which also requires the project's *planned phase-date span* (projectMatchesRange(), read
+  // from project_phase.start_date/end_date) to overlap the search range. That's the wrong gate
+  // for By OS: a booking's own work_date can fall inside the search range even when the
+  // project's recorded phase-planning dates don't line up with it (phase dates entered loosely,
+  // or never updated to match actual bookings) — the booking then got silently dropped from the
+  // whole aggregate before `dateRange` below ever got a chance to look at its real date.
+  // Reported by Gibb: OS "กุ๊ก : Sirinapa Suraso" had a live Reg-phase booking 10–14/08/2026
+  // (4 MD, visible and counted in Outsource's day grid, 154 total) but showed Total = 0 in
+  // Dashboard > By OS for the same 01–31/08/2026 range. outsource.html never applies a
+  // phase-window check at all — it only requires the project to be active
+  // (`S.projMap[b.project_key]`, see reloadRangeData()) and then filters bookings by their own
+  // start_date/end_date. By OS now matches that exactly: only `is_active` (guaranteed by
+  // iterating S.activeProjMap) plus the explicit Project/UAT Lead/App ตัวกรอง selections
+  // (projectPassesExtraFilters — unrelated to dates) decide which projects' bookings are
+  // eligible; `dateRange` is solely responsible for the actual date restriction, checked
+  // against each booking row's real work_date — same two-condition rule as outsource.html.
+  // periodAgg (By Project/By Lead/Signoff) is untouched — still gated by
+  // matchProjectDiscovery()'s phase-window check, still full-Phase-span MD, still matching
+  // Gantt (§5.39) — this fix is scoped to periodAggActiveOnly/By OS only.
+  const matchedActiveOs = {};
+  Object.keys(S.activeProjMap).forEach(pk => { if (projectPassesExtraFilters(pk)) matchedActiveOs[pk] = S.activeProjMap[pk]; });
+  S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActiveOs,
     { restrict: true, dateRange: { s: rangeS, e: rangeE } });
 }
 
