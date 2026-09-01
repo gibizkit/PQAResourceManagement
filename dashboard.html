@@ -915,7 +915,13 @@ function recomputeAggregates(){
   const matchedActive = {};
   Object.keys(S.activeProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedActive[pk] = S.activeProjMap[pk]; });
   S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true });
-  S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActive, { restrict: true });
+  // 2026-09-01 (รายงานโดย Gibb): By OS ตัด MD ตามช่วงวันที่ที่เลือกด้วย (dateRange) ต่างจาก
+  // periodAgg (By Project/By Lead/Signoff) ที่ยังนับ MD เต็มช่วง Phase เหมือน Gantt ตามเดิม —
+  // ทำให้ By OS ตรงกับ webapp/outsource.html ที่นับเฉพาะ MD ในช่วงวันที่ที่เลือกเท่านั้น
+  // (ยืนยันขอบเขตกับ Gibb แล้ว: เฉพาะแท็บ By OS เท่านั้น ไม่กระทบแท็บอื่น) — ดู
+  // [[pqa-outsource-dashboard-active-project-mismatch-2026-09]]
+  S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActive,
+    { restrict: true, dateRange: { s: rangeS, e: rangeE } });
 }
 
 /**
@@ -959,10 +965,19 @@ function recomputeAggregates(){
  *    ⚠️ `bookingRows`/`leaveRows` ที่ส่งเข้ามาเป็นประวัติ**ทั้งหมดแบบไม่กรองวันที่**แล้ว
  *    (S.bookingDaily/S.leaveDaily ไม่ได้ query ด้วย .gte/.lte ช่วง Period อีกต่อไป, §5.37) ดังนั้น
  *    MD ที่ project หนึ่งได้คือ MD **เต็มช่วงจริง** ของทุก booking ของ project นั้น ไม่ถูกตัดตาม
- *    ช่วงวันที่ที่เลือกในกล่องค้นหา
+ *    ช่วงวันที่ที่เลือกในกล่องค้นหา — **ยกเว้น** เมื่อส่ง `opts.dateRange` มา (ดูหัวข้อถัดไป)
+ *  - `dateRange`: `{s, e}` (yyyy-mm-dd, 2026-09-01 ใหม่) — ถ้าส่งมา จะกรอง pass 2 rows เพิ่มอีกชั้น
+ *    ให้เหลือเฉพาะ work_date อยู่ใน [s, e] เท่านั้น (ตัด MD ตามช่วงวันที่ที่เลือกจริงๆ ไม่ใช่เต็ม
+ *    Phase) — ตอนนี้ใช้เฉพาะกับ `S.periodAggActiveOnly` (By OS) เพื่อให้ตรงกับ
+ *    `webapp/outsource.html` ที่นับ MD แบบตัดตามวันที่เหมือนกัน (รายงานโดย Gibb 2026-09-01 — ดู
+ *    [[pqa-outsource-dashboard-active-project-mismatch-2026-09]]) — `S.periodAgg` (By Project/By
+ *    Lead/Signoff) ไม่ส่ง dateRange จึงยังนับเต็มช่วง Phase เหมือนเดิม (ตรงกับ Gantt's Booked MD
+ *    ตามที่เคยยืนยัน §5.39 — อย่าเผลอเพิ่ม dateRange ให้ periodAgg เพราะจะทำให้ By Project เพี้ยน
+ *    ไปจาก Gantt)
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
+  const dateRange = opts && opts.dateRange; // { s, e } — 2026-09-01, By OS เท่านั้น, ดู recomputeAggregates()
   const byAppPhase = {};       // app -> phase -> md
   const phaseTotals = {};      // phase -> md
   const byProject = {};        // project_key -> md
@@ -1000,7 +1015,13 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   // เท่านั้น (restrict ตอนนี้มีผลแค่ตรงนี้ — ตัดสินว่า project ไหนโผล่ในตาราง ไม่เกี่ยวกับ factor
   // ข้างบนอีกต่อไป) kpiEffectiveMD สะสมที่นี่ด้วย (ย้ายมาจาก pass 1 เดิม) เพื่อรักษา invariant
   // sum(byProject) === kpiEffectiveMD ให้ยังเป็นจริงโดยนิยาม แม้ pass 1 จะไม่ผ่าน restrict แล้ว ----
-  const rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
+  // 2026-09-01: `dateRange` (ตอนนี้ใช้แค่ periodAggActiveOnly/By OS) ตัด pass 2 ให้เหลือเฉพาะแถวที่
+  // work_date ตกในช่วงที่เลือกจริงๆ เพิ่มจาก restrict (project active) — ไม่กระทบ pass 1
+  // (factor หักวันลายังคิดจาก booking ทั้งระบบทุกวันเหมือนเดิม)
+  let rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
+  if (dateRange) {
+    rows = rows.filter(r => r.work_date >= dateRange.s && r.work_date <= dateRange.e);
+  }
   let kpiEffectiveMD = 0;
   rows.forEach(row => {
     const proj = projMap[row.project_key];
