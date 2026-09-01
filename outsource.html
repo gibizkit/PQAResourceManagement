@@ -275,9 +275,16 @@
     padding: 6px 10px;
     position: sticky;
     top: 72px; /* ใต้ thead 3 แถว (24px x 3) — ให้หัวกลุ่มค้างอยู่ตอนเลื่อนลง */
-    left: 0px; /* td เดียว colspan เต็มแถว — ต้อง sticky ซ้ายด้วย ไม่งั้นข้อความเลื่อนหายเวลาลากขวา
-                  แล้วโดนคอลัมน์ Name/Skills ที่ freeze อยู่ทับเป็นช่องว่าง */
     z-index: 10;
+  }
+  /* td เดียว colspan เต็มแถวอยู่แล้ว (กว้างครอบทุกคอลัมน์) พื้นหลังจึงโชว์ทุกตำแหน่งที่เลื่อนแนวนอน
+     โดยไม่ต้อง sticky ซ้ายที่ตัว td เอง (ลองแล้วเจอบั๊ก render เพี้ยนเมื่อ sticky ทั้ง 2 แกนพร้อมกัน
+     บน td ที่กว้างมาก) — ให้ sticky ซ้ายเฉพาะ "ข้อความ" ข้างในแทน ผ่าน span ลูก */
+  tr.grp-sep .grp-label {
+    display: inline-block;
+    position: sticky;
+    left: 10px;
+    z-index: 1;
   }
 
   /* ============ MODALS (Manage Booking / Leave Plan) ============ */
@@ -1210,7 +1217,7 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
     const leadLabel = info.uatLead || '';
     const headParts = [proj.project_name, appLabel, leadLabel, `(${rows.length} คน)`]
       .filter(Boolean).map(esc);
-    html += `<tr class="grp-sep"><td colspan="${colspan}">📁 ${headParts.join(' · ')}</td></tr>`;
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📁 ${headParts.join(' · ')}</span></td></tr>`;
     html += rows.map(x => buildRow(x.p, days, conflictMap, proj.project_key)).join('');
   });
 
@@ -1220,7 +1227,7 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
   const noProjectRows = withMeta.filter(x => !uniqueRes.has(x.p.resourceId)).sort(sortFn);
   if (noProjectRows.length) {
     noProjectRows.forEach(x => uniqueRes.add(x.p.resourceId));
-    html += `<tr class="grp-sep"><td colspan="${colspan}">📂 ยังไม่มี Project (${noProjectRows.length} คน)</td></tr>`;
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ยังไม่มี Project (${noProjectRows.length} คน)</span></td></tr>`;
     html += noProjectRows.map(x => buildRow(x.p, days, conflictMap)).join('');
   }
 
@@ -1269,7 +1276,7 @@ function renderByAttrGroups(withMeta, days, conflictMap, colspan, kind) {
     if (!m || !m.size) return;
     const rows = Array.from(m.values()).sort(sortFn);
     rows.forEach(x => uniqueRes.add(x.p.resourceId));
-    html += `<tr class="grp-sep"><td colspan="${colspan}">${icon} ${esc(sec.label)} (${rows.length} คน)</td></tr>`;
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">${icon} ${esc(sec.label)} (${rows.length} คน)</span></td></tr>`;
     const rowFilter = (b) => {
       const info = S.projMap[b.project_key];
       return !!info && attrKeyOf(kind, info) === sec.key;
@@ -1280,7 +1287,7 @@ function renderByAttrGroups(withMeta, days, conflictMap, colspan, kind) {
   const noneRows = withMeta.filter(x => !uniqueRes.has(x.p.resourceId)).sort(sortFn);
   if (noneRows.length) {
     noneRows.forEach(x => uniqueRes.add(x.p.resourceId));
-    html += `<tr class="grp-sep"><td colspan="${colspan}">📂 ${noneLabel} (${noneRows.length} คน)</td></tr>`;
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ${noneLabel} (${noneRows.length} คน)</span></td></tr>`;
     html += noneRows.map(x => buildRow(x.p, days, conflictMap)).join('');
   }
 
@@ -1399,11 +1406,11 @@ function renderTbody(days) {
     const bookedList = withMeta.filter(x => x.booked).sort(sortFn);
     const vacantList = withMeta.filter(x => !x.booked).sort(sortFn);
     if (bookedList.length) {
-      html += `<tr class="grp-sep"><td colspan="${colspan}">📌 Booked (${bookedList.length} คน)</td></tr>`;
+      html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📌 Booked (${bookedList.length} คน)</span></td></tr>`;
       html += bookedList.map(x => buildRow(x.p, days, conflictMap)).join('');
     }
     if (vacantList.length) {
-      html += `<tr class="grp-sep"><td colspan="${colspan}">⭕ Vacant (${vacantList.length} คน)</td></tr>`;
+      html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">⭕ Vacant (${vacantList.length} คน)</span></td></tr>`;
       html += vacantList.map(x => buildRow(x.p, days, conflictMap)).join('');
     }
   } else {
