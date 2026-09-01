@@ -390,6 +390,21 @@
         <div class="ms" id="msApp"></div>
       </div>
 
+      <!-- 2026-09-02 (ตามคำขอพี่กิ๊บ): By Project tab เท่านั้น — สลับว่า Total MD/แต่ละคอลัมน์
+           Phase ในตาราง By Project เป็น "All MD" (ค่าเดิม, เต็มช่วง Phase ตรงกับ Gantt's Booked
+           MD, ไม่ตัดตามเดือนที่เลือกใน "เดือน" picker — §5.37/§5.39) หรือ "Selected Month" (ตัด
+           MD เฉพาะวันที่ (work_date) ที่อยู่ในเดือนที่เลือกเท่านั้น — สูตร dateRange เดียวกับที่ By
+           OS ใช้อยู่แล้ว §5.48) — เริ่มต้นซ่อนเพราะ default dashView คือ 'project' เท่านั้น (ไม่ใช่
+           lead/os/signoff) ต่างจาก leadRoleFld/leadDomainFld ที่เริ่มต้น hidden เพราะ default view
+           ไม่ใช่ lead — ดู switchDashView()/restoreDashPrefs() สำหรับ toggle. -->
+      <div class="fld" id="projectViewFld">
+        <label>View</label>
+        <select id="projectViewSelect">
+          <option value="all">All MD</option>
+          <option value="month">Selected Month</option>
+        </select>
+      </div>
+
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
            layout per Gibb's request) — only one role's matrix table shows at a time, picked
            here. Hidden on every tab except By Lead (toggled in switchDashView()/
@@ -564,6 +579,11 @@ const S = {
   leaveDaily: [],                // v_leave_daily rows — ALL rows, unrestricted by S.overallRange
   periodAgg: null,                // aggregates over projects matching "ค้นหา Project" (see recomputeAggregates)
   periodAggActiveOnly: null,      // same, but further restricted to is_active=true projects (By OS view)
+  // 2026-09-02: By Project tab เท่านั้น — 'all' (default) = alias ของ S.periodAgg (เต็มช่วง
+  // Phase, ตรงกับ Gantt), 'month' = clip ตาม S.overallRange ด้วย opts.dateRange (สูตรเดียวกับ
+  // periodAggActiveOnly/By OS, §5.48) ดู recomputeAggregates()/buildProjectRows()
+  projectViewMode: 'all',         // 'all' | 'month' — dropdown #projectViewSelect
+  periodAggProjectView: null,     // agg ที่ buildProjectRows() ใช้จริง (= periodAgg เมื่อ 'all', clipped เมื่อ 'month')
 
   // sort state for the sortable subview tables
   projectSort: { key:'totalMD', dir:'desc' },
@@ -637,6 +657,13 @@ function restoreDashPrefs(){
   // Type/Domain — By Lead tab เท่านั้น (2026-08-14 round 4, ตามคำขอพี่กิ๊บ)
   $('leadRoleFld').classList.toggle('hidden', S.dashView !== 'lead');
   $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
+  // View (All MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
+  $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
+
+  if (['all', 'month'].includes(p.projectViewMode)) {
+    S.projectViewMode = p.projectViewMode;
+  }
+  $('projectViewSelect').value = S.projectViewMode;
 
   // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — restore the selected Sets;
   // the actual .ms widgets are (re)built afterward in buildFilterMultiSelects() (called once
@@ -938,6 +965,17 @@ function recomputeAggregates(){
   Object.keys(S.activeProjMap).forEach(pk => { if (projectPassesExtraFilters(pk)) matchedActiveOs[pk] = S.activeProjMap[pk]; });
   S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActiveOs,
     { restrict: true, dateRange: { s: rangeS, e: rangeE } });
+
+  // 2026-09-02 (ตามคำขอพี่กิ๊บ, dropdown #projectViewSelect): By Project tab เท่านั้น —
+  // 'all' (default) ใช้ periodAgg ตัวเดิมเป๊ะ (เต็มช่วง Phase, ตรงกับ Gantt's Booked MD, §5.39)
+  // 'month' clip ด้วย dateRange เหมือน periodAggActiveOnly/By OS (§5.48) แต่ project set ยังเป็น
+  // matchedAll ตัวเดียวกับ periodAgg (matchProjectDiscovery — phase-date/signoff overlap +
+  // ตัวกรอง Project/UAT Lead/App) ไม่ใช่ matchedActiveOs — ต่างจาก By OS ตรงที่ By Project ยังยึด
+  // เกณฑ์ discovery เดิมของ §5.37 อยู่ แค่ MD ที่แสดงถูกตัดตามเดือนเพิ่มอีกชั้นเท่านั้น ไม่กระทบ
+  // S.periodAgg เอง (By Lead/Signoff ยังอ่าน S.periodAgg ตรงๆ เหมือนเดิมทุกประการ)
+  S.periodAggProjectView = S.projectViewMode === 'month'
+    ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, dateRange: { s: rangeS, e: rangeE } })
+    : S.periodAgg;
 }
 
 /**
@@ -1262,7 +1300,9 @@ function projectPeriodDisp(pk){
 }
 
 function buildProjectRows(){
-  const agg = S.periodAgg || { byProject:{}, byProjectPhase:{} };
+  // 2026-09-02: periodAggProjectView (ไม่ใช่ periodAgg ตรงๆ) — 'all' mode มันคือ periodAgg
+  // อยู่แล้ว (recomputeAggregates() alias ให้), 'month' mode คือ periodAgg ที่ clip ตามเดือนแล้ว
+  const agg = S.periodAggProjectView || { byProject:{}, byProjectPhase:{} };
   const subLeads = subLeadMap();
   const executors = executorMap();
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
@@ -1713,6 +1753,11 @@ function buildDownloadFilterAoa(includeLeadFields){
   // picker บนจอ — ค่าเป็น monthLabel() (Mmm-yyyy, §4.5) ไม่ใช่ dDisp() ของวันแรก/วันสุดท้ายอีก
   // ต่อไป (S.overallRange.s ยังมีอยู่ใช้แปลงกลับเป็น 'yyyy-MM' ให้ monthLabel() พอ)
   rows.push(['เดือน', S.overallRange.s ? monthLabel(S.overallRange.s) : '']);
+  // 2026-09-02: View (All MD / Selected Month) — By Project tab เท่านั้น (มีผลแค่แท็บนั้น
+  // เหมือน Type/Domain ที่มีผลแค่ By Lead — ดู #projectViewFld/switchDashView())
+  if (S.dashView === 'project') {
+    rows.push(['View', S.projectViewMode === 'month' ? 'Selected Month' : 'All MD']);
+  }
   return rows;
 }
 
@@ -2324,6 +2369,18 @@ function wireToolbar(){
     savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
     if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
+  // 2026-09-02 (ตามคำขอพี่กิ๊บ): dropdown View (All MD / Selected Month) — By Project tab
+  // เท่านั้น มีผลทันที (ไม่ต้องกดรอ) เหมือน Project/UAT Lead/App multiselect — ต้อง
+  // recomputeAggregates() ใหม่เพราะ S.periodAggProjectView (ที่ buildProjectRows() ใช้) ขึ้นกับ
+  // S.projectViewMode โดยตรง
+  $('projectViewSelect').addEventListener('change', () => {
+    S.projectViewMode = $('projectViewSelect').value;
+    savePrefs(PAGE, { projectViewMode: S.projectViewMode });
+    showDashLoading();
+    recomputeAggregates();
+    renderAll();
+    hideDashLoading();
+  });
   $('downloadExcelBtn').addEventListener('click', downloadDashboardExcel);
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
   // Lead/App/Type/Domain/เดือน) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
@@ -2343,6 +2400,10 @@ function wireToolbar(){
     $('leadDomainSelect').value = S.leadDomainFilter;
     savePrefs(PAGE, { leadRoleFilter: S.leadRoleFilter, leadDomainFilter: S.leadDomainFilter });
 
+    S.projectViewMode = 'all'; // 2026-09-02
+    $('projectViewSelect').value = S.projectViewMode;
+    savePrefs(PAGE, { projectViewMode: S.projectViewMode });
+
     // เดือนกลับเป็นเดือนปัจจุบัน — applyMonth() ครอบทั้ง state/label/prefs/recompute+render ให้
     // (force=false ภายใน ให้ loadPeriod แค่ recompute+render จาก cache เหมือนเดิม)
     const now = new Date();
@@ -2357,6 +2418,7 @@ function switchDashView(view){
   document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view===view));
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
+  $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก
