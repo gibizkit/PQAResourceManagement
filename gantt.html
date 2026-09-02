@@ -1991,6 +1991,13 @@ window.saveProj = async function(){
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
   const uatStartRow = document.querySelector('#phaseRows .phase-row[data-phase="UAT"] .ph-start');
   if (!uatStartRow || !uatStartRow.value){ err.textContent='กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project'; return; }
+  // req: ถ้าใส่ Required OS (resource_count) ของเฟสไหนแล้ว ต้องใส่ Start-End ของเฟสนั้นด้วยเสมอ
+  const missingDatesRow = [...document.querySelectorAll('#phaseRows .phase-row')].find(r => {
+    const resEl = r.querySelector('.ph-res');
+    if (!resEl || resEl.value.trim() === '') return false;
+    return !r.querySelector('.ph-start').value || !r.querySelector('.ph-end').value;
+  });
+  if (missingDatesRow){ err.textContent = `กรุณาระบุ Start และ End ของเฟส ${phaseName(missingDatesRow.dataset.phase)} — มีการกรอก Required OS ไว้แล้ว`; return; }
 
   const btn=$('projSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
 

@@ -1291,6 +1291,17 @@ window.saveProject = async function() {
     err.textContent = 'กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project';
     return;
   }
+  // req: ถ้าใส่ Required OS (resource_count) ของเฟสไหนแล้ว ต้องใส่ Start-End ของเฟสนั้นด้วยเสมอ
+  const missingDatesRow = [...document.querySelectorAll('#pfPhaseRows .phase-row')].find(r => {
+    const resEl = r.querySelector('.ph-res');
+    if (!resEl || resEl.value.trim() === '') return false;
+    return !r.querySelector('.ph-start').value || !r.querySelector('.ph-end').value;
+  });
+  if (missingDatesRow) {
+    const phName = (PROJECT_PHASES.find(p => p.code === missingDatesRow.dataset.phase) || {}).name || missingDatesRow.dataset.phase;
+    err.textContent = `กรุณาระบุ Start และ End ของเฟส ${phName} — มีการกรอก Required OS ไว้แล้ว`;
+    return;
+  }
 
   const btn = $('pfSaveBtn');
   btn.disabled = true;
