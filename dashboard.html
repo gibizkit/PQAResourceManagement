@@ -367,6 +367,17 @@
            leadDomainFld ที่ยังเฉพาะ By Lead). -->
       <span class="toolbar-sep" id="downloadSep">|</span>
       <button class="btn" id="downloadExcelBtn">📥 Download Excel</button>
+      <!-- 2026-09-02 🔴 bug fix (รายงานโดยพี่กิ๊บ): Dashboard fetch master/booking/leave data
+           ครั้งเดียวตอนเปิดหน้า (loadMasterData()/loadPeriod(true) ใน showApp()) แล้วไม่มีทาง
+           สั่งโหลดใหม่ได้เลยนอกจาก reload หน้าทั้งหน้า (F5) — ถ้าแท็บ Dashboard เปิดค้างไว้ก่อนมีการ
+           เพิ่ม/แก้ Project·Phase·Booking ใหม่ (เช่นเพิ่ม booking ที่หน้า Project แล้วสลับมาดูแท็บ
+           Dashboard ที่เปิดค้างอยู่โดยไม่ reload) ตัวเลข MD ของรายการนั้นจะค้างเป็น 0/ไม่ตรงจนกว่าจะ
+           reload — ตรงกับ §4.3 เดิมที่ยืนยันไว้ว่า Dashboard เก็บปุ่ม Refresh ได้ (ปุ่มเดิมหายไปตอน
+           ไหนไม่แน่ใจ — comment ที่บรรทัด "MASTER DATA (loaded once, cached — Refresh reloads it)"
+           ยังอ้างถึงปุ่มนี้อยู่ทั้งที่ไม่มีปุ่มจริงในหน้าเว็บมาสักพักแล้ว) — เพิ่มกลับมาให้โหลด
+           master + booking/leave สดจาก Supabase อีกครั้ง (loadMasterData() + loadPeriod(true)) -->
+      <span class="toolbar-sep">|</span>
+      <button class="btn" id="refreshDashBtn">🔄 Refresh</button>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -2382,6 +2393,14 @@ function wireToolbar(){
     hideDashLoading();
   });
   $('downloadExcelBtn').addEventListener('click', downloadDashboardExcel);
+  // 2026-09-02: ปุ่ม Refresh ใหม่ (ดู comment ที่ markup ของปุ่ม) — โหลด master data
+  // (project/phase/lead/app ฯลฯ) + booking/leave ใหม่จาก Supabase สดๆ แล้ว recompute+render
+  $('refreshDashBtn').addEventListener('click', async () => {
+    showDashLoading();
+    await loadMasterData();
+    buildFilterMultiSelects();
+    await loadPeriod(true);
+  });
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
   // Lead/App/Type/Domain/เดือน) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
   // panel เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
