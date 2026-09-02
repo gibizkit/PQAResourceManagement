@@ -273,6 +273,21 @@
   /* co-edit OS column: let long names wrap instead of stretching the table and
      pushing the Start/End date fields off-screen; the tag drops to its own line */
   .bk-table td.bk-os-cell { white-space:normal; word-break:break-word; max-width:150px; }
+  /* 2026-09-02: co-edit table (#bkCoRows, 6 columns incl. long Project names) squished
+     the OS column down to single-character wrapping because .modal-body has
+     overflow-x:hidden and the table had nowhere to grow — controls became unreachable.
+     Wrap it in its own horizontal-scroll strip (same pattern as .phase-table-scroll in
+     theme.css) and let the OS column size to content instead of forcing a wrap. */
+  .bk-table-scroll {
+    overflow-x:auto; overflow-y:hidden; padding-bottom:4px;
+    scrollbar-width:thin; scrollbar-color:var(--dk-border-s) var(--dk-surface);
+  }
+  .bk-table-scroll::-webkit-scrollbar { height:8px; }
+  .bk-table-scroll::-webkit-scrollbar-track { background:var(--dk-surface); border-radius:4px; }
+  .bk-table-scroll::-webkit-scrollbar-thumb { background:var(--dk-border-s); border-radius:4px; }
+  .bk-table-scroll::-webkit-scrollbar-thumb:hover { background:var(--dk-text3); }
+  .bk-table-scroll .bk-table { min-width:800px; }
+  .bk-table-scroll .bk-table td.bk-os-cell { white-space:nowrap; max-width:none; }
   .bk-table input, .bk-table select { padding:5px 7px; border-radius:6px; border:1px solid var(--dk-border-s); font-size:12.5px; }
   /* co-edit Start/End: native <input type="date"> renders in the browser's own locale
      (often mm/dd/yyyy), which doesn't match the dd/mm/yyyy header above it. Hide the
@@ -549,12 +564,14 @@
       <!-- co-edit area -->
       <div class="area hidden" id="bkCoArea">
         <div class="sub-head">⚠️ Co-Edit — ปรับ Start/End/MD ให้ MD รวมไม่เกิน 1.0 ต่อวัน</div>
-        <table class="bk-table">
-          <thead><tr>
-            <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>Booking</th>
-          </tr></thead>
-          <tbody id="bkCoRows"></tbody>
-        </table>
+        <div class="bk-table-scroll">
+          <table class="bk-table">
+            <thead><tr>
+              <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>Booking</th>
+            </tr></thead>
+            <tbody id="bkCoRows"></tbody>
+          </table>
+        </div>
         <div class="bk-err" id="bkCoErr"></div>
         <div class="row-btns" style="margin-top:8px;justify-content:flex-end">
           <button class="btn sm" onclick="bkCoCancel()">ยกเลิก</button>
@@ -2227,12 +2244,22 @@ window.bkStartAdd = function(){
   };
   bkSearch.oninput = bkApplyResSearch;
   bkSearchX.onclick = () => { bkSearch.value = ''; bkApplyResSearch(); bkSearch.focus(); };
+  setBkDateBounds();
   $('bkStart').value = popCtx.phStart;
   $('bkEnd').value   = popCtx.phEnd;
   $('bkMd').value    = '1';
   $('bkFormErr').textContent='';
   showArea('form');
 };
+
+// req 2026-09-02: ห้ามเลือก Start/End เกินวันที่ของ phase ที่กำลังจอง — จำกัดผ่าน
+// min/max ของ native date picker (กันเผลอเลือกเกิน) และ validate ซ้ำใน bkSaveForm
+// (native min/max เป็นแค่ UI hint ผู้ใช้ยังพิมพ์ค่านอกช่วงเข้าไปตรงๆ ได้)
+function setBkDateBounds(){
+  const s = $('bkStart'), e = $('bkEnd');
+  s.min = e.min = popCtx.phStart || '';
+  s.max = e.max = popCtx.phEnd || '';
+}
 
 window.bkEdit = function(bid){
   const b = S.bookings.find(x => x.booking_id===bid);
@@ -2242,6 +2269,7 @@ window.bkEdit = function(bid){
   $('bkResPickWrap').classList.add('hidden');
   $('bkEditName').classList.remove('hidden');
   $('bkEditNameTxt').textContent = resName(b.resource_id);
+  setBkDateBounds();
   $('bkStart').value = b.start_date;
   $('bkEnd').value   = b.end_date;
   $('bkMd').value    = String(Number(b.md));
@@ -2280,6 +2308,10 @@ window.bkSaveForm = async function(){
   if (!f.resIds.length){ err.textContent='กรุณาเลือก Outsource'; return; }
   if (!f.start || !f.end){ err.textContent='กรุณาระบุ Start/End'; return; }
   if (f.start > f.end){ err.textContent='End ต้องไม่ก่อน Start'; return; }
+  if (popCtx.phStart && popCtx.phEnd && (f.start < popCtx.phStart || f.end > popCtx.phEnd)){
+    err.textContent = `Start/End ต้องอยู่ในช่วงของเฟส (${dDisp(popCtx.phStart)} - ${dDisp(popCtx.phEnd)})`;
+    return;
+  }
   const btn=$('bkSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
 
   try {
@@ -2348,16 +2380,29 @@ function openCoEdit(f){
   $('bkCoErr').textContent='';
   showArea('co');
 }
+// req 2026-09-02: หา Start/End ของ phase ที่ booking แถวนั้นสังกัดอยู่ — ใช้ทั้งจำกัด
+// min/max ของ date picker และ validate ก่อนเซฟ ('edit'/'new' = phase ที่กำลังจอง อยู่ใน
+// popCtx อยู่แล้ว, 'others' = booking เดิมของ resource คนเดียวกันที่คาบเกี่ยว อาจอยู่คนละ
+// project/phase เลยต้องเปิด S.phasesByProject หา — จับคู่แค่ phase_code เพราะ booking
+// ไม่เก็บ phase_label ไว้แยก Other1/Other2 เหมือน project_phase (§5.7), เท่าที่ข้อมูล booking มีให้)
+function coRowPhaseRange(r){
+  if (r.tag==='edit' || r.tag==='new') return { start:popCtx.phStart, end:popCtx.phEnd };
+  const ph = (S.phasesByProject[r.project_key]||[]).find(x => x.phase_code===r.phase_code);
+  return ph ? { start:ph.start_date, end:ph.end_date } : null;
+}
 function renderCoRows(){
   $('bkCoRows').innerHTML = coRows.map((r,i) => {
     const proj = S.projects.find(p=>p.project_key===r.project_key);
     const tag = r.tag==='edit' ? '<span class="tag edit">กำลังแก้</span>' : r.tag==='new' ? '<span class="tag new">กำลังเพิ่มใหม่</span>' : '';
+    const range = coRowPhaseRange(r);
+    const minAttr = range && range.start ? ` min="${range.start}"` : '';
+    const maxAttr = range && range.end ? ` max="${range.end}"` : '';
     return `<tr>
       <td class="bk-os-cell">${esc(resName(r.resource_id))}${tag ? '<br>'+tag : ''}</td>
       <td>${esc(proj?proj.project_name:r.project_key)}</td>
       <td>${esc(phaseName(r.phase_code))}</td>
-      <td><span class="date-disp" data-display="${dDisp(r.start)}"><input type="date" value="${r.start}" onchange="coEdit(${i},'start',this.value,this)"></span></td>
-      <td><span class="date-disp" data-display="${dDisp(r.end)}"><input type="date" value="${r.end}" onchange="coEdit(${i},'end',this.value,this)"></span></td>
+      <td><span class="date-disp" data-display="${dDisp(r.start)}"><input type="date" value="${r.start}"${minAttr}${maxAttr} onchange="coEdit(${i},'start',this.value,this)"></span></td>
+      <td><span class="date-disp" data-display="${dDisp(r.end)}"><input type="date" value="${r.end}"${minAttr}${maxAttr} onchange="coEdit(${i},'end',this.value,this)"></span></td>
       <td><select onchange="coEdit(${i},'md',this.value)">
         <option value="1"${r.md===1?' selected':''}>1</option>
         <option value="0.5"${r.md===0.5?' selected':''}>0.5</option>
@@ -2386,6 +2431,13 @@ window.coEdit = function(i, field, val, inputEl){
 window.bkCoCancel = function(){ showArea('form'); };
 window.bkCoSave = async function(){
   const err=$('bkCoErr'); err.textContent='';
+  for (const r of coRows) {
+    const range = coRowPhaseRange(r);
+    if (range && range.start && range.end && (r.start < range.start || r.end > range.end)) {
+      err.textContent = `Start/End ของ ${resName(r.resource_id)} ต้องอยู่ในช่วงของเฟส ${phaseName(r.phase_code)} (${dDisp(range.start)} - ${dDisp(range.end)})`;
+      return;
+    }
+  }
   const btn=$('bkCoSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
   const items = coRows.map(r => {
     const it = { project_key:r.project_key, resource_id:r.resource_id, phase_code:r.phase_code,
