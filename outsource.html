@@ -1646,6 +1646,12 @@ window.mbSaveAdd = async function () {
   if (!s || !e) { err.textContent = 'กรุณากรอกวันที่ในรูปแบบ dd/mm/yyyy'; return; }
   if (s > e) { err.textContent = 'Start Date ต้องไม่เกิน End Date'; return; }
 
+  const phRow = (S.phasesByProject[pk] || []).find(x => x.phase_code === ph);
+  if (phRow && phRow.start_date && phRow.end_date && (s < phRow.start_date || e > phRow.end_date)) {
+    err.textContent = `Start/End ต้องอยู่ในช่วงของเฟส (${dDisp(phRow.start_date)} - ${dDisp(phRow.end_date)})`;
+    return;
+  }
+
   const btn = $('mbSaveBtn');
   btn.disabled = true;
   btn.textContent = 'กำลังบันทึก...';
