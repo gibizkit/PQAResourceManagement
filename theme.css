@@ -897,3 +897,13 @@ input.lead-search.invalid {
   0% { background: var(--dk-accent-d); }
   100% { background: transparent; }
 }
+
+/* ============ DATE TEXT PICKER (initDateTextPicker, 2026-09-03) ============
+ * ห่อ text input dd/mm/yyyy (mbStart/mbEnd/lpStart/lpEnd ใน outsource.html) ด้วย native
+ * input[type=date] ที่มองไม่เห็นซ้อนทับไว้ — ต้อง opacity:0 + pointer-events:none (ห้าม
+ * display:none) เพราะ showPicker() ต้องการ element ที่ยัง render อยู่จริงถึงจะเรียกได้ */
+.dp-wrap { position: relative; display: block; }
+.dp-native {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  opacity: 0; pointer-events: none; border: 0; padding: 0; margin: 0;
+}

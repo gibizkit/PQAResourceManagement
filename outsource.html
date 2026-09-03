@@ -590,7 +590,7 @@ import {
   leaveMD, LEAVE_ABBR, isWknd, loadHolidays, resName, monthLabel, defaultFilterEndStr,
   loadPrefs, savePrefs, setPrefsOwner, signIn, fetchAllRows, prefSet,
   getCachedRole, setCachedRole, paintNavAdmin,
-  initNotificationBell
+  initNotificationBell, initDateTextPicker
 } from './common.js';
 
 /* ============ FALLBACK MASTER DATA (ใช้เมื่อโหลดจาก DB ไม่ได้) ============ */
@@ -771,6 +771,11 @@ async function showApp(session) {
   // กันเมนูกระพริบ (แว้บหาย-แว้บโผล่) ทุกครั้งที่สลับหน้า เพราะแอปนี้เป็น multi-page full reload
   paintNavAdmin(getCachedRole(session.user.email));
   initNotificationBell(); // idempotent เอง (กันซ้ำใน common.js)
+  // ผูก native date picker ที่มองไม่เห็นให้ 4 ช่อง text dd/mm/yyyy (Manage Booking + Leave Plan
+  // modal) — markup ทั้ง 2 modal เป็น static อยู่ใน HTML แล้ว ไม่ได้ render ด้วย JS จึงเรียกได้เลย
+  // idempotent อยู่แล้วถ้าโดนเรียกซ้ำ (§5.26 — showApp() เรียกได้มากกว่า 1 ครั้ง)
+  initDateTextPicker($('mbStart')); initDateTextPicker($('mbEnd'));
+  initDateTextPicker($('lpStart')); initDateTextPicker($('lpEnd'));
 
   let who = session.user.email;
   let role = '';

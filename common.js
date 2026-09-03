@@ -1446,3 +1446,75 @@ export function initNotificationBell() {
   _notiPollTimer = setInterval(() => { if (!document.hidden) notiCheckUnread(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) notiCheckUnread(); });
 }
+
+/* ============ DATE PICKER: กดที่ช่อง = เปิดปฏิทิน (2026-09-03) ============
+ * กิ๊บขอ: ช่อง date ทุกช่องในระบบ กดแล้วต้องขึ้น calendar picker มาให้เลือกทันที (ไม่ใช่ต้องเล็ง
+ * กดไอคอนปฏิทินเล็กๆ ทางขวาของ native <input type="date"> เท่านั้นแบบเดิม)
+ *
+ * ช่อง date ในระบบมี 2 แบบ ต้องแก้คนละวิธี:
+ *  1) native <input type="date"> (ส่วนใหญ่ของระบบ — filter panel, Project modal, phase rows,
+ *     co-edit table, admin renderForm ฯลฯ) — แก้ด้วย delegated click listener ตัวเดียวที่นี่
+ *     ครอบคลุมทุกหน้า/ทุกช่องอัตโนมัติ รวมถึงช่องที่ render ด้วย JS ทีหลัง (ไม่ต้องไล่ผูกทีละจุด)
+ *     เพราะทุกหน้า import common.js อยู่แล้ว (§5.26)
+ *  2) text input รูปแบบ dd/mm/yyyy (mbStart/mbEnd/lpStart/lpEnd ใน outsource.html เท่านั้น) —
+ *     ไม่มี native date picker ให้เรียกเลย (ไม่ใช่ type="date") ห้ามเปลี่ยนเป็น type="date" ตรงๆ
+ *     เพราะจะทำให้รูปแบบที่แสดงกลายเป็น locale ของ browser ขัดกับ §4.5 ที่บังคับ dd/mm/yyyy —
+ *     ใช้ initDateTextPicker() ห่อ native picker ที่มองไม่เห็นซ้อนทับไว้แทน (ดูด้านล่าง)
+ */
+
+// (1) native type="date": คลิกที่ช่องไหนก็ได้ (ทุกหน้า) → เปิด native picker ทันที — ผูกกับ
+// click เท่านั้น ห้ามผูกกับ focus (กด Tab ผ่านแล้วเด้งปฏิทินจะน่ารำคาญ + showPicker() throw ถ้า
+// ไม่มี user gesture จริงๆ อยู่เบื้องหลัง) feature-detect เพราะ Safari/Firefox รุ่นเก่าไม่มี
+// showPicker() — ต้องไม่ทำหน้าเว็บพังถ้าไม่มี
+document.addEventListener('click', (e) => {
+  const el = e.target.closest?.('input[type="date"]');
+  if (!el || el.disabled || el.readOnly) return;
+  if (typeof el.showPicker === 'function') {
+    try { el.showPicker(); } catch { /* ไม่มี user gesture หรือ browser ไม่รองรับจริง — เงียบไว้ */ }
+  }
+});
+
+/**
+ * ผูก native date picker (มองไม่เห็น) ให้ text input รูปแบบ dd/mm/yyyy ตัวหนึ่ง — คลิกที่ text
+ * input แล้วเปิด calendar picker ของ browser ให้เลือกได้เหมือนช่อง date ทั่วไป โดยที่ text input
+ * เดิมยังแสดงผล/เก็บค่าเป็น dd/mm/yyyy เป๊ะเหมือนเดิมทุกประการ (ไม่เปลี่ยนเป็น type="date" ตรงๆ
+ * เพราะจะพัง §4.5)
+ *
+ * กลไก: ห่อ input เดิมด้วย <span class="dp-wrap"> แล้ววาง <input type="date" class="dp-native">
+ * ซ้อนทับแบบมองไม่เห็น (opacity:0 + pointer-events:none — ห้าม display:none เพราะ showPicker()
+ * ต้องการ element ที่ยัง render อยู่จริง) ตอนคลิก text input: sync ค่าเข้า native จาก
+ * parseInputDate() แล้ว showPicker() — ตอน native เปลี่ยนค่า (เลือกวันจาก picker): เขียนกลับ
+ * text input ด้วย dDisp() แล้ว dispatch 'change' ต่อ (เผื่อมี listener อื่นฟังอยู่)
+ *
+ * idempotent — เรียกซ้ำได้ปลอดภัย (เช่นถ้าหน้าไหนเรียก showApp() มากกว่า 1 ครั้งต่อการโหลดหน้า
+ * เดียว ดู §5.26) เช็คด้วย _dpInited กันห่อซ้ำซ้อน
+ * @param {HTMLInputElement} inputEl — text input รูปแบบ dd/mm/yyyy
+ */
+export function initDateTextPicker(inputEl) {
+  if (!inputEl || inputEl._dpInited) return;
+  inputEl._dpInited = true;
+
+  const wrap = document.createElement('span');
+  wrap.className = 'dp-wrap';
+  inputEl.parentNode.insertBefore(wrap, inputEl);
+  wrap.appendChild(inputEl);
+
+  const native = document.createElement('input');
+  native.type = 'date';
+  native.className = 'dp-native';
+  native.tabIndex = -1;
+  native.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(native);
+
+  inputEl.addEventListener('click', () => {
+    if (inputEl.disabled || inputEl.readOnly) return;
+    native.value = parseInputDate(inputEl.value) || '';
+    if (typeof native.showPicker === 'function') {
+      try { native.showPicker(); } catch { /* ไม่มี user gesture หรือ browser ไม่รองรับจริง — เงียบไว้ */ }
+    }
+  });
+  native.addEventListener('change', () => {
+    inputEl.value = dDisp(native.value);
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}

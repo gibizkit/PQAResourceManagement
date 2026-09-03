@@ -135,6 +135,13 @@
   table.dash-table th.sortable:hover { color:var(--dk-text); }
   table.dash-table th .sort-ico { margin-left:4px; opacity:.6; font-size:10px; }
   table.dash-table th.sort-active .sort-ico { opacity:1; color:var(--dk-accent); }
+  /* §5.59: ทุกคอลัมน์กด sort ได้ — คอลัมน์ที่ยังไม่ได้เรียงโชว์ ⇅ จางๆ บอกว่าคลิกได้
+     (ตาราง By OS เป็น .dash-os-table คนละ class กับ .dash-table จึงต้องมีกฎซ้ำ) */
+  table.dash-table th .sort-ico-idle, table.dash-os-table th .sort-ico-idle { opacity:.28; }
+  table.dash-os-table th.sortable { cursor:pointer; user-select:none; }
+  table.dash-os-table th.sortable:hover { color:var(--dk-text); }
+  table.dash-os-table th .sort-ico { margin-left:4px; opacity:.6; font-size:10px; }
+  table.dash-os-table th.sort-active .sort-ico { opacity:1; color:var(--dk-accent); }
   .ico-btn {
     border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; width:26px; height:26px;
     font-size:13px; cursor:pointer; line-height:1;
@@ -596,9 +603,13 @@ const S = {
   projectViewMode: 'all',         // 'all' | 'month' — dropdown #projectViewSelect
   periodAggProjectView: null,     // agg ที่ buildProjectRows() ใช้จริง (= periodAgg เมื่อ 'all', clipped เมื่อ 'month')
 
-  // sort state for the sortable subview tables
+  // sort state for the sortable subview tables ({ key:'', dir:'' } = unsort, §5.59)
   projectSort: { key:'totalMD', dir:'desc' },
   signoffSort: { key:'signoffDate', dir:'asc' },
+  // §5.59 (2026-09-03): By OS / By Lead เดิมเรียงตายตัวตายอย่างเดียว กดหัวคอลัมน์ไม่ได้ —
+  // default เป็น unsort เพื่อคงลำดับตั้งต้นเดิมไว้เป๊ะ (By OS = role → ชื่อ, By Lead = ลำดับของ S.leadsAll)
+  osSort: { key:'', dir:'' },
+  leadSort: { key:'', dir:'' },
 };
 
 let dashPickerYear = null; // ปีที่กำลังเลือกอยู่ใน month picker panel (#dashMonthPanel, §5.50)
@@ -696,18 +707,38 @@ function restoreDashPrefs(){
   // ปุ่มตัวกรอง (2026-08-14) — เหมือน gantt.html/outsource.html: จำว่า panel เปิดค้างไว้ไหม
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
 
+  // §5.59: รับสถานะ unsort ({ key:'', dir:'' }) ด้วย — ค่าจาก storage ไม่น่าไว้ใจเสมอ (§5.21)
   if (p.projectSort && typeof p.projectSort === 'object') {
     const { key, dir } = p.projectSort;
-    if (Object.prototype.hasOwnProperty.call(PROJECT_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
+    if (isUnsortedPref(key, dir)) S.projectSort = { key:'', dir:'' };
+    else if (Object.prototype.hasOwnProperty.call(PROJECT_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
       S.projectSort = { key, dir };
     }
   }
   if (p.signoffSort && typeof p.signoffSort === 'object') {
     const { key, dir } = p.signoffSort;
-    if (Object.prototype.hasOwnProperty.call(SIGNOFF_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
+    if (isUnsortedPref(key, dir)) S.signoffSort = { key:'', dir:'' };
+    else if (Object.prototype.hasOwnProperty.call(SIGNOFF_KEYFNS, key) && (dir === 'asc' || dir === 'desc')) {
       S.signoffSort = { key, dir };
     }
   }
+  // By OS / By Lead: key ของคอลัมน์ App เป็นชื่อแอปจริง (สร้างดังค์ตอน render) จึง whitelist
+  // ล่วงหน้าไม่ได้ — ตรวจแค่ชนิด/ทิศทาง ถ้า key นั้นหายไปแล้ว genericSort() จะตกกลับไป unsort เอง
+  if (p.osSort && typeof p.osSort === 'object') {
+    const { key, dir } = p.osSort;
+    if (isUnsortedPref(key, dir)) S.osSort = { key:'', dir:'' };
+    else if (typeof key === 'string' && key && (dir === 'asc' || dir === 'desc')) S.osSort = { key, dir };
+  }
+  if (p.leadSort && typeof p.leadSort === 'object') {
+    const { key, dir } = p.leadSort;
+    if (isUnsortedPref(key, dir)) S.leadSort = { key:'', dir:'' };
+    else if (typeof key === 'string' && key && (dir === 'asc' || dir === 'desc')) S.leadSort = { key, dir };
+  }
+}
+/** §5.59: prefs ที่บันทึกสถานะ "ไม่เรียง" ไว้ (key หรือ dir ว่าง) — ถือเป็นค่าที่ถูกต้อง
+ *  ไม่ใช่ของเสีย (ต่างจาก key มั่วๆ ที่ต้องตกไปใช้ default ของแท็บนั้น) */
+function isUnsortedPref(key, dir){
+  return (key === '' || key == null) && (dir === '' || dir == null);
 }
 
 async function showApp(session){
@@ -779,7 +810,7 @@ async function loadMasterData(){
       .order('project_key', { ascending: true })
       .range(from, to)),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
-    supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
+    supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active,end_date'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,email').eq('is_active', true),
     fetchAllRows((from, to) => supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor')
       .order('project_key', { ascending: true })
@@ -1162,17 +1193,25 @@ function renderView(){
   else renderSignoffView(c);
 }
 
-/* ---- generic sortable-table helpers (By Project + Signoff) ---- */
+/* ---- generic sortable-table helpers (ทุกแท็บ: By Project / By OS / By Lead / Signoff) ----
+   §5.59 (2026-09-03, Gibb): กดหัวคอลัมน์วน 3 สถานะ asc → desc → unsort (เดิม asc ⇄ desc เท่านั้น)
+   สถานะ unsort เก็บเป็น { key:'', dir:'' } — genericSort() จะคืนแถวตามลำดับที่ตารางนั้น
+   build มา (= ลำดับตั้งต้นของแต่ละแท็บ) โดยไม่เรียงใหม่เลย — ห้ามสมมติว่า sortState.key
+   มีค่าเสมอ ทุก caller ต้องเรียงลำดับตั้งต้นของตัวเองก่อนส่งเข้า genericSort() เสมอ */
 function sortIco(sortState, key){
-  if (sortState.key !== key) return '';
+  if (sortState.key !== key || !sortState.dir) return '<span class="sort-ico sort-ico-idle">⇅</span>';
   return `<span class="sort-ico">${sortState.dir === 'asc' ? '▲' : '▼'}</span>`;
 }
 function thSort(label, key, sortState, extraClass){
-  const cls = ['sortable', sortState.key === key ? 'sort-active' : '', extraClass||''].join(' ').trim();
+  const active = sortState.key === key && !!sortState.dir;
+  const cls = ['sortable', active ? 'sort-active' : '', extraClass||''].join(' ').trim();
   return `<th class="${cls}" data-sort-key="${esc(key)}">${esc(label)}${sortIco(sortState, key)}</th>`;
 }
 function genericSort(rows, sortState, keyFns){
-  const kf = keyFns[sortState.key] || (() => null);
+  // unsort (กดครบรอบ) หรือ key ที่ไม่รู้จัก (เช่น prefs เก่าที่ชี้ไปที่คอลัมน์ App
+  // ที่หายไปแล้ว) = คืนลำดับเดิม ไม่เรียงใหม่
+  if (!sortState.key || !sortState.dir || !keyFns[sortState.key]) return rows.slice();
+  const kf = keyFns[sortState.key];
   const dir = sortState.dir === 'desc' ? -1 : 1;
   return rows.slice().sort((a,b) => {
     const va = kf(a), vb = kf(b);
@@ -1183,13 +1222,18 @@ function genericSort(rows, sortState, keyFns){
     return String(va).localeCompare(String(vb)) * dir;
   });
 }
+/** วงสถานะ sort ของคอลัมน์หนึ่ง: คอลัมน์อื่น/unsort → asc → desc → unsort (mutate in place
+ *  เพราะ caller ถือ reference เดียวกันกับ S.xxxSort อยู่ — แพทเทิร์นเดิมของ wireSortHeader) */
+function nextSortState(sortState, key){
+  if (sortState.key !== key || !sortState.dir) { sortState.key = key; sortState.dir = 'asc'; }
+  else if (sortState.dir === 'asc') sortState.dir = 'desc';
+  else { sortState.key = ''; sortState.dir = ''; }
+}
 function wireSortHeader(theadEl, sortState, onChange){
   theadEl.addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
-    const key = th.dataset.sortKey;
-    if (sortState.key === key) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
-    else { sortState.key = key; sortState.dir = 'asc'; }
+    nextSortState(sortState, th.dataset.sortKey);
     onChange();
   });
 }
@@ -1371,7 +1415,7 @@ function buildProjectRows(){
   }).filter(Boolean);
 }
 const PROJECT_KEYFNS = {
-  app: r => r.app, lead: r => r.lead, uatPeriod: r => r.uatPeriodSortKey,
+  app: r => r.app, projectName: r => r.projectName, lead: r => r.lead, uatPeriod: r => r.uatPeriodSortKey,
   totalMD: r => r.totalMD, tcprep: r => r.tcprep, uat: r => r.uat, reg: r => r.reg,
   other1: r => r.other1, other2: r => r.other2, support: r => r.support,
 };
@@ -1406,7 +1450,7 @@ function renderProjectView(container){
       <table class="dash-table" id="projectTable">
         <thead><tr>
           ${thSort('App','app',S.projectSort,'col-app')}
-          <th class="proj-name">Project Name</th>
+          ${thSort('Project Name','projectName',S.projectSort,'proj-name')}
           ${thSort('Lead','lead',S.projectSort,'col-lead')}
           ${thSort('Project Period','uatPeriod',S.projectSort)}
           ${thSort('Total MD','totalMD',S.projectSort,'right')}
@@ -1440,24 +1484,55 @@ function renderProjectView(container){
 }
 
 /* ---- By OS (pivot: OS x App) ---- */
+/** §5.59 (2026-09-03, Gibb): ซ่อน OS ที่ "ลาออกแล้ว **และ** ไม่มี MD ในเดือนที่เลือก"
+ *  ออกจากตาราง By OS — เกณฑ์ลาออกใช้ตัวเดียวกับหน้า Outsource (matchesFilters():
+ *  last working day = outsource_staff.end_date < วันเริ่มของช่วงที่เลือก) บวกกรณี
+ *  resource ถูกปิดใช้งาน (is_active=false) ที่ไม่มี end_date กรอกไว้
+ *  ⚠️ เงื่อนไข `total > 0 ให้แสดงเสมอ` สำคัญ (ยืนยันโดย Gibb): คนที่ลาออกไปแล้วแต่ยังมี
+ *  booking ค้างอยู่ในเดือนนั้นต้องยังโชว์ ไม่งั้น MD ของเขาจะหายจากตารางแต่ยังอยู่ในระบบ
+ *  ⇒ ผลรวมท้ายตาราง (คิดจากแถวที่ render จริง) เพี้ยนไปจาก MD จริงเงียบๆ
+ *  (mirror ใน downloadOsExcel() ด้วย — export ต้องได้แถวชุดเดียวกับบนจอ) */
+function osRowVisible(r, rangeStart){
+  if (r.total > 0) return true;
+  if (r.end_date && rangeStart && r.end_date < rangeStart) return false;   // ลาออกก่อนเดือนที่เลือก
+  if (r.is_active === false) return false;                                 // ปิดใช้งาน (ไม่ได้กรอก end_date)
+  return true;
+}
+/** keyFns ของตาราง By OS — คอลัมน์ App สร้างดังค์ตามชุด app ที่มีจริงในรอบนั้น
+ *  (key = `app:<ชื่อแอป>` ใช้ชื่อแอปตรงๆ เพื่อให้ prefs ที่จำไว้ยังชี้ถูกคอลัมน์เดิม
+ *  แม้ชุด/ลำดับคอลัมน์จะเปลี่ยนไป — index-based จะเลื่อนไปคนละคอลัมน์) */
+function osKeyFns(apps, agg){
+  const kf = {
+    osName: r => resName(r.nickname, r.full_name_en),
+    role: r => roleRank(r.role_code),
+    total: r => r.total,
+  };
+  apps.forEach(a => { kf['app:' + a] = r => (agg.byOsApp[r.resource_id] || {})[a] || 0; });
+  return kf;
+}
 function renderOsView(container){
   // §6: By OS counts MD only on bookings whose project is_active = true.
   const agg = S.periodAggActiveOnly || { byOsApp:{}, byOsTotal:{} };
   const appSet = new Set();
   Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
   const apps = sortedApps([...appSet]);
+  const rangeStart = S.overallRange.s || '';
 
-  const osRows = Object.values(S.resourceMap)
+  // ลำดับตั้งต้น (สถานะ unsort) = role → ชื่อเล่น เหมือนเดิมทุกประการ แล้วค่อยให้ genericSort()
+  // เรียงทับตาม S.osSort ถ้าผู้ใช้กดหัวคอลัมน์ไว้
+  const osRows = genericSort(Object.values(S.resourceMap)
     .filter(r => r.resource_type === 'outsource')
     .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
-    .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
+    .filter(r => osRowVisible(r, rangeStart))
+    .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
+    S.osSort, osKeyFns(apps, agg));
 
   if (!apps.length) {
     container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booking ในช่วงที่เลือก</div>';
     return;
   }
 
-  const headApps = apps.map(a => `<th>${esc(a)}</th>`).join('');
+  const headApps = apps.map(a => thSort(a, 'app:' + a, S.osSort)).join('');
   const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
   let grandTotal = 0;
 
@@ -1487,13 +1562,20 @@ function renderOsView(container){
     <div class="dash-os-scroll">
       <table class="dash-os-table">
         <thead><tr>
-          <th class="th-os-name">OS</th><th class="th-os-role">Role</th><th class="th-os-total">Total</th>
+          ${thSort('OS','osName',S.osSort,'th-os-name')}
+          ${thSort('Role','role',S.osSort,'th-os-role')}
+          ${thSort('Total','total',S.osSort,'th-os-total')}
           ${headApps}
         </tr></thead>
         <tbody>${bodyRows || `<tr><td colspan="${3+apps.length}" class="empty-state">ไม่มีข้อมูล</td></tr>`}</tbody>
         <tfoot>${totalRow}</tfoot>
       </table>
     </div>`;
+
+  wireSortHeader(container.querySelector('.dash-os-table thead'), S.osSort, () => {
+    savePrefs(PAGE, { osSort: S.osSort });
+    renderOsView(container);
+  });
 }
 function roleLabelFor(code){
   return code==='SENIOR' ? '1.Senior Tester' : code==='TESTER' ? '2.Tester' : code==='JUNIOR' ? '3.Junior Tester' : (code||'');
@@ -1641,34 +1723,48 @@ function renderLeadView(container){
     return;
   }
 
+  /* §5.59 (2026-09-03): แถวถูกสร้างเป็น "ข้อมูล" ก่อน แล้วค่อยเรียงตาม S.leadSort แล้วจึง
+     render เป็น HTML (เดิม map เป็น HTML string ตรงๆ พร้อมบวกยอดรวมไปในตัว) — ยอดรวมท้าย
+     ตาราง/colCount จึงย้ายมาคำนวณจากแถวที่ผ่านการกรองแล้วอีกรอบ ค่าที่ได้เท่าเดิมทุกประการ
+     (การเรียงไม่เปลี่ยนผลบวก) ลำดับตั้งต้น (unsort) = ลำดับของ S.leadsAll เหมือนเดิม
+     S.leadSort ใช้ร่วมกันทุก section ตอน Type = All (3 ตารางหน้าตาเดียวกัน) */
+  const leadKeyFns = { name: r => r.name, totalMD: r => r.totalMD, totalProject: r => r.totalProject };
+  apps.forEach(a => { leadKeyFns['app:' + a] = r => r.cellsByApp[a] || 0; });
+
   function buildSection(title, roleCoverage, withMD){
-    const colCount = {}; apps.forEach(a => colCount[a] = 0);
-    let grandTotal = 0, grandTotalMD = 0;
     // domainFilter defaults to 'all' when S.leadDomainFilter is unset (e.g. older cached
     // prefs from before this dropdown existed) — never silently drops every lead.
     const domainFilter = S.leadDomainFilter || 'all';
-    const bodyRows = S.leadsAll
+    const rowData = S.leadsAll
       .filter(l => domainFilter === 'all' || leadDomainBucket(l.email) === domainFilter)
       .map(l => {
         const byApp = roleCoverage[l.emp_id] || {};
         const allProjects = new Set();
         Object.values(byApp).forEach(set => set.forEach(k => allProjects.add(k)));
-        if (!allProjects.size) return ''; // lead with no project in this role/set — skip row
+        if (!allProjects.size) return null; // lead with no project in this role/set — skip row
         let totalMD = 0;
         if (withMD) {
           const mainProjects = mainProjectsByLead[l.emp_id] || new Set();
           mainProjects.forEach(pk => { totalMD += agg.byProject[pk] || 0; });
         }
-        const cells = apps.map(a => {
-          const n = byApp[a] ? byApp[a].size : 0;
-          if (n) colCount[a] += n;
-          return `<td class="center">${n || '<span class="muted">—</span>'}</td>`;
-        }).join('');
-        grandTotal += allProjects.size;
-        grandTotalMD += totalMD;
-        const mdCell = withMD ? `<td class="right">${fmtMD(totalMD)}</td>` : '';
-        return `<tr><td>${esc(l.short_name)}</td>${mdCell}<td class="right">${allProjects.size}</td>${cells}</tr>`;
+        const cellsByApp = {};
+        apps.forEach(a => { cellsByApp[a] = byApp[a] ? byApp[a].size : 0; });
+        return { name: l.short_name, totalMD, totalProject: allProjects.size, cellsByApp };
       }).filter(Boolean);
+
+    const colCount = {}; apps.forEach(a => colCount[a] = 0);
+    let grandTotal = 0, grandTotalMD = 0;
+    rowData.forEach(r => {
+      grandTotal += r.totalProject;
+      grandTotalMD += r.totalMD;
+      apps.forEach(a => { colCount[a] += r.cellsByApp[a] || 0; });
+    });
+
+    const bodyRows = genericSort(rowData, S.leadSort, leadKeyFns).map(r => {
+      const cells = apps.map(a => `<td class="center">${r.cellsByApp[a] || '<span class="muted">—</span>'}</td>`).join('');
+      const mdCell = withMD ? `<td class="right">${fmtMD(r.totalMD)}</td>` : '';
+      return `<tr><td>${esc(r.name)}</td>${mdCell}<td class="right">${r.totalProject}</td>${cells}</tr>`;
+    });
 
     const mdTotalCell = withMD ? `<td class="right">${fmtMD(grandTotalMD)}</td>` : '';
     const totalRow = `<tr class="dash-total-row">
@@ -1676,18 +1772,28 @@ function renderLeadView(container){
       ${apps.map(a => `<td class="center">${colCount[a]}</td>`).join('')}
     </tr>`;
 
-    const mdHeader = withMD ? '<th class="right">Total MD</th>' : '';
+    const mdHeader = withMD ? thSort('Total MD','totalMD',S.leadSort,'right') : '';
     const colspan = (withMD ? 3 : 2) + apps.length;
 
     return `
       <div class="section-title">${esc(title)}</div>
       <div class="dash-table-wrap">
         <table class="dash-table" id="leadTable">
-          <thead><tr><th>UAT Lead</th>${mdHeader}<th class="right">Total Project</th>${apps.map(a=>`<th class="center">${esc(a)}</th>`).join('')}</tr></thead>
+          <thead><tr>${thSort('UAT Lead','name',S.leadSort)}${mdHeader}${thSort('Total Project','totalProject',S.leadSort,'right')}${apps.map(a=>thSort(a,'app:'+a,S.leadSort,'center')).join('')}</tr></thead>
           <tbody>${bodyRows.join('') || `<tr><td colspan="${colspan}" class="empty-state">ไม่พบข้อมูล</td></tr>`}</tbody>
           <tfoot>${totalRow}</tfoot>
         </table>
       </div>`;
+  }
+  /* Type = All render 3 ตารางพร้อมกัน (id="leadTable" ซ้ำกันตามของเดิม) — ผูก listener
+     ทุก thead ที่ render ออกมา ไม่ใช่แค่ตัวแรก */
+  function wireLeadSortHeaders(){
+    container.querySelectorAll('table.dash-table thead').forEach(thead => {
+      wireSortHeader(thead, S.leadSort, () => {
+        savePrefs(PAGE, { leadSort: S.leadSort });
+        renderLeadView(container);
+      });
+    });
   }
 
   // 2026-08-14 (ตามคำขอพี่กิ๊บ): เพิ่ม Type = "All" — สร้างทั้ง 3 section (Main Lead/Sub Lead/
@@ -1697,11 +1803,13 @@ function renderLeadView(container){
     container.innerHTML = ['main', 'sub', 'exec']
       .map(k => buildSection(LEAD_ROLE_META[k].title, coverage[k], LEAD_ROLE_META[k].withMD))
       .join('');
+    wireLeadSortHeaders();
     return;
   }
   const roleKey = Object.prototype.hasOwnProperty.call(LEAD_ROLE_META, S.leadRoleFilter) ? S.leadRoleFilter : 'main';
   const meta = LEAD_ROLE_META[roleKey];
   container.innerHTML = buildSection(meta.title, coverage[roleKey], meta.withMD);
+  wireLeadSortHeaders();
 }
 
 /* =====================================================================
@@ -1966,9 +2074,13 @@ async function downloadOsExcel(){
     Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
     const apps = sortedApps([...appSet]);
 
+    // §5.59: ซ่อน OS ที่ลาออกแล้วและไม่มี MD ในเดือนที่เลือก — เกณฑ์เดียวกับ renderOsView()
+    // (osRowVisible()) เพื่อให้ไฟล์ที่ดาวน์โหลดได้แถวชุดเดียวกับตารางบนจอเสมอ
+    const rangeStart = S.overallRange.s || '';
     const osRows = Object.values(S.resourceMap)
       .filter(r => r.resource_type === 'outsource')
       .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
+      .filter(r => osRowVisible(r, rangeStart))
       .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
 
     if (!apps.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
