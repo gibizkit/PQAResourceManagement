@@ -109,7 +109,7 @@
   .filters label { font-size:11px; color:var(--dk-text3); font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
 
   /* ---- month picker ("เดือน" ตัวกรอง — mirrors calendar.html's .cal-month-picker/.cal-*
-     ทั้งชุด, ตามที่โจทย์ระบุ, 2026-09-01 §5.50) — ใช้ prefix .dash-month-*/.dash-picker-*
+     ทั้งชุด, ตามที่โจทย์ระบุ, 2026-09-01 §5.50) — ใช้ prefix .dash-month-* / .dash-picker-*
      แทน .cal-* เดิม (คลาสเป็น page-local อยู่แล้วในทั้ง 2 ไฟล์ ไม่ชนกัน แค่ตั้งชื่อแยกให้ชัดว่า
      เป็นของหน้านี้) โครง/พฤติกรรมเหมือน calendar.html เป๊ะ: ปุ่ม ‹ / ปุ่มกลางโชว์เดือน (กดเปิด
      picker ปี+เดือน) / ปุ่ม › ---- */
@@ -330,7 +330,7 @@
   table.dash-app-table thead th.col-app-freeze { z-index:31; background:var(--dk-surface); }
   table.dash-app-table tr.dash-total-row td.col-app-freeze { background:var(--dk-hover); }
   table.dash-app-table td.right, table.dash-app-table th.right { text-align:right; }
-  /* Actual − Booked: บวก = ใช้จริงเกินที่จอง (เขียว), ลบ = ใช้น้อยกว่าจอง (แดง) — สีจาก
+  /* Booked − Actual: บวก = จองไว้มากกว่าที่ใช้จริง (เขียว), ลบ = ใช้จริงเกินที่จอง (แดง) — สีจาก
      CSS variable ที่มีอยู่แล้วเท่านั้น (--today เป็นสีเขียวของระบบ, --danger เป็นสีแดง) */
   .md-over { color:var(--today); font-weight:700; }
   .md-under { color:var(--danger); font-weight:700; }
@@ -499,7 +499,7 @@
 
       <!-- 2026-09-09 (§5.60, Task 4): "Compare Actual" checkbox — By App tab เท่านั้น (แพตเทิร์น
            เดียวกับ #projectViewFld ด้านบน — hidden ยกเว้นตอน S.dashView==='app', toggle ใน
-           restoreDashPrefs()/switchDashView()) ติ๊กแล้วโชว์คอลัมน์ Actual MD/Actual−Booked
+           restoreDashPrefs()/switchDashView()) ติ๊กแล้วโชว์คอลัมน์ Actual MD/Booked−Actual
            เพิ่มในตาราง By App — ไม่ยิง query ใหม่ (แค่ re-render จาก S.actualByAppMonth ที่โหลด
            ไว้แล้ว), ค่าจำใน prefs (compareActual, restore แล้วใน restoreDashPrefs() ตั้งแต่ Task 2/3) -->
       <div class="fld hidden" id="cmpActualFld">
@@ -1707,7 +1707,7 @@ function renderProjectView(container){
  *  Rows are the UNION of every App that has a nonzero number on EITHER side (not the
  *  intersection) — an App with Actual MD but zero Booked (or vice versa) still needs a row,
  *  otherwise an import mismatch would silently disappear instead of showing up as a big
- *  Actual − Booked diff. */
+ *  Booked − Actual diff. */
 function buildAppRows(){
   const booked = (S.periodAggActiveOnly || {}).byAppMonth || {};
   const actual = S.actualByAppMonth || {};
@@ -1721,7 +1721,7 @@ function buildAppRows(){
       bookedByMonth[mm] = b; actualByMonth[mm] = a;
       bookedTotal += b; actualTotal += a;
     });
-    return { app, bookedTotal, actualTotal, diff: actualTotal - bookedTotal, bookedByMonth, actualByMonth };
+    return { app, bookedTotal, actualTotal, diff: bookedTotal - actualTotal, bookedByMonth, actualByMonth };
   });
 }
 /** keyFns ของตาราง By App — คอลัมน์ต่อเดือนสร้างดังค์ตามชุดเดือนที่เลือกอยู่ตอนนี้ (คีย์
@@ -1768,7 +1768,7 @@ function renderAppView(container){
   const theadRow2 = `<tr>
     ${thSort('Booked','bookedTotal',S.appSort,'right')}
     ${compareActual ? thSort('Actual','actualTotal',S.appSort,'right') : ''}
-    ${compareActual ? thSort('Actual − Booked','diff',S.appSort,'right') : ''}
+    ${compareActual ? thSort('Booked − Actual','diff',S.appSort,'right') : ''}
     ${months.map(mm => thSort(monthLabel(mm), 'b:' + mm, S.appSort, 'right')).join('')}
     ${compareActual ? months.map(mm => thSort(monthLabel(mm), 'a:' + mm, S.appSort, 'right')).join('') : ''}
   </tr>`;
@@ -2396,7 +2396,7 @@ async function downloadProjectExcel(){
 /** By App tab export (task 6, §5.60) — Sheet1 Filter (+ "Compare Actual" ใช่/ไม่ใช่ ต่อท้าย
  *  เดือนที่เลือก) + Sheet2 "App" ตรงกับตาราง By App บนจอเป๊ะ ทั้งการเรียง (genericSort() ผ่าน
  *  appKeyFns() ตัวเดียวกับ renderAppView() ใช้) และคอลัมน์ที่โชว์ — ไม่ติ๊ก Compare Actual =
- *  ไม่มีคอลัมน์ Actual MD/Actual − Booked ในชีตเลย (ไม่ใช่แค่ซ่อน) เหมือนตารางบนจอ */
+ *  ไม่มีคอลัมน์ Actual MD/Booked − Actual ในชีตเลย (ไม่ใช่แค่ซ่อน) เหมือนตารางบนจอ */
 async function downloadAppExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
@@ -2411,7 +2411,7 @@ async function downloadAppExcel(){
     filterAoa.push(['Compare Actual', compareActual ? 'ใช่' : 'ไม่ใช่']);
 
     const header = ['App', 'Booked MD'];
-    if (compareActual) header.push('Actual MD', 'Actual − Booked');
+    if (compareActual) header.push('Actual MD', 'Booked − Actual');
     months.forEach(mm => header.push(`Booked ${monthLabel(mm)}`));
     if (compareActual) months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
     const appAoa = [header];
