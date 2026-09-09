@@ -1002,6 +1002,16 @@ async function loadMasterData(){
 function currentRange(){
   return { first: S.overallRange.s, last: S.overallRange.e };
 }
+/** 🔴 2026-09-09 (§5.60): แท็บ Signoff กรองโปรเจกต์ด้วย `signoff_date` ของตัวเอง (ไม่ใช่ span
+ *  ของ phase แบบ projectMatchesRange()) เดิมเทียบกับ currentRange() = ซอง [s,e] ของ
+ *  S.overallRange ตรงๆ — พอเดือนเลือกได้แบบไม่ติดกัน ซองจะกินเดือนที่ผู้ใช้ **ไม่ได้ติ๊ก**
+ *  ที่คั่นอยู่ตรงกลางเข้ามาด้วย (ติ๊ก ก.พ.+เม.ย. แล้วโปรเจกต์ที่ signoff 15/03 โผล่มา)
+ *  ตอนนี้เช็คแบบ "เดือนของ signoff_date ต้องอยู่ในเซ็ตที่ติ๊กไว้" แทน
+ *  ใช้ร่วมกัน renderSignoffView() + downloadSignoffExcel() (ต้องตรงกันเสมอ — ไฟล์ที่โหลดต้องได้
+ *  แถวชุดเดียวกับบนจอ) */
+function signoffDateInSelectedMonths(d){
+  return !!d && (S.months || []).includes(String(d).slice(0, 7));
+}
 /** Projects to show in the By Project / By Lead / Signoff subviews.
  * 2026-08-13 (confirmed by Gibb): counts like Project/OS/Lead must only ever count
  * is_active=true records — By Lead and Signoff used to read S.allProjectsFull/S.allProjMap
@@ -2516,11 +2526,10 @@ async function downloadSignoffExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
   try {
-    const { first, last } = currentRange();
     const subLeads = subLeadMap();
     const executors = executorMap();
     const rows = currentProjectsList()
-      .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
+      .filter(p => signoffDateInSelectedMonths(p.signoff_date))
       .filter(p => projectPassesExtraFilters(p.project_key))
       .map(p => ({
         app: p.app || p.other_app || '',
@@ -2817,11 +2826,10 @@ const SIGNOFF_KEYFNS = {
   app: r => r.app, lead: r => r.lead, signoffDate: r => r.signoff_date || '', projectName: r => r.projectName,
 };
 function renderSignoffView(container){
-  const { first, last } = currentRange();
   const subLeads = subLeadMap();
   const executors = executorMap();
   const rows = currentProjectsList()
-    .filter(p => p.signoff_date && p.signoff_date >= first && p.signoff_date <= last)
+    .filter(p => signoffDateInSelectedMonths(p.signoff_date))
     .filter(p => projectPassesExtraFilters(p.project_key))   // 2026-08-14: Project/UAT Lead/App ตัวกรอง
     .map(p => ({
       project_key: p.project_key,
@@ -2835,7 +2843,7 @@ function renderSignoffView(container){
     }));
 
   if (!rows.length) {
-    container.innerHTML = `<div class="empty-state">ไม่มี Project ที่ Signoff ในช่วงที่เลือก (${dDisp(first)} – ${dDisp(last)})</div>`;
+    container.innerHTML = `<div class="empty-state">ไม่มี Project ที่ Signoff ในเดือนที่เลือก (${esc((S.months || []).map(mm => monthLabel(mm)).join(', '))})</div>`;
     return;
   }
 
