@@ -542,8 +542,8 @@
       </div>
 
       <!-- เดือน ("ค้นหา Project") — decides WHICH projects show up in every tab (phase dates
-           OR signoff_date overlap this month — see projectMatchesRange()). It does NOT
-           restrict the MD numbers themselves: once a project matches, its MD is its
+           only — see projectMatchesRange(); ไม่นับ signoff_date/Milestone date อีกต่อไป, §5.61).
+           It does NOT restrict the MD numbers themselves: once a project matches, its MD is its
            full/all-time Effective (Booked − Leave) total, not clipped to this month — see
            recomputeAggregates(). Shared across every tab (By Project/By OS/By Lead/Signoff)
            since S.overallRange is a single global filter, derived here from S.months (see
@@ -1192,8 +1192,9 @@ function recomputeAggregates(){
   // 2026-09-02 (ตามคำขอพี่กิ๊บ, dropdown #projectViewSelect): By Project tab เท่านั้น —
   // 'all' (default) ใช้ periodAgg ตัวเดิมเป๊ะ (เต็มช่วง Phase, ตรงกับ Gantt's Booked MD, §5.39)
   // 'month' clip ด้วย dateRange เหมือน periodAggActiveOnly/By OS (§5.48) แต่ project set ยังเป็น
-  // matchedAll ตัวเดียวกับ periodAgg (matchProjectDiscovery — phase-date/signoff overlap +
-  // ตัวกรอง Project/UAT Lead/App) ไม่ใช่ matchedActiveOs — ต่างจาก By OS ตรงที่ By Project ยังยึด
+  // matchedAll ตัวเดียวกับ periodAgg (matchProjectDiscovery — phase-date overlap เท่านั้น
+  // (ไม่นับ signoff/Milestone date อีกต่อไป, §5.61) + ตัวกรอง Project/UAT Lead/App) ไม่ใช่
+  // matchedActiveOs — ต่างจาก By OS ตรงที่ By Project ยังยึด
   // เกณฑ์ discovery เดิมของ §5.37 อยู่ แค่ MD ที่แสดงถูกตัดตามเดือนเพิ่มอีกชั้นเท่านั้น ไม่กระทบ
   // S.periodAgg เอง (By Lead/Signoff ยังอ่าน S.periodAgg ตรงๆ เหมือนเดิมทุกประการ)
   S.periodAggProjectView = S.projectViewMode === 'month'
@@ -1480,29 +1481,31 @@ function leadCellHTML(mainLead, subLeads, executors){
 }
 
 /** Whether project `pk`'s overall span (all its project_phase rows, exactly like the
- *  existing per-phase min-start/max-end scan — SIT included, nothing filtered out —
- *  PLUS project.signoff_date as one more candidate date on both ends) overlaps the given
- *  "ค้นหา Project" selection. Same §4.1 standard: start ≤ End && end ≥ Start (yyyy-mm-dd
- *  string compare). Shared by buildProjectRows() (decides which rows show in the By Project
- *  table) and recomputeAggregates() (decides which projects' bookings count toward the MD
- *  totals shown everywhere) — see §5.37.
+ *  existing per-phase min-start/max-end scan — SIT included, nothing filtered out) overlaps
+ *  the given "ค้นหา Project" selection. Same §4.1 standard: start ≤ End && end ≥ Start
+ *  (yyyy-mm-dd string compare). Shared by buildProjectRows() (decides which rows show in the
+ *  By Project table) and recomputeAggregates() (decides which projects' bookings count
+ *  toward the MD totals shown everywhere) — see §5.37.
  *
  *  2026-09-09 (§5.60): takes the SELECTED MONTH LIST, not a single [rangeS, rangeE] window,
  *  and matches if the project overlaps **any one** of them. Months need not be contiguous —
  *  testing against the outer envelope instead would wrongly match a project that only lives
- *  in a skipped middle month. */
+ *  in a skipped middle month.
+ *
+ *  🔴 2026-09-09 (§5.61, ยืนยันโดย Gibb): project.signoff_date (= "Milestone" date, the row
+ *  labelled "Milestones" on Gantt) เคยถูกเอามาขยาย periodStart/maxEnd อีกชั้นหนึ่ง ทำให้
+ *  โปรเจกต์ที่ phase dates ไม่คาบเกี่ยวเดือนที่เลือกเลย แต่บังเอิญมี signoff_date ตกอยู่ในเดือน
+ *  นั้น กลับโผล่มา/ถูกนับ MD ด้วย — ตัดออกแล้ว ตอนนี้ใช้ phase dates (TCPREP/UAT/REG/SUPPORT/
+ *  Other ฯลฯ) ล้วนๆ เหมือน Signoff tab ที่แยกไปใช้ signoffDateInSelectedMonths() ของตัวเองแล้ว
+ *  (§5.60) — Milestone date ไม่มีผลต่อตัวกรอง "เดือน" ของแท็บ By Project/By App/By Lead/By OS
+ *  อีกต่อไป. */
 function projectMatchesRange(pk, months){
   const phases = S.phasesByProject[pk] || [];
-  const proj = S.allProjMap[pk];
   const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
   const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
   let periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
   let maxEnd = null;
   phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
-  if (proj && proj.signoff_date) {
-    if (!periodStart || proj.signoff_date < periodStart) periodStart = proj.signoff_date;
-    if (!maxEnd || proj.signoff_date > maxEnd) maxEnd = proj.signoff_date;
-  }
   const periodEnd = maxEnd || periodStart;
   if (!periodStart || !Array.isArray(months) || !months.length) return false;
   return months.some(mm => {
@@ -1586,9 +1589,9 @@ function buildProjectRows(){
     otherSorted.forEach((c, i) => { const v = pAgg[c] || 0; if (i === 0) other1 += v; else other2 += v; });
 
     // Project Period (DISPLAY column only) = TC Prep phase start_date through the max
-    // end_date across all phases — kept exactly as before, NOT signoff_date-extended.
-    // The show/hide MATCH decision below uses projectMatchesRange() instead, which is a
-    // separate (signoff_date-extended) calculation — see that function's doc comment.
+    // end_date across all phases. The show/hide MATCH decision below uses
+    // projectMatchesRange() instead — same phase-date formula since §5.61 (signoff_date/
+    // Milestone date no longer extends it) — see that function's doc comment.
     const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
     let maxEnd = null;
     phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
@@ -1598,13 +1601,15 @@ function buildProjectRows(){
       : periodStart ? dDisp(periodStart) : '—';
 
     /* §5.37 (2026-08-12): แสดงเฉพาะโปรเจกต์ที่ "ตรงกับคำค้นหา" — phase dates (ทุกเฟส รวม SIT)
-       หรือ signoff_date คาบเกี่ยวช่วง "ค้นหา Project" ที่เลือก (projectMatchesRange(), มาตรฐาน
-       เดียวกับ §4.1: start ≤ End && end ≥ Start) — เดิม §5.23 มีข้อยกเว้น "MD มากกว่าศูนย์ต้อง
+       คาบเกี่ยวช่วง "ค้นหา Project" ที่เลือก (projectMatchesRange(), มาตรฐานเดียวกับ §4.1:
+       start ≤ End && end ≥ Start) — เดิม §5.23 มีข้อยกเว้น "MD มากกว่าศูนย์ต้อง
        แสดงเสมอ" เพราะตอนนั้น MD ยังถูกตัดตามช่วง Period ที่เลือก ทำให้ MD มากกว่าศูนย์ได้แม้ phase
        จะไม่คาบเกี่ยว ตอนนี้ MD เป็นค่าเต็มช่วง (full-span) ของ**เฉพาะ**โปรเจกต์ที่ผ่านการค้นหา
        แล้วเท่านั้น (recomputeAggregates() ใช้ projectMatchesRange() ตัวเดียวกันนี้กรอง projMap
        ก่อนเข้า computeAgg) ⇒ โปรเจกต์ที่ไม่ผ่านการค้นหาจะมี MD เป็นศูนย์เสมอโดยธรรมชาติ —
-       เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ */
+       เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ
+       🔴 2026-09-09 (§5.61): signoff_date (Milestone date) เคยถูกนับเป็นอีกหนึ่งเงื่อนไข "ตรงกับ
+       คำค้นหา" ด้วย — ตัดออกแล้ว ดูรายละเอียดที่ doc comment ของ projectMatchesRange() เอง */
     if (!matchProjectDiscovery(pk, months)) return null;
 
     return {
