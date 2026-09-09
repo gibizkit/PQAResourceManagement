@@ -47,6 +47,15 @@
   }
   .filters select:focus { outline:none; border-color:var(--dk-accent); }
 
+  /* ---- Compare Actual checkbox (By App tab, task 4) — mirrors outsource.html's .chk
+     (that page's version is page-local too, no shared copy in theme.css, so copied here
+     verbatim rather than reaching across files) ---- */
+  .chk { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dk-text2); cursor:pointer; user-select:none; }
+  .chk input { width:auto; margin:0; accent-color:var(--dk-accent); }
+
+  /* ---- Download Template / Import Actual MD buttons (By App tab, admin only, task 5) ---- */
+  #actualAdminTools { display:flex; align-items:center; gap:8px; }
+
   /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt/Outsource,
      2026-08-14; min-width 180→148 same reason as .filters select above) ---- */
   .ms { position:relative; }
@@ -117,6 +126,13 @@
     box-shadow:0 12px 30px rgba(34,28,21,.15); padding:10px; width:230px;
   }
   .dash-month-panel.hidden { display:none; }
+  /* แถบล่างของ picker (2026-09-09 §5.60) — multi-select ต้องมีที่ให้ปิด panel เอง เพราะคลิก
+     เดือนเป็น toggle ไม่ปิด panel ให้แล้วเหมือนตอนเลือกได้เดือนเดียว */
+  .dash-picker-foot {
+    display:flex; align-items:center; gap:6px; margin-top:8px; padding-top:8px;
+    border-top:1px solid var(--dk-border);
+  }
+  .dash-picker-count { flex:1; font-size:11px; color:var(--dk-text3); }
   .dash-picker-year {
     display:flex; align-items:center; justify-content:space-between;
     font-weight:700; font-size:13px; color:var(--dk-text); margin-bottom:8px;
@@ -281,6 +297,52 @@
     background:var(--dk-hover);
   }
 
+  /* ---- By App (task 4, §5.60): App × month pivot, Booked vs Actual MD ----
+     Same freeze/z-index/scroll-wrapper pattern as .dash-os-table above, but the header is
+     TWO rows (group row: Total/Booked MD/Actual MD spans; data row: individual sortable
+     columns) instead of one — the App corner cell uses rowspan="2" so it only needs to sit
+     at top:0 once, while each data row gets its own explicit `top` (fixed row height via
+     `height:30px; box-sizing:border-box` on every header cell keeps row 2's offset exact
+     without measuring anything at runtime). Uses a class (.dash-app-table), not an #id, same
+     convention as .dash-os-table (both are App×dimension pivots) — #projectTable/#leadTable
+     use IDs because each page has exactly one of those tables. */
+  .dash-app-scroll { background:var(--dk-card); border:1px solid var(--dk-border); border-radius:12px; overflow:auto; max-height:calc(100vh - 300px); }
+  table.dash-app-table { border-collapse:separate; border-spacing:0; font-size:12.5px; white-space:nowrap; }
+  table.dash-app-table th, table.dash-app-table td {
+    padding:7px 10px; border-bottom:1px solid var(--dk-border); border-right:1px solid var(--dk-border);
+  }
+  table.dash-app-table thead th {
+    position:sticky; background:var(--dk-surface); color:var(--dk-text2); font-weight:700; z-index:20;
+    text-align:center; height:30px; box-sizing:border-box;
+  }
+  table.dash-app-table thead tr:first-child th { top:0; }
+  table.dash-app-table thead tr:last-child th { top:30px; }
+  table.dash-app-table th.sortable { cursor:pointer; user-select:none; }
+  table.dash-app-table th.sortable:hover { color:var(--dk-text); }
+  table.dash-app-table th .sort-ico { margin-left:4px; opacity:.6; font-size:10px; }
+  table.dash-app-table th .sort-ico-idle { opacity:.28; }
+  table.dash-app-table th.sort-active .sort-ico { opacity:1; color:var(--dk-accent); }
+
+  table.dash-app-table td.col-app-freeze, table.dash-app-table th.col-app-freeze {
+    position:sticky; left:0; width:190px; min-width:190px; text-align:left; background:var(--dk-card); z-index:10;
+    box-shadow:2px 0 4px rgba(34,28,21,.08);
+  }
+  table.dash-app-table thead th.col-app-freeze { z-index:31; background:var(--dk-surface); }
+  table.dash-app-table tr.dash-total-row td.col-app-freeze { background:var(--dk-hover); }
+  table.dash-app-table td.right, table.dash-app-table th.right { text-align:right; }
+  /* Actual − Booked: บวก = ใช้จริงเกินที่จอง (เขียว), ลบ = ใช้น้อยกว่าจอง (แดง) — สีจาก
+     CSS variable ที่มีอยู่แล้วเท่านั้น (--today เป็นสีเขียวของระบบ, --danger เป็นสีแดง) */
+  .md-over { color:var(--today); font-weight:700; }
+  .md-under { color:var(--danger); font-weight:700; }
+
+  /* ---- Import Actual MD preview modal (task 5) — plain table, not .dash-table (that class
+     assumes a page-level sticky header context this modal's own scroll area doesn't have) ---- */
+  .actual-import-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:10px; }
+  .actual-import-table th, .actual-import-table td { padding:6px 8px; border-bottom:1px solid var(--dk-border); text-align:left; }
+  .actual-import-table td.right, .actual-import-table th.right { text-align:right; }
+  .actual-import-err-title { color:var(--danger); font-weight:700; margin:10px 0 6px; }
+  .actual-import-warn-title { color:var(--dk-text2); font-weight:700; margin:10px 0 6px; }
+
   .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
 
   /* ---- loading wrapper: viewContainer (task 1) ----
@@ -353,6 +415,7 @@
     <div class="toolbar dash-toolbar-row">
       <div class="view-tabs" id="viewTabs">
         <button class="view-tab active" data-view="project">📊 By Project</button>
+        <button class="view-tab" data-view="app">🧩 By App</button>
         <button class="view-tab" data-view="os">👤 By OS</button>
         <button class="view-tab" data-view="lead">👑 By Lead</button>
         <button class="view-tab" data-view="signoff">📋 Signoff</button>
@@ -385,6 +448,17 @@
            master + booking/leave สดจาก Supabase อีกครั้ง (loadMasterData() + loadPeriod(true)) -->
       <span class="toolbar-sep">|</span>
       <button class="btn" id="refreshDashBtn">🔄 Refresh</button>
+      <!-- 2026-09-09 (§5.60, Task 5): Download Template + Import Actual MD — By App tab เท่านั้น
+           และเฉพาะ admin (S.isAdmin, จาก app_user.app_role — ห้ามใช้ getCachedRole()) เห็นตัวเลข
+           Actual ได้ทุกคนที่ล็อกอิน แต่ import/เปลี่ยนข้อมูลได้เฉพาะ admin เท่านั้น (ชั้น UI นี้เสริม
+           RLS + guard ใน fn_import_actual_md ซึ่งเป็นด่านจริง) toggle hidden ผ่าน
+           updateAppAdminToolsVisibility() ใน restoreDashPrefs()/switchDashView() -->
+      <span class="toolbar-sep hidden" id="actualToolsSep">|</span>
+      <div id="actualAdminTools" class="hidden">
+        <button class="btn" id="downloadActualTemplateBtn">⬇ Template</button>
+        <button class="btn" id="importActualBtn">⬆ Import Actual MD</button>
+        <input type="file" id="importActualFile" accept=".xlsx,.xls" class="hidden">
+      </div>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -421,6 +495,16 @@
           <option value="all">All MD</option>
           <option value="month">Selected Month</option>
         </select>
+      </div>
+
+      <!-- 2026-09-09 (§5.60, Task 4): "Compare Actual" checkbox — By App tab เท่านั้น (แพตเทิร์น
+           เดียวกับ #projectViewFld ด้านบน — hidden ยกเว้นตอน S.dashView==='app', toggle ใน
+           restoreDashPrefs()/switchDashView()) ติ๊กแล้วโชว์คอลัมน์ Actual MD/Actual−Booked
+           เพิ่มในตาราง By App — ไม่ยิง query ใหม่ (แค่ re-render จาก S.actualByAppMonth ที่โหลด
+           ไว้แล้ว), ค่าจำใน prefs (compareActual, restore แล้วใน restoreDashPrefs() ตั้งแต่ Task 2/3) -->
+      <div class="fld hidden" id="cmpActualFld">
+        <label>&nbsp;</label>
+        <label class="chk"><input type="checkbox" id="cmpActualChk"> Compare Actual</label>
       </div>
 
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
@@ -462,8 +546,8 @@
            restrict the MD numbers themselves: once a project matches, its MD is its
            full/all-time Effective (Booked − Leave) total, not clipped to this month — see
            recomputeAggregates(). Shared across every tab (By Project/By OS/By Lead/Signoff)
-           since S.overallRange is a single global filter, derived here from S.y/S.m (see
-           overallRangeFromYM()). 2026-09-01 (§5.50, ยืนยันโดย Gibb): เปลี่ยนจาก Start/End
+           since S.overallRange is a single global filter, derived here from S.months (see
+           overallRangeFromMonths()). 2026-09-01 (§5.50, ยืนยันโดย Gibb): เปลี่ยนจาก Start/End
            (input[type=date] ×2 + ปุ่ม "ค้นหา") เป็น month picker ช่องเดียว mirror
            calendar.html's ‹/เดือน/› — เปลี่ยนเดือนแล้ว apply ทันที ไม่ต้องกดปุ่มรออีกต่อไป
            (ตรงข้ามกับ Project/UAT Lead/App ด้านบนที่ apply-on-change อยู่แล้วเหมือนเดิม). -->
@@ -499,6 +583,26 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ============ IMPORT ACTUAL MD PREVIEW MODAL (Task 5, §5.60 — admin only, By App tab) ============
+     Static overlay + toggle .hidden, same pattern as admin.html's #formOverlay/#projOverlay —
+     content of #actualImportBody is (re)built by openActualImportModal() every time it opens.
+     Confirm button (#actualImportConfirmBtn) stays disabled whenever the parsed file has any
+     blocking errors (see parseActualFile()) — never enabled by accident from a previous file. -->
+<div id="actualImportOverlay" class="overlay hidden">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3>นำเข้า Actual MD</h3>
+      <button class="x" onclick="closeActualImportModal()">×</button>
+    </div>
+    <div class="modal-body" id="actualImportBody"></div>
+    <div class="modal-foot">
+      <div class="form-err" id="actualImportErr"></div>
+      <button class="btn" onclick="closeActualImportModal()">ยกเลิก</button>
+      <button class="btn accent" id="actualImportConfirmBtn" onclick="confirmActualImport()">ยืนยันนำเข้า</button>
+    </div>
+  </div>
+</div>
 
 <!-- Signoff Review modal (threaded comments) — shared with gantt.html so both pages
      open the exact same modal for "Review Signoff" -->
@@ -583,15 +687,22 @@ const S = {
   leadRoleFilter: 'main',       // By Lead tab grouping: 'all' | 'main' | 'sub' | 'exec' (#leadRoleSelect) — 'all' (2026-08-14) stacks all 3 role tables, see renderLeadView()
   leadDomainFilter: 'all',      // By Lead tab email-domain filter: 'all' | 'infinitas' | 'arise' | 'other' (#leadDomainSelect)
   filter: { projects: new Set(), leads: new Set(), apps: new Set() }, // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — ANDed with S.overallRange in matchProjectDiscovery(); empty Set = no restriction (same convention as gantt.html/outsource.html)
-  // 2026-09-01 (§5.50): "ค้นหา Project" เปลี่ยนจาก Start/End (2 input[type=date]) เป็น month
-  // picker ช่องเดียว (mirrors calendar.html) — y/m คือ source of truth ใหม่ (1-based month,
-  // คู่กับ calendar.html's S.y/S.m) ส่วน overallRange ยังเป็น {s,e} เหมือนเดิมทุกประการ (derive
-  // จาก y/m ผ่าน overallRangeFromYM() ทุกครั้งที่เดือนเปลี่ยน) — ห้ามลบ/เปลี่ยนรูปร่าง overallRange
-  // เด็ดขาด: projectMatchesRange()/recomputeAggregates()/matchProjectDiscovery() (§5.37/§5.39)
-  // ทั้งหมดอ่าน S.overallRange.s/.e ตรงๆ และฟังก์ชันเหล่านี้ไม่ถูกแตะในงานนี้เลย
-  y: 0,                          // ปีที่เลือก (ตัวเลขเต็ม เช่น 2026)
-  m: 0,                          // เดือนที่เลือก 1-12
-  overallRange: { s:'', e:'' }, // derived จาก y/m — "ค้นหา Project" search window (project match only, NOT an MD date filter)
+  // 2026-09-09 (§5.60): "ค้นหา Project" เป็น month picker แบบ **multi-select** — เลือกกี่เดือน
+  // ก็ได้ และ **ไม่ต้องติดกัน** (ยืนยันโดย Gibb) S.months คือ source of truth ตัวเดียว
+  // (แทน S.y/S.m เดี่ยวของ §5.50) ส่วน S.overallRange ยังเป็น {s,e} รูปเดิมทุกประการ = ซอง
+  // ครอบเดือนแรกสุด..เดือนท้ายสุดที่เลือก (derive ผ่าน overallRangeFromMonths()) — ห้ามลบ/
+  // เปลี่ยนรูปร่าง overallRange เด็ดขาด ยังมีที่อ่าน .s/.e ตรงๆ อยู่ (osRowVisible(), Excel filter)
+  //
+  // 🔴 สำคัญ: ตัวที่ใช้ตัดสิน "เดือนไหนถูกนับ" คือ **S.months / monthSetOf()** ไม่ใช่ overallRange
+  // เพราะเดือนที่เลือกอาจไม่ติดกัน — ถ้าเผลอใช้ [s,e] เป็นตัวกรอง MD จะนับเดือนที่ผู้ใช้
+  // **ไม่ได้ติ๊ก** เข้ามาเงียบๆ (เช่นติ๊ก ก.พ. + เม.ย. แล้ว MD ของ มี.ค. โผล่มาด้วย)
+  months: [],                    // ['YYYY-MM', ...] เรียงแล้ว, อย่างน้อย 1 ตัวเสมอ
+  isAdmin: false,                // จาก app_user.app_role — ใช้คุมปุ่ม Import/Template ของแท็บ By App
+                                 // (ด่านจริงคือ RLS + guard ใน fn_import_actual_md ไม่ใช่ตรงนี้)
+  compareActual: false,          // checkbox "Compare Actual" (แท็บ By App) — โชว์คอลัมน์ Actual/Diff
+  actualByAppMonth: {},          // app_code -> 'YYYY-MM' -> md  (จาก view v_actual_md_app_month)
+  appSort: { key: '', dir: '' }, // sort หัวคอลัมน์แท็บ By App (3 สถานะ §5.59) — '' = ลำดับตั้งต้น
+  overallRange: { s:'', e:'' }, // derived จาก months — ซองครอบเดือนแรก..เดือนท้าย (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
   bookingDaily: [],             // v_booking_daily rows — ALL rows, unrestricted by S.overallRange
   leaveDaily: [],                // v_leave_daily rows — ALL rows, unrestricted by S.overallRange
@@ -656,23 +767,27 @@ function showLogin(){
 let sessionBooted = false;
 
 /* จำ Applied filter/มุมมองตอนสลับหน้า (sessionStorage ผ่าน common.js) — restore ต้องเกิด
-   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange (ค้นหา Project, derive จาก S.y/S.m) เป็นตัวกำหนดว่า
+   ก่อนโหลดข้อมูลรอบแรก เพราะ overallRange (ค้นหา Project, derive จาก S.months) เป็นตัวกำหนดว่า
    project ไหนถูกนับใน recomputeAggregates() ค่าที่อ่านจาก storage ไม่น่าไว้ใจ → validate
    ชนิด/ช่วงก่อนใช้เสมอ เพี้ยน = ปล่อยให้ default เดิมทำงานต่อ (ensureOverallRangeDefaults() จะ
-   ไม่ทับ S.y/S.m ถ้าถูก set ไว้แล้วจากตรงนี้)
-   2026-09-01 (§5.50): เดิมเก็บ `rangeS`/`rangeE` (yyyy-mm-dd ×2) ตอนนี้เก็บ `y`/`m` แทน (แบบ
-   เดียวกับ calendar.html) — ค่าเก่ารูปแบบ rangeS/rangeE ที่อาจค้างใน sessionStorage จากก่อนวันนี้
-   จะไม่ match เงื่อนไข y/m ด้านล่างเลย (คนละคีย์) จึงตกไปใช้ default เงียบๆ ใน
+   ไม่ทับ S.months ถ้าถูก set ไว้แล้วจากตรงนี้)
+   2026-09-09 (§5.60): เดิมเก็บ `y`/`m` (§5.50) ตอนนี้เก็บ `months` (array ของ 'YYYY-MM') แทน
+   — ค่าเก่ารูปแบบ y/m (และ rangeS/rangeE ที่เก่ากว่านั้น) ที่อาจค้างใน sessionStorage จะไม่
+   match เงื่อนไข months ด้านล่างเลย (คนละคีย์) จึงตกไปใช้ default เงียบๆ ใน
    ensureOverallRangeDefaults() โดยอัตโนมัติ ไม่ทำให้หน้าเว็บพัง */
 function restoreDashPrefs(){
   const p = loadPrefs(PAGE);
 
-  const py = Number(p.y), pm = Number(p.m);
-  if (Number.isInteger(py) && py >= 2000 && py <= 2100 && Number.isInteger(pm) && pm >= 1 && pm <= 12) {
-    S.y = py; S.m = pm;
+  if (Array.isArray(p.months)) {
+    const ok = p.months.filter(v => typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v)
+      && Number(v.slice(0, 4)) >= 2000 && Number(v.slice(0, 4)) <= 2100);
+    if (ok.length) S.months = [...new Set(ok)].sort();
   }
 
-  if (['project', 'os', 'lead', 'signoff'].includes(p.dashView)) {
+  if (typeof p.compareActual === 'boolean') S.compareActual = p.compareActual;
+  $('cmpActualChk').checked = S.compareActual;
+
+  if (['project', 'os', 'app', 'lead', 'signoff'].includes(p.dashView)) {
     S.dashView = p.dashView;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
   }
@@ -681,6 +796,10 @@ function restoreDashPrefs(){
   $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
   // View (All MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
   $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
+  // Compare Actual checkbox + Download Template/Import Actual MD buttons — By App tab เท่านั้น
+  // (2026-09-09, Task 4/5 §5.60) — admin tools ยังต้องเช็ค S.isAdmin ด้วย (updateAppAdminToolsVisibility())
+  $('cmpActualFld').classList.toggle('hidden', S.dashView !== 'app');
+  updateAppAdminToolsVisibility();
 
   if (['all', 'month'].includes(p.projectViewMode)) {
     S.projectViewMode = p.projectViewMode;
@@ -734,11 +853,29 @@ function restoreDashPrefs(){
     if (isUnsortedPref(key, dir)) S.leadSort = { key:'', dir:'' };
     else if (typeof key === 'string' && key && (dir === 'asc' || dir === 'desc')) S.leadSort = { key, dir };
   }
+  // By App: key เป็น 'app'/'bookedTotal'/'actualTotal'/'diff' หรือ 'b:<YYYY-MM>'/'a:<YYYY-MM>'
+  // (เดือนที่มีจริงเปลี่ยนได้ทุกครั้งที่แก้ตัวเลือกเดือน) — whitelist ล่วงหน้าไม่ได้เหมือนกับ
+  // osSort/leadSort ข้างบน ตรวจแค่ชนิด/ทิศทาง ถ้า key นั้นหายไปแล้ว genericSort() จะตกกลับไป unsort เอง
+  if (p.appSort && typeof p.appSort === 'object') {
+    const { key, dir } = p.appSort;
+    if (isUnsortedPref(key, dir)) S.appSort = { key:'', dir:'' };
+    else if (typeof key === 'string' && key && (dir === 'asc' || dir === 'desc')) S.appSort = { key, dir };
+  }
 }
 /** §5.59: prefs ที่บันทึกสถานะ "ไม่เรียง" ไว้ (key หรือ dir ว่าง) — ถือเป็นค่าที่ถูกต้อง
  *  ไม่ใช่ของเสีย (ต่างจาก key มั่วๆ ที่ต้องตกไปใช้ default ของแท็บนั้น) */
 function isUnsortedPref(key, dir){
   return (key === '' || key == null) && (dir === '' || dir == null);
+}
+/** ปุ่ม Download Template / Import Actual MD (#actualAdminTools + #actualToolsSep) —
+ *  โชว์เฉพาะ S.isAdmin (จาก app_user.app_role — ห้ามใช้ getCachedRole()) และตอนกำลังดูแท็บ
+ *  By App เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า) และ switchDashView() (ตอนสลับแท็บ)
+ *  — นี่คือชั้น UI เท่านั้น ด่านจริงคือ RLS (`actual_md_write` = is_admin()) + guard ใน
+ *  fn_import_actual_md() (§5.60) */
+function updateAppAdminToolsVisibility(){
+  const show = S.isAdmin && S.dashView === 'app';
+  $('actualAdminTools').classList.toggle('hidden', !show);
+  $('actualToolsSep').classList.toggle('hidden', !show);
 }
 
 async function showApp(session){
@@ -754,6 +891,9 @@ async function showApp(session){
     .eq('email', session.user.email).maybeSingle();
   if (u) { who = u.display_name; role = u.app_role; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
+  // ⚠️ ใช้ค่าจาก app_user เท่านั้นเป็นตัวตัดสินสิทธิ์ — getCachedRole() เป็นแค่ค่า optimistic
+  // ไว้กันเมนู Admin กระพริบตอนสลับหน้า ห้ามเอามาคุมปุ่ม Import
+  S.isAdmin = (role === 'admin');
   setCachedRole(session.user.email, role);
   paintNavAdmin(role);
   S.user = { displayName: who, role, userId: session.user.id, pqaEmpId: (u && u.pqa_emp_id) || null };
@@ -770,8 +910,7 @@ async function showApp(session){
   // เดือนปัจจุบัน = default ตั้งต้น (mirrors calendar.html's showApp()) — ตั้งก่อนเสมอ แล้วค่าที่
   // จำไว้ (ถ้ามี y/m ที่สมเหตุสมผลใน sessionStorage) จะมาทับทีหลังผ่านการ restore ด้านล่าง
   const today = new Date();
-  S.y = today.getFullYear();
-  S.m = today.getMonth() + 1;
+  S.months = [`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`];
   // เปลี่ยน login = ล้าง filter ของคนก่อนทิ้ง (ต้องมาก่อน restoreDashPrefs เสมอ)
   setPrefsOwner(session.user.email);
   restoreDashPrefs();
@@ -923,6 +1062,35 @@ async function loadPeriod(force){
       S.bookingDaily = bkRes.data || [];
       S.leaveDaily = lvRes.data || [];
       S.bookingLeaveLoaded = true;
+
+      // 2026-09-09 (§5.60, Task 4): v_actual_md_app_month — feeds By App's "Actual MD" column.
+      // Unlike bkRes/lvRes above, a failure here is NOT fatal — the view's patch
+      // (sql/patch_2026-09-09_actual_md.sql) may not have been run on the live Supabase
+      // instance yet, and the rest of the dashboard (By Project/By OS/By Lead/Signoff) must
+      // keep working regardless of whether it has — By App just shows Actual as "—" for every
+      // app until the patch is applied. Wrapped in fetchAllRows() per §5.49 even though
+      // ~28 apps × a handful of months is nowhere near the 1000-row cap in practice — cheap
+      // insurance, same call shape as every other query in loadMasterData()/loadPeriod().
+      const actualRes = await fetchAllRows((from, to) => supabase.from('v_actual_md_app_month')
+        .select('ym,app_code,actual_md')
+        .order('ym', { ascending: true })
+        .order('app_code', { ascending: true })
+        .range(from, to));
+      if (actualRes.error) {
+        console.warn('v_actual_md_app_month load failed (patch may not be applied yet):', actualRes.error);
+        S.actualByAppMonth = {};
+      } else {
+        // ym ในตารางเป็น 'YYYYMM' (6 หลัก) — แปลงเป็น 'YYYY-MM' ให้ตรงกับ S.months/byAppMonth
+        const map = {};
+        (actualRes.data || []).forEach(r => {
+          const ym = String(r.ym || '');
+          if (!/^\d{6}$/.test(ym)) return; // ข้อมูลเพี้ยน (ควรผ่าน CHECK constraint มาแล้ว) — กันพังเงียบๆ
+          const key = ym.slice(0, 4) + '-' + ym.slice(4, 6);
+          map[r.app_code] = map[r.app_code] || {};
+          map[r.app_code][key] = (map[r.app_code][key] || 0) + (Number(r.actual_md) || 0);
+        });
+        S.actualByAppMonth = map;
+      }
     }
     recomputeAggregates();
     // render FIRST (while still hidden behind the overlay — the content uses
@@ -972,9 +1140,10 @@ async function loadPeriod(force){
  * denominator, the two pages are guaranteed to agree for the same underlying data.
  */
 function recomputeAggregates(){
-  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+  const months = S.months;
+  const monthSet = monthSetOf(months);
   const matchedAll = {};
-  Object.keys(S.allProjMap).forEach(pk => { if (matchProjectDiscovery(pk, rangeS, rangeE)) matchedAll[pk] = S.allProjMap[pk]; });
+  Object.keys(S.allProjMap).forEach(pk => { if (matchProjectDiscovery(pk, months)) matchedAll[pk] = S.allProjMap[pk]; });
   S.periodAgg = computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true });
   // 2026-09-01 (รายงานโดย Gibb): By OS ตัด MD ตามช่วงวันที่ที่เลือกด้วย (dateRange) ต่างจาก
   // periodAgg (By Project/By Lead/Signoff) ที่ยังนับ MD เต็มช่วง Phase เหมือน Gantt ตามเดิม —
@@ -1005,8 +1174,10 @@ function recomputeAggregates(){
   // Gantt (§5.39) — this fix is scoped to periodAggActiveOnly/By OS only.
   const matchedActiveOs = {};
   Object.keys(S.activeProjMap).forEach(pk => { if (projectPassesExtraFilters(pk)) matchedActiveOs[pk] = S.activeProjMap[pk]; });
+  // 2026-09-09 (§5.60): `dateRange: {s,e}` → `monthSet` — ต้องเป็น "เซ็ตของเดือนที่ติ๊กไว้"
+  // ไม่ใช่ช่วงต่อเนื่อง เพราะเดือนที่เลือกไม่จำเป็นต้องติดกันอีกต่อไป
   S.periodAggActiveOnly = computeAgg(S.bookingDaily, S.leaveDaily, matchedActiveOs,
-    { restrict: true, dateRange: { s: rangeS, e: rangeE } });
+    { restrict: true, monthSet });
 
   // 2026-09-02 (ตามคำขอพี่กิ๊บ, dropdown #projectViewSelect): By Project tab เท่านั้น —
   // 'all' (default) ใช้ periodAgg ตัวเดิมเป๊ะ (เต็มช่วง Phase, ตรงกับ Gantt's Booked MD, §5.39)
@@ -1016,7 +1187,7 @@ function recomputeAggregates(){
   // เกณฑ์ discovery เดิมของ §5.37 อยู่ แค่ MD ที่แสดงถูกตัดตามเดือนเพิ่มอีกชั้นเท่านั้น ไม่กระทบ
   // S.periodAgg เอง (By Lead/Signoff ยังอ่าน S.periodAgg ตรงๆ เหมือนเดิมทุกประการ)
   S.periodAggProjectView = S.projectViewMode === 'month'
-    ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, dateRange: { s: rangeS, e: rangeE } })
+    ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, monthSet })
     : S.periodAgg;
 }
 
@@ -1061,20 +1232,27 @@ function recomputeAggregates(){
  *    ⚠️ `bookingRows`/`leaveRows` ที่ส่งเข้ามาเป็นประวัติ**ทั้งหมดแบบไม่กรองวันที่**แล้ว
  *    (S.bookingDaily/S.leaveDaily ไม่ได้ query ด้วย .gte/.lte ช่วง Period อีกต่อไป, §5.37) ดังนั้น
  *    MD ที่ project หนึ่งได้คือ MD **เต็มช่วงจริง** ของทุก booking ของ project นั้น ไม่ถูกตัดตาม
- *    ช่วงวันที่ที่เลือกในกล่องค้นหา — **ยกเว้น** เมื่อส่ง `opts.dateRange` มา (ดูหัวข้อถัดไป)
- *  - `dateRange`: `{s, e}` (yyyy-mm-dd, 2026-09-01 ใหม่) — ถ้าส่งมา จะกรอง pass 2 rows เพิ่มอีกชั้น
- *    ให้เหลือเฉพาะ work_date อยู่ใน [s, e] เท่านั้น (ตัด MD ตามช่วงวันที่ที่เลือกจริงๆ ไม่ใช่เต็ม
- *    Phase) — ตอนนี้ใช้เฉพาะกับ `S.periodAggActiveOnly` (By OS) เพื่อให้ตรงกับ
+ *    ช่วงวันที่ที่เลือกในกล่องค้นหา — **ยกเว้น** เมื่อส่ง `opts.monthSet` มา (ดูหัวข้อถัดไป)
+ *  - `monthSet`: `Set<'YYYY-MM'>` (2026-09-09 §5.60 — เดิมเป็น `dateRange: {s,e}` ตั้งแต่
+ *    2026-09-01) — ถ้าส่งมา จะกรอง pass 2 rows เพิ่มอีกชั้นให้เหลือเฉพาะแถวที่ **เดือนของ
+ *    work_date อยู่ในเซ็ตที่ผู้ใช้ติ๊กไว้** เท่านั้น ต้องเป็นเซ็ตของเดือน ไม่ใช่ช่วง [s,e]
+ *    เพราะเดือนที่เลือกไม่จำเป็นต้องติดกัน (ติ๊ก ก.พ. + เม.ย. ต้องไม่นับ มี.ค.)
+ *    — ใช้กับ `S.periodAggActiveOnly` (By OS + By App) และ `S.periodAggProjectView`
+ *    (By Project โหมด 'Selected Month') เพื่อให้ตรงกับ
  *    `webapp/outsource.html` ที่นับ MD แบบตัดตามวันที่เหมือนกัน (รายงานโดย Gibb 2026-09-01 — ดู
  *    [[pqa-outsource-dashboard-active-project-mismatch-2026-09]]) — `S.periodAgg` (By Project/By
- *    Lead/Signoff) ไม่ส่ง dateRange จึงยังนับเต็มช่วง Phase เหมือนเดิม (ตรงกับ Gantt's Booked MD
- *    ตามที่เคยยืนยัน §5.39 — อย่าเผลอเพิ่ม dateRange ให้ periodAgg เพราะจะทำให้ By Project เพี้ยน
+ *    Lead/Signoff) ไม่ส่ง monthSet จึงยังนับเต็มช่วง Phase เหมือนเดิม (ตรงกับ Gantt's Booked MD
+ *    ตามที่เคยยืนยัน §5.39 — อย่าเผลอเพิ่ม monthSet ให้ periodAgg เพราะจะทำให้ By Project เพี้ยน
  *    ไปจาก Gantt)
  */
 function computeAgg(bookingRows, leaveRows, projMap, opts){
   const restrict = !!(opts && opts.restrict);
-  const dateRange = opts && opts.dateRange; // { s, e } — 2026-09-01, By OS เท่านั้น, ดู recomputeAggregates()
+  // 2026-09-09 (§5.60): แทน `dateRange: {s,e}` เดิม (§5.48) ด้วย Set ของเดือน 'YYYY-MM' —
+  // ตัวเลือกเดือนเป็น multi-select ที่ไม่ต้องติดกันแล้ว การกรองด้วยช่วง [s,e] จะนับเดือนที่
+  // ผู้ใช้ไม่ได้ติ๊ก (ที่คั่นอยู่ตรงกลาง) เข้ามาด้วยเงียบๆ
+  const monthSet = opts && opts.monthSet;
   const byAppPhase = {};       // app -> phase -> md
+  const byAppMonth = {};       // app -> 'YYYY-MM' -> md  (2026-09-09 §5.60 — ป้อนแท็บ By App)
   const phaseTotals = {};      // phase -> md
   const byProject = {};        // project_key -> md
   const byProjectPhase = {};   // project_key -> phase -> md
@@ -1111,12 +1289,12 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   // เท่านั้น (restrict ตอนนี้มีผลแค่ตรงนี้ — ตัดสินว่า project ไหนโผล่ในตาราง ไม่เกี่ยวกับ factor
   // ข้างบนอีกต่อไป) kpiEffectiveMD สะสมที่นี่ด้วย (ย้ายมาจาก pass 1 เดิม) เพื่อรักษา invariant
   // sum(byProject) === kpiEffectiveMD ให้ยังเป็นจริงโดยนิยาม แม้ pass 1 จะไม่ผ่าน restrict แล้ว ----
-  // 2026-09-01: `dateRange` (ตอนนี้ใช้แค่ periodAggActiveOnly/By OS) ตัด pass 2 ให้เหลือเฉพาะแถวที่
-  // work_date ตกในช่วงที่เลือกจริงๆ เพิ่มจาก restrict (project active) — ไม่กระทบ pass 1
+  // 2026-09-09 (§5.60, เดิม `dateRange` 2026-09-01): `monthSet` ตัด pass 2 ให้เหลือเฉพาะแถวที่
+  // เดือนของ work_date อยู่ในเซ็ตที่เลือกจริงๆ เพิ่มจาก restrict (project active) — ไม่กระทบ pass 1
   // (factor หักวันลายังคิดจาก booking ทั้งระบบทุกวันเหมือนเดิม)
   let rows = restrict ? bookingRows.filter(r => !!projMap[r.project_key]) : bookingRows;
-  if (dateRange) {
-    rows = rows.filter(r => r.work_date >= dateRange.s && r.work_date <= dateRange.e);
+  if (monthSet) {
+    rows = rows.filter(r => monthSet.has(String(r.work_date).slice(0, 7)));
   }
   let kpiEffectiveMD = 0;
   rows.forEach(row => {
@@ -1128,6 +1306,12 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
 
     byAppPhase[app] = byAppPhase[app] || {};
     byAppPhase[app][row.phase_code] = (byAppPhase[app][row.phase_code] || 0) + md;
+
+    // ยอดรายเดือนต่อ App — สะสมทุกแถวที่ผ่าน filter แล้ว (ถ้ามี monthSet แถวก็ถูกตัดไปแล้ว
+    // ข้างบน) แท็บ By App อ่านเฉพาะคีย์เดือนที่ผู้ใช้เลือกเท่านั้น
+    const ymKey = String(row.work_date).slice(0, 7);
+    byAppMonth[app] = byAppMonth[app] || {};
+    byAppMonth[app][ymKey] = (byAppMonth[app][ymKey] || 0) + md;
     phaseTotals[row.phase_code] = (phaseTotals[row.phase_code] || 0) + md;
     byProject[row.project_key] = (byProject[row.project_key] || 0) + md;
 
@@ -1144,7 +1328,7 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
     }
   });
 
-  return { byAppPhase, phaseTotals, byProject, byProjectPhase, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
+  return { byAppPhase, byAppMonth, phaseTotals, byProject, byProjectPhase, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
 }
 
 /* =====================================================================
@@ -1188,6 +1372,7 @@ function sortedApps(appKeys){
 function renderView(){
   const c = $('viewContainer');
   if (S.dashView === 'project') renderProjectView(c);
+  else if (S.dashView === 'app') renderAppView(c);        // 2026-09-09, Task 4 (§5.60)
   else if (S.dashView === 'os') renderOsView(c);
   else if (S.dashView === 'lead') renderLeadView(c);
   else renderSignoffView(c);
@@ -1287,11 +1472,16 @@ function leadCellHTML(mainLead, subLeads, executors){
 /** Whether project `pk`'s overall span (all its project_phase rows, exactly like the
  *  existing per-phase min-start/max-end scan — SIT included, nothing filtered out —
  *  PLUS project.signoff_date as one more candidate date on both ends) overlaps the given
- *  [rangeS, rangeE] "ค้นหา Project" search window. Same §4.1 standard: start ≤ End &&
- *  end ≥ Start (yyyy-mm-dd string compare). Shared by buildProjectRows() (decides which
- *  rows show in the By Project table) and recomputeAggregates() (decides which projects'
- *  bookings count toward the MD totals shown everywhere) — see §5.37. */
-function projectMatchesRange(pk, rangeS, rangeE){
+ *  "ค้นหา Project" selection. Same §4.1 standard: start ≤ End && end ≥ Start (yyyy-mm-dd
+ *  string compare). Shared by buildProjectRows() (decides which rows show in the By Project
+ *  table) and recomputeAggregates() (decides which projects' bookings count toward the MD
+ *  totals shown everywhere) — see §5.37.
+ *
+ *  2026-09-09 (§5.60): takes the SELECTED MONTH LIST, not a single [rangeS, rangeE] window,
+ *  and matches if the project overlaps **any one** of them. Months need not be contiguous —
+ *  testing against the outer envelope instead would wrongly match a project that only lives
+ *  in a skipped middle month. */
+function projectMatchesRange(pk, months){
   const phases = S.phasesByProject[pk] || [];
   const proj = S.allProjMap[pk];
   const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
@@ -1304,7 +1494,12 @@ function projectMatchesRange(pk, rangeS, rangeE){
     if (!maxEnd || proj.signoff_date > maxEnd) maxEnd = proj.signoff_date;
   }
   const periodEnd = maxEnd || periodStart;
-  return !!periodStart && !!rangeS && !!rangeE && periodStart <= rangeE && periodEnd >= rangeS;
+  if (!periodStart || !Array.isArray(months) || !months.length) return false;
+  return months.some(mm => {
+    const yy = Number(mm.slice(0, 4)), m = Number(mm.slice(5, 7));
+    const ms = d2s(new Date(yy, m - 1, 1)), me = d2s(new Date(yy, m, 0));
+    return periodStart <= me && periodEnd >= ms;
+  });
 }
 
 /** Whether project `pk` passes the Project/UAT Lead/App multiselect ตัวกรอง (2026-08-14) —
@@ -1330,8 +1525,8 @@ function projectPassesExtraFilters(pk){
  *  existing date-range match (projectMatchesRange(), §5.37) with the new Project/UAT
  *  Lead/App multiselect filters above. Replaces bare projectMatchesRange() at every call
  *  site that decides which projects feed the MD aggregates / show up in a tab's rows. */
-function matchProjectDiscovery(pk, rangeS, rangeE){
-  return projectMatchesRange(pk, rangeS, rangeE) && projectPassesExtraFilters(pk);
+function matchProjectDiscovery(pk, months){
+  return projectMatchesRange(pk, months) && projectPassesExtraFilters(pk);
 }
 
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
@@ -1362,7 +1557,7 @@ function buildProjectRows(){
   const executors = executorMap();
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
   // already server-filtered via .eq('is_active', true) in loadMasterData().
-  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+  const months = S.months;
   return S.activeProjects.map(p => {
     const pk = p.project_key;
     const phases = S.phasesByProject[pk] || [];
@@ -1400,7 +1595,7 @@ function buildProjectRows(){
        แล้วเท่านั้น (recomputeAggregates() ใช้ projectMatchesRange() ตัวเดียวกันนี้กรอง projMap
        ก่อนเข้า computeAgg) ⇒ โปรเจกต์ที่ไม่ผ่านการค้นหาจะมี MD เป็นศูนย์เสมอโดยธรรมชาติ —
        เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ */
-    if (!matchProjectDiscovery(pk, rangeS, rangeE)) return null;
+    if (!matchProjectDiscovery(pk, months)) return null;
 
     return {
       app: p.app || p.other_app || '— ไม่มี App —',
@@ -1480,6 +1675,134 @@ function renderProjectView(container){
   wireSortHeader(container.querySelector('#projectTable thead'), S.projectSort, () => {
     savePrefs(PAGE, { projectSort: S.projectSort });
     renderProjectView(container);
+  });
+}
+
+/* ---- By App (task 4, §5.60): App × month pivot, Booked MD vs imported Actual MD ----
+   Source of truth for "Booked":
+     S.periodAggActiveOnly.byAppMonth — the SAME aggregate By OS already reads (active
+     project + Project/UAT Lead/App ตัวกรอง + monthSet clip to the exact months selected,
+     §5.48) so Booked MD here always agrees with By OS's Total column for the same App —
+     both come out of one computeAgg() call. This intentionally does NOT reuse S.periodAgg
+     (By Project/By Lead/Signoff's full-Phase-span aggregate, §5.37/§5.39) — By App's whole
+     point is comparing against Actual MD, which is inherently month-bucketed data, so
+     Booked here has to be month-bucketed too or the comparison wouldn't mean anything.
+   Source of truth for "Actual": S.actualByAppMonth (loaded in loadPeriod(), §5.60 Task 4
+   Step 3) — 'app_code' -> 'YYYY-MM' -> md, from pqa.v_actual_md_app_month via
+   fn_import_actual_md()'s writes (Task 5). */
+/** Pure-ish aggregation step for the By App tab — reads S.periodAggActiveOnly/
+ *  S.actualByAppMonth/S.months exactly the way buildProjectRows()/computeLeadCoverage() read
+ *  their own S.* inputs (no args), so it stays a plain function tests/run_tests.mjs's vm
+ *  harness can extract and run in isolation like every other build*Rows() helper here.
+ *  Rows are the UNION of every App that has a nonzero number on EITHER side (not the
+ *  intersection) — an App with Actual MD but zero Booked (or vice versa) still needs a row,
+ *  otherwise an import mismatch would silently disappear instead of showing up as a big
+ *  Actual − Booked diff. */
+function buildAppRows(){
+  const booked = (S.periodAggActiveOnly || {}).byAppMonth || {};
+  const actual = S.actualByAppMonth || {};
+  const apps = sortedApps([...new Set([...Object.keys(booked), ...Object.keys(actual)])]);
+  return apps.map(app => {
+    const bookedByMonth = {}, actualByMonth = {};
+    let bookedTotal = 0, actualTotal = 0;
+    (S.months || []).forEach(mm => {
+      const b = (booked[app] || {})[mm] || 0;
+      const a = (actual[app] || {})[mm] || 0;
+      bookedByMonth[mm] = b; actualByMonth[mm] = a;
+      bookedTotal += b; actualTotal += a;
+    });
+    return { app, bookedTotal, actualTotal, diff: actualTotal - bookedTotal, bookedByMonth, actualByMonth };
+  });
+}
+/** keyFns ของตาราง By App — คอลัมน์ต่อเดือนสร้างดังค์ตามชุดเดือนที่เลือกอยู่ตอนนี้ (คีย์
+ *  'b:<YYYY-MM>' / 'a:<YYYY-MM>' = Booked/Actual ของเดือนนั้น, ชื่อเดือนตรงๆ เหมือน osKeyFns()
+ *  ใช้ชื่อ App ตรงๆ — เพื่อให้ prefs ที่จำไว้ (S.appSort) ยังชี้ถูกคอลัมน์เดิมแม้ชุดเดือนที่เลือก
+ *  จะเปลี่ยนไป) — ใช้ร่วมกันทั้ง renderAppView() และ downloadAppExcel() ให้ผลลัพธ์ที่ดาวน์โหลด
+ *  เรียงตรงกับตารางบนจอเสมอ */
+function appKeyFns(months){
+  const kf = {
+    app: r => r.app,
+    bookedTotal: r => r.bookedTotal,
+    actualTotal: r => r.actualTotal,
+    diff: r => r.diff,
+  };
+  (months || []).forEach(mm => {
+    kf['b:' + mm] = r => r.bookedByMonth[mm] || 0;
+    kf['a:' + mm] = r => r.actualByMonth[mm] || 0;
+  });
+  return kf;
+}
+/** ตัวเลขในคอลัมน์ต่อเดือน (ไม่ใช่ Total/Diff) — 0 โชว์ "—" จางๆ แทนเลข 0 ตรงๆ (แพตเทิร์นเดียวกับ
+ *  renderOsView()'s pivot cells) กัน 28 App × หลายเดือนเต็มไปด้วยเลข 0 อ่านยาก */
+function appMonthCellHTML(v){
+  return v ? fmtMD(v) : '<span class="muted">—</span>';
+}
+function renderAppView(container){
+  const rows = buildAppRows();
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booked/Actual MD สำหรับตัวกรองชุดนี้</div>';
+    return;
+  }
+  const months = S.months || [];
+  const compareActual = S.compareActual;
+  const sorted = genericSort(rows, S.appSort, appKeyFns(months));
+
+  const appHeadActive = S.appSort.key === 'app' && !!S.appSort.dir;
+  const appHeadCls = ['sortable', appHeadActive ? 'sort-active' : '', 'col-app-freeze'].join(' ').trim();
+  const theadRow1 = `<tr>
+    <th class="${appHeadCls}" rowspan="2" data-sort-key="app">App${sortIco(S.appSort,'app')}</th>
+    <th colspan="${compareActual ? 3 : 1}">Total</th>
+    <th colspan="${months.length}">Booked MD</th>
+    ${compareActual ? `<th colspan="${months.length}">Actual MD</th>` : ''}
+  </tr>`;
+  const theadRow2 = `<tr>
+    ${thSort('Booked','bookedTotal',S.appSort,'right')}
+    ${compareActual ? thSort('Actual','actualTotal',S.appSort,'right') : ''}
+    ${compareActual ? thSort('Actual − Booked','diff',S.appSort,'right') : ''}
+    ${months.map(mm => thSort(monthLabel(mm), 'b:' + mm, S.appSort, 'right')).join('')}
+    ${compareActual ? months.map(mm => thSort(monthLabel(mm), 'a:' + mm, S.appSort, 'right')).join('') : ''}
+  </tr>`;
+
+  let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
+  const gBookedByMonth = {}, gActualByMonth = {};
+  months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
+
+  const bodyRows = sorted.map(r => {
+    gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
+    months.forEach(mm => { gBookedByMonth[mm] += r.bookedByMonth[mm]; gActualByMonth[mm] += r.actualByMonth[mm]; });
+    const diffCls = r.diff > 0 ? 'md-over' : (r.diff < 0 ? 'md-under' : '');
+    return `<tr>
+      <td class="col-app-freeze" title="${esc(r.app)}">${esc(r.app)}</td>
+      <td class="right">${fmtMD(r.bookedTotal)}</td>
+      ${compareActual ? `<td class="right">${fmtMD(r.actualTotal)}</td>` : ''}
+      ${compareActual ? `<td class="right ${diffCls}">${fmtMD(r.diff)}</td>` : ''}
+      ${months.map(mm => `<td class="right">${appMonthCellHTML(r.bookedByMonth[mm])}</td>`).join('')}
+      ${compareActual ? months.map(mm => `<td class="right">${appMonthCellHTML(r.actualByMonth[mm])}</td>`).join('') : ''}
+    </tr>`;
+  }).join('');
+
+  const gDiffCls = gDiff > 0 ? 'md-over' : (gDiff < 0 ? 'md-under' : '');
+  const totalRow = `<tr class="dash-total-row">
+    <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
+    <td class="right">${fmtMD(gBookedTotal)}</td>
+    ${compareActual ? `<td class="right">${fmtMD(gActualTotal)}</td>` : ''}
+    ${compareActual ? `<td class="right ${gDiffCls}">${fmtMD(gDiff)}</td>` : ''}
+    ${months.map(mm => `<td class="right">${fmtMD(gBookedByMonth[mm])}</td>`).join('')}
+    ${compareActual ? months.map(mm => `<td class="right">${fmtMD(gActualByMonth[mm])}</td>`).join('') : ''}
+  </tr>`;
+
+  container.innerHTML = `
+    <div class="dash-app-scroll">
+      <table class="dash-app-table" id="appTable">
+        <thead>${theadRow1}${theadRow2}</thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+    </div>`;
+
+  wireSortHeader(container.querySelector('#appTable thead'), S.appSort, () => {
+    savePrefs(PAGE, { appSort: S.appSort });
+    renderAppView(container);
   });
 }
 
@@ -1638,14 +1961,14 @@ function leadDomainBucket(email){
 function computeLeadCoverage(){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
-  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+  const months = S.months;
 
   const coverage = { main:{}, sub:{}, exec:{} }; // role -> emp_id -> { app -> Set(project_key) }
   const mainProjectsByLead = {};                 // emp_id -> Set(project_key) where is_main = true
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
-    if (!matchProjectDiscovery(pl.project_key, rangeS, rangeE)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
+    if (!matchProjectDiscovery(pl.project_key, months)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
     const app = proj.app || proj.other_app || '— ไม่มี App —';
     const role = pl.is_main ? 'main' : (pl.is_executor ? 'exec' : 'sub');
     const byApp = (coverage[role][pl.pqa_emp_id] = coverage[role][pl.pqa_emp_id] || {});
@@ -1695,14 +2018,14 @@ function buildLeadRoleRows(roleCoverage, mainProjectsByLead, apps, agg, withMD){
 function renderLeadView(container){
   const projByKey = currentProjMap();
   const agg = S.periodAgg || { byProject:{} };
-  const rangeS = S.overallRange.s || '', rangeE = S.overallRange.e || '';
+  const months = S.months;
 
   const coverage = { main:{}, sub:{}, exec:{} }; // role -> emp_id -> { app -> Set(project_key) }
   const mainProjectsByLead = {};                 // emp_id -> Set(project_key) where is_main = true
   S.projectLeadRows.forEach(pl => {
     const proj = projByKey[pl.project_key];
     if (!proj) return;
-    if (!matchProjectDiscovery(pl.project_key, rangeS, rangeE)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
+    if (!matchProjectDiscovery(pl.project_key, months)) return;   // §5.37 + 2026-08-14 Project/UAT Lead/App
     const app = proj.app || proj.other_app || '— ไม่มี App —';
     const role = pl.is_main ? 'main' : (pl.is_executor ? 'exec' : 'sub');
     const byApp = (coverage[role][pl.pqa_emp_id] = coverage[role][pl.pqa_emp_id] || {});
@@ -1871,7 +2194,7 @@ function buildDownloadFilterAoa(includeLeadFields){
   // 2026-09-01 (§5.50): Start Date/End Date (2 แถว) → เดือน (1 แถว) ให้ตรงกับตัวกรอง month
   // picker บนจอ — ค่าเป็น monthLabel() (Mmm-yyyy, §4.5) ไม่ใช่ dDisp() ของวันแรก/วันสุดท้ายอีก
   // ต่อไป (S.overallRange.s ยังมีอยู่ใช้แปลงกลับเป็น 'yyyy-MM' ให้ monthLabel() พอ)
-  rows.push(['เดือน', S.overallRange.s ? monthLabel(S.overallRange.s) : '']);
+  rows.push(['เดือน', (S.months || []).map(mm => monthLabel(mm)).join(', ')]);
   // 2026-09-02: View (All MD / Selected Month) — By Project tab เท่านั้น (มีผลแค่แท็บนั้น
   // เหมือน Type/Domain ที่มีผลแค่ By Lead — ดู #projectViewFld/switchDashView())
   if (S.dashView === 'project') {
@@ -2060,6 +2383,73 @@ async function downloadProjectExcel(){
   }
 }
 
+/** By App tab export (task 6, §5.60) — Sheet1 Filter (+ "Compare Actual" ใช่/ไม่ใช่ ต่อท้าย
+ *  เดือนที่เลือก) + Sheet2 "App" ตรงกับตาราง By App บนจอเป๊ะ ทั้งการเรียง (genericSort() ผ่าน
+ *  appKeyFns() ตัวเดียวกับ renderAppView() ใช้) และคอลัมน์ที่โชว์ — ไม่ติ๊ก Compare Actual =
+ *  ไม่มีคอลัมน์ Actual MD/Actual − Booked ในชีตเลย (ไม่ใช่แค่ซ่อน) เหมือนตารางบนจอ */
+async function downloadAppExcel(){
+  const btn = $('downloadExcelBtn');
+  btn.disabled = true;
+  try {
+    const rows = buildAppRows();
+    if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+    const months = S.months || [];
+    const compareActual = S.compareActual;
+    const sorted = genericSort(rows, S.appSort, appKeyFns(months));
+
+    const filterAoa = buildDownloadFilterAoa(false);
+    filterAoa.push(['Compare Actual', compareActual ? 'ใช่' : 'ไม่ใช่']);
+
+    const header = ['App', 'Booked MD'];
+    if (compareActual) header.push('Actual MD', 'Actual − Booked');
+    months.forEach(mm => header.push(`Booked ${monthLabel(mm)}`));
+    if (compareActual) months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
+    const appAoa = [header];
+
+    let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
+    const gBookedByMonth = {}, gActualByMonth = {};
+    months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
+
+    sorted.forEach(r => {
+      gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
+      const row = [r.app, Number(fmtMD(r.bookedTotal))];
+      if (compareActual) row.push(Number(fmtMD(r.actualTotal)), Number(fmtMD(r.diff)));
+      months.forEach(mm => {
+        gBookedByMonth[mm] += r.bookedByMonth[mm];
+        row.push(Number(fmtMD(r.bookedByMonth[mm])));
+      });
+      if (compareActual) {
+        months.forEach(mm => {
+          gActualByMonth[mm] += r.actualByMonth[mm];
+          row.push(Number(fmtMD(r.actualByMonth[mm])));
+        });
+      }
+      appAoa.push(row);
+    });
+
+    const totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gBookedTotal))];
+    if (compareActual) totalRow.push(Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff)));
+    months.forEach(mm => totalRow.push(Number(fmtMD(gBookedByMonth[mm]))));
+    if (compareActual) months.forEach(mm => totalRow.push(Number(fmtMD(gActualByMonth[mm]))));
+    appAoa.push(totalRow);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(appAoa), 'App');
+
+    const filename = downloadFilename('ByApp');
+    writeWorkbookAndDownload(wb, filename);
+    logExcelDownload();
+
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /** By OS tab export — Sheet1 Filter + Sheet2 "OS" pivot (OS × App) เหมือนตาราง By OS บนจอ +
  *  แถวรวมท้ายตาราง คำนวณซ้ำตรรกะเดียวกับ renderOsView() แบบ inline (renderOsView() ไม่ได้แยก
  *  เป็นฟังก์ชันคำนวณต่างหากให้เรียกตรงๆ ได้ — pattern เดียวกับที่ downloadLeadExcel() ทำกับ
@@ -2172,10 +2562,255 @@ async function downloadSignoffExcel(){
  *  ต่อแท็บ. */
 function downloadDashboardExcel(){
   if (S.dashView === 'project') return downloadProjectExcel();
+  if (S.dashView === 'app') return downloadAppExcel();     // 2026-09-09, Task 6 (§5.60)
   if (S.dashView === 'os') return downloadOsExcel();
   if (S.dashView === 'lead') return downloadLeadExcel();
   if (S.dashView === 'signoff') return downloadSignoffExcel();
 }
+
+/* =====================================================================
+   IMPORT ACTUAL MD (task 5, §5.60) — Download Template + parse/preview/confirm
+   (admin only — enforced for real by RLS `actual_md_write`/`actual_md_read` policies +
+   the is_admin() guard inside pqa.fn_import_actual_md(); #actualAdminTools being hidden
+   for non-admins is a UI convenience layer only, see updateAppAdminToolsVisibility())
+   ===================================================================== */
+/** Download Template button — .xlsx with 2 sheets: "Data" (the columns admins fill in,
+ *  plus one example row) and "App_ID" (every ACTIVE app_code + app_name from master, so
+ *  whoever fills the template knows exactly which codes are valid). Deliberately queries
+ *  `app` fresh with `.eq('is_active', true)` here rather than reusing S.appList (which is
+ *  NOT filtered by is_active — it also feeds the "App" ตัวกรอง dropdown and other pages'
+ *  sort ordering, and changing what it contains is out of scope for this task) — the spec
+ *  (§5.3) asks specifically for only the active set in this one sheet. `app` is a tiny
+ *  lookup table (~28 rows) — nowhere near fetchAllRows()'s 1000-row cap, consistent with
+ *  loadMasterData()'s own unpaginated `app` query. */
+async function downloadActualTemplate(){
+  const btn = $('downloadActualTemplateBtn');
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabase.from('app').select('app_code,app_name')
+      .eq('is_active', true).order('sort_order', { nullsFirst: false });
+    if (error) throw error;
+    const apps = data || [];
+    const exampleAppCode = (apps[0] && apps[0].app_code) || '';
+
+    const dataAoa = [
+      ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Actual_MD'],
+      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 1],
+    ];
+    const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataAoa), 'Data');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(appIdAoa), 'App_ID');
+
+    const filename = `actual_md_template_${fileTimeStamp(new Date())}.xlsx`;
+    writeWorkbookAndDownload(wb, filename);
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Template ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Actual_MD'];
+
+/** Parse the "Data" sheet of an Actual MD import file — takes a plain AOA (array-of-arrays,
+ *  e.g. from `XLSX.utils.sheet_to_json(worksheet, { header: 1 })`) rather than a workbook or
+ *  a File, and an explicit `appCodeSet` (Set of valid pqa.app.app_code values) rather than
+ *  reading S.appList itself — both deliberate so this stays a pure function a test can call
+ *  directly with fabricated data, no real .xlsx file or live Supabase/S.* needed (per the
+ *  orchestrating task's explicit instruction — the plan doc's original sketch of
+ *  `parseActualFile(workbook)` is superseded by this signature for testability).
+ *
+ *  Row numbers in `errors`/`warnings` are the ACTUAL EXCEL ROW NUMBER a human editing the
+ *  file would see (header row = 1, first data row = 2) — not the 0-based `aoa` index.
+ *
+ *  Returns { rows, errors, warnings, byMonth }:
+ *   - rows: [{ ym, app_code, project_code, nickname_name, en_fullname, actual_md }] — ready to
+ *     pass straight through as `p_rows` to `supabase.rpc('fn_import_actual_md', { p_rows })`.
+ *     Exact-duplicate rows (same ym+app_code+project_code+nickname_name+en_fullname) are
+ *     merged into ONE row here with actual_md summed (§3.1 spec: "แถวที่ซ้ำเป๊ะจะถูกรวมยอด
+ *     ตอนอ่าน") — reported as a warning, not blocked.
+ *   - errors: [{ row, msg }] — blocking; caller must keep the confirm button disabled while
+ *     this is non-empty.
+ *   - warnings: [{ row, msg }] — non-blocking, informational only.
+ *   - byMonth: { 'YYYYMM': { count, totalMD } } — per-month summary for the preview modal. */
+function parseActualFile(aoa, appCodeSet){
+  const errors = [];
+  const warnings = [];
+
+  if (!Array.isArray(aoa) || !aoa.length) {
+    errors.push({ row: 1, msg: 'ไฟล์ว่างเปล่า หรืออ่านไฟล์ไม่ได้' });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const header = (aoa[0] || []).map(h => String(h == null ? '' : h).trim());
+  const headerOk = ACTUAL_MD_HEADERS.every((h, i) => header[i] === h);
+  if (!headerOk) {
+    errors.push({ row: 1, msg: `ไฟล์ไม่ตรง template — หัวคอลัมน์ต้องเป็น ${ACTUAL_MD_HEADERS.join(', ')}` });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const dataLines = aoa.slice(1);
+  const isBlankLine = line => !line || line.every(c => c === undefined || c === null || String(c).trim() === '');
+  if (!dataLines.some(line => !isBlankLine(line))) {
+    errors.push({ row: 2, msg: 'ไม่มีแถวข้อมูลเลย' });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const seen = new Map(); // dedupe key -> merged row object (still carries `row` for the warning message)
+  const merged = [];
+  dataLines.forEach((line, idx) => {
+    const excelRow = idx + 2; // header = row 1, first data row = row 2
+    if (isBlankLine(line)) return; // skip fully-blank rows silently (not an error)
+
+    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, mdRaw] = line;
+    const ym = String(ymRaw == null ? '' : ymRaw).trim();
+    const appCode = String(appRaw == null ? '' : appRaw).trim();
+    const nickname_name = String(nickRaw == null ? '' : nickRaw).trim();
+    const en_fullname = String(fullRaw == null ? '' : fullRaw).trim();
+    const project_code = String(pcRaw == null ? '' : pcRaw).trim();
+
+    if (!/^\d{6}$/.test(ym)) {
+      errors.push({ row: excelRow, msg: `YYYYMM ไม่ถูกต้อง: "${ymRaw == null ? '' : ymRaw}" (ต้องเป็นตัวเลข 6 หลัก เช่น 202602)` });
+    }
+    if (appCodeSet && !appCodeSet.has(appCode)) {
+      errors.push({ row: excelRow, msg: `App_ID ไม่มีใน master: "${appCode}"` });
+    }
+    const md = Number(mdRaw);
+    const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
+    if (mdBlank || isNaN(md) || md < 0) {
+      errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
+    }
+
+    const key = [ym, appCode, project_code, nickname_name, en_fullname].join('|');
+    if (seen.has(key)) {
+      const target = seen.get(key);
+      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อเดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
+      target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
+    } else {
+      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      seen.set(key, rowObj);
+      merged.push(rowObj);
+    }
+  });
+
+  const byMonth = {};
+  merged.forEach(r => {
+    byMonth[r.ym] = byMonth[r.ym] || { count: 0, totalMD: 0 };
+    byMonth[r.ym].count += 1;
+    byMonth[r.ym].totalMD += Number(r.actual_md) || 0;
+  });
+
+  const rows = merged.map(({ row, ...rest }) => rest); // strip the internal `row` bookkeeping field
+  return { rows, errors, warnings, byMonth };
+}
+
+/** Row counts of EXISTING pqa.actual_md data for the months a just-parsed file touches —
+ *  shown in the preview modal so an admin can see, before confirming, how many rows each
+ *  month's "delete then insert" (fn_import_actual_md, §3.4) will remove. Queries the raw
+ *  table (not the aggregated v_actual_md_app_month view) because it's specifically a ROW
+ *  count, not an MD sum. `months` here are already 'YYYYMM' strings (parseActualFile()'s
+ *  own `ym` format — no conversion needed, unlike S.actualByAppMonth's 'YYYY-MM' keys).
+ *  Wrapped in fetchAllRows() per §5.49 even though this table is tiny in practice. */
+async function fetchExistingActualRowCounts(months){
+  if (!months || !months.length) return {};
+  const { data, error } = await fetchAllRows((from, to) => supabase.from('actual_md')
+    .select('ym')
+    .in('ym', months)
+    .order('ym', { ascending: true })
+    .order('actual_id', { ascending: true })
+    .range(from, to));
+  if (error) { console.warn('fetchExistingActualRowCounts failed:', error); return {}; }
+  const counts = {};
+  (data || []).forEach(r => { counts[r.ym] = (counts[r.ym] || 0) + 1; });
+  return counts;
+}
+
+/** Build the #actualImportBody innerHTML for the preview modal — per-month summary table
+ *  (new row count / existing rows that will be deleted / total MD) + an errors table
+ *  (blocking, capped at 50 rows + "และอีก N รายการ") + a warnings table (non-blocking,
+ *  same cap). Pure-ish: takes `parsed` (parseActualFile()'s return) and `existingCounts`
+ *  (fetchExistingActualRowCounts()'s return) as arguments. */
+function buildActualImportModalBody(parsed, existingCounts){
+  const months = Object.keys(parsed.byMonth).sort();
+  const monthRows = months.map(ym => {
+    const disp = monthLabel(ym.slice(0, 4) + '-' + ym.slice(4, 6));
+    const info = parsed.byMonth[ym];
+    return `<tr><td>${esc(disp)}</td><td class="right">${info.count}</td><td class="right">${existingCounts[ym] || 0}</td><td class="right">${fmtMD(info.totalMD)}</td></tr>`;
+  }).join('');
+
+  const errBlock = parsed.errors.length ? `
+    <div class="actual-import-err-title">พบข้อผิดพลาด ${parsed.errors.length} รายการ (ต้องแก้ไฟล์แล้วอัปโหลดใหม่)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.errors.slice(0, 50).map(e => `<tr><td>${e.row}</td><td>${esc(e.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.errors.length > 50 ? `<div class="muted">และอีก ${parsed.errors.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  const warnBlock = parsed.warnings.length ? `
+    <div class="actual-import-warn-title">คำเตือน ${parsed.warnings.length} รายการ (ไม่บล็อกการนำเข้า)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.warnings.slice(0, 50).map(w => `<tr><td>${w.row}</td><td>${esc(w.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.warnings.length > 50 ? `<div class="muted">และอีก ${parsed.warnings.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  return `
+    <p>ไฟล์นี้มี <b>${parsed.rows.length}</b> แถว ครอบคลุม <b>${months.length}</b> เดือน — การนำเข้าจะ
+    <b>ลบข้อมูลเดิมของเดือนที่มีในไฟล์ทั้งหมด แล้วใส่ใหม่ทั้งหมด</b> (เดือนอื่นที่ไม่อยู่ในไฟล์นี้จะไม่ถูกแตะ)</p>
+    <table class="actual-import-table">
+      <thead><tr><th>เดือน</th><th class="right">แถวใหม่</th><th class="right">แถวเดิมที่จะถูกลบ</th><th class="right">ยอด MD รวม</th></tr></thead>
+      <tbody>${monthRows}</tbody>
+    </table>
+    ${errBlock}
+    ${warnBlock}
+  `;
+}
+
+let _actualImportParsed = null; // parseActualFile()'s result for the file currently in the preview modal
+
+/** เปิด modal พรีวิว — เรียกหลังอ่านไฟล์+parseActualFile() เสร็จเสมอ (ไม่มีทางเขียนลง DB ตรงๆ
+ *  โดยไม่ผ่านหน้าพรีวิวนี้ก่อน, §5.3). ปุ่มยืนยัน disabled ตราบใดที่ parsed.errors.length > 0. */
+async function openActualImportModal(parsed){
+  _actualImportParsed = parsed;
+  const months = Object.keys(parsed.byMonth).sort();
+  const existingCounts = await fetchExistingActualRowCounts(months);
+  $('actualImportBody').innerHTML = buildActualImportModalBody(parsed, existingCounts);
+  $('actualImportErr').textContent = '';
+  $('actualImportConfirmBtn').disabled = parsed.errors.length > 0;
+  $('actualImportOverlay').classList.remove('hidden');
+}
+window.closeActualImportModal = function(){
+  $('actualImportOverlay').classList.add('hidden');
+  _actualImportParsed = null;
+};
+/** ยืนยันนำเข้าจริง — เขียนผ่าน RPC เดียว `fn_import_actual_md` เท่านั้น (ไม่มีทาง
+ *  `supabase.from('actual_md').insert(...)` ตรงๆ — delete+insert ต้องเป็น transaction เดียว
+ *  ตามกติกา §3 ของโปรเจกต์). สำเร็จ → toast จำนวนแถวที่ลบ/เพิ่ม → ปิด modal → loadPeriod(true)
+ *  โหลด v_actual_md_app_month (+ booking/leave) ใหม่จาก Supabase สดๆ แล้ว re-render — ล้มเหลว →
+ *  โชว์ error ใน modal ไม่ปิด modal (ให้แก้/ลองใหม่ได้โดยไม่ต้องเลือกไฟล์ซ้ำ). */
+window.confirmActualImport = async function(){
+  if (!_actualImportParsed || _actualImportParsed.errors.length) return;
+  const btn = $('actualImportConfirmBtn');
+  btn.disabled = true;
+  $('actualImportErr').textContent = '';
+  try {
+    const { data, error } = await supabase.rpc('fn_import_actual_md', { p_rows: _actualImportParsed.rows });
+    if (error) throw error;
+    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
+    closeActualImportModal();
+    await loadPeriod(true);
+  } catch (err) {
+    console.error(err);
+    $('actualImportErr').textContent = 'นำเข้าไม่สำเร็จ: ' + (err.message || String(err));
+    btn.disabled = false;
+  }
+};
 
 /* ---- Signoff ---- */
 const SIGNOFF_KEYFNS = {
@@ -2245,54 +2880,74 @@ function renderSignoffView(container){
 /* =====================================================================
    PERIOD DEFAULTS + MONTH PICKER (§5.50, 2026-09-01)
    "ค้นหา Project" เดิมเป็น Start/End (2 input[type=date]) — เปลี่ยนเป็น month picker ช่องเดียว
-   (mirrors calendar.html's ‹/เดือน/› + picker panel ปี+เดือน) ตัวเลือกเดือนเก็บเป็น S.y/S.m
+   (mirrors calendar.html's ‹/เดือน/› + picker panel ปี+เดือน) 2026-09-09 (§5.60) เป็น
+   **multi-select** แล้ว — ตัวเลือกเดือนเก็บเป็น S.months[]
    (เหมือน calendar.html) แล้ว derive S.overallRange = {s,e} จากเดือนนั้นเสมอผ่าน
-   overallRangeFromYM() — ทุกอย่างใต้ S.overallRange (projectMatchesRange()/
+   overallRangeFromMonths() — ทุกอย่างใต้ S.overallRange (projectMatchesRange()/
    recomputeAggregates()/matchProjectDiscovery(), §5.37/§5.39) อ่าน .s/.e เหมือนเดิมทุกประการ
    ไม่ถูกแตะเลยในงานนี้ ===================================================================== */
-/** yyyy-mm-dd first/last day of the given (y, 1-based m) month — the ONLY place S.overallRange
- *  is derived from S.y/S.m. Kept as a pure helper (no S.* reads) so it's easy to unit-test. */
-function overallRangeFromYM(y, m){
-  return { s: d2s(new Date(y, m - 1, 1)), e: d2s(new Date(y, m, 0)) };
+/** {s,e} ครอบเดือนแรกสุด..เดือนท้ายสุดของ `months` (array ของ 'YYYY-MM' จะเรียงมาหรือไม่ก็ได้)
+ *  — จุดเดียวที่ S.overallRange ถูก derive จาก S.months เก็บเป็น pure helper (ไม่อ่าน S.*)
+ *  ให้ unit-test ง่าย
+ *  ⚠️ ค่านี้เป็นแค่ "ซอง" ใช้กับสิ่งที่ต้องการวันเริ่ม/วันจบจริงๆ (osRowVisible() เช็ควันลาออก)
+ *  เท่านั้น — **ห้ามใช้เป็นตัวกรอง MD** เพราะเดือนที่เลือกไม่จำเป็นต้องติดกัน ตัวกรอง MD คือ
+ *  monthSetOf() ด้านล่าง */
+function overallRangeFromMonths(months){
+  const ms = [...(months || [])].sort();
+  if (!ms.length) return { s: '', e: '' };
+  const y1 = Number(ms[0].slice(0, 4)), m1 = Number(ms[0].slice(5, 7));
+  const y2 = Number(ms[ms.length - 1].slice(0, 4)), m2 = Number(ms[ms.length - 1].slice(5, 7));
+  return { s: d2s(new Date(y1, m1 - 1, 1)), e: d2s(new Date(y2, m2, 0)) };
 }
-/** Refresh the month-picker button label to "Mmm-yyyy" (§4.5) via common.js's monthLabel(). */
+/** Set ของเดือนที่เลือก — ตัวกรอง MD ตัวจริง (ส่งเป็น opts.monthSet ให้ computeAgg()) */
+function monthSetOf(months){ return new Set(months || []); }
+
+/** ป้ายบนปุ่มกลางของ month picker — 1 เดือนโชว์ "Mmm-yyyy" (§4.5), หลายเดือนโชว์
+ *  "Mmm-yyyy +N" และเก็บรายการเต็มไว้ใน title ให้ hover อ่านได้ */
 function updateMonthBtnLabel(){
-  $('dashMonthBtn').textContent = monthLabel(`${S.y}-${String(S.m).padStart(2, '0')}`);
+  const btn = $('dashMonthBtn');
+  const ms = S.months || [];
+  if (!ms.length) { btn.textContent = '—'; btn.title = ''; return; }
+  const full = ms.map(mm => monthLabel(mm));
+  btn.textContent = ms.length === 1 ? full[0] : `${full[0]} +${ms.length - 1}`;
+  btn.title = full.join(', ');
 }
-/** Populate S.y/S.m (and the derived S.overallRange) with sane defaults on first load —
- *  Dashboard-specific default (unchanged from before §5.50, differs from the §4.2
- *  gantt/outsource standard): current month. Only fills in S.y/S.m when showApp()'s own
- *  "today" default + restoreDashPrefs() didn't already leave a valid month set. */
+/** เติม S.months (และ S.overallRange ที่ derive จากมัน) ด้วย default ตอนโหลดครั้งแรก —
+ *  default ของ Dashboard คือ "เดือนปัจจุบันเดือนเดียว" (ต่างจากมาตรฐาน §4.2 ของ gantt/outsource
+ *  โดยตั้งใจ, เหมือนเดิมตั้งแต่ §5.50) จะเติมก็ต่อเมื่อ showApp() + restoreDashPrefs() ไม่ได้
+ *  ทิ้งเดือนที่ใช้ได้ไว้ให้แล้ว */
 function ensureOverallRangeDefaults(){
-  if (!S.y || !S.m) {
+  if (!Array.isArray(S.months) || !S.months.length) {
     const now = new Date();
-    S.y = now.getFullYear();
-    S.m = now.getMonth() + 1;
+    S.months = [`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`];
   }
-  S.overallRange = overallRangeFromYM(S.y, S.m);
+  S.months = [...new Set(S.months)].sort();
+  S.overallRange = overallRangeFromMonths(S.months);
   updateMonthBtnLabel();
 }
-/** Change the selected month by `delta` (±1) and apply it immediately (no "ค้นหา" button
- *  anymore, §5.50) — mirrors calendar.html's changeMonth(), including year rollover at the
- *  Jan/Dec boundary. */
+/** ปุ่ม ‹ / › เลื่อน **ทั้งชุด**ที่เลือกไว้ไปข้างหน้า/ถอยหลัง `delta` เดือน (รักษาช่องว่างระหว่าง
+ *  เดือนที่ไม่ติดกันไว้เหมือนเดิม เช่น [ก.พ., เม.ย.] → [มี.ค., พ.ค.]) */
 function changeMonth(delta){
-  let m = S.m + delta, y = S.y;
-  if (m < 1) { m = 12; y -= 1; }
-  else if (m > 12) { m = 1; y += 1; }
-  applyMonth(y, m);
+  applyMonths((S.months || []).map(mm => {
+    const y = Number(mm.slice(0, 4)), m = Number(mm.slice(5, 7));
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }));
 }
-/** Commit a new (y, m) selection: update state + button label + prefs, then recompute/render
- *  from already-cached booking/leave data (loadPeriod(false) — no network round-trip, same
- *  as the old ovApplyBtn handler, §5.37). */
-function applyMonth(y, m){
-  S.y = y; S.m = m;
-  S.overallRange = overallRangeFromYM(y, m);
+/** commit ชุดเดือนใหม่: sort + ตัดซ้ำ → S.months → S.overallRange → label → prefs → recompute
+ *  จาก cache เดิม (loadPeriod(false) ไม่ยิง network ซ้ำ, §5.37)
+ *  **ห้ามเหลือ 0 เดือน** — ส่ง array ว่างมาจะถูกเมิน (ไม่งั้นทั้งหน้าจะว่างโดยไม่มีทางกู้จาก UI) */
+function applyMonths(months){
+  const next = [...new Set((months || []).filter(Boolean))].sort();
+  if (!next.length) return;
+  S.months = next;
+  S.overallRange = overallRangeFromMonths(next);
   updateMonthBtnLabel();
-  savePrefs(PAGE, { y: S.y, m: S.m });
+  savePrefs(PAGE, { months: S.months });
   loadPeriod(false);
 }
-/** Year+month picker panel (#dashMonthPanel) — mirrors calendar.html's renderMonthPanel()/
- *  calPickerYear()/calPickMonth() exactly, using MONTH_ABBR from common.js for the grid. */
+/** panel เลือกปี+เดือน — ปุ่มเดือนเป็น **toggle** (คลิกติ๊ก/เอาออก) panel ไม่ปิดเองตอนคลิกเดือน
+ *  เพื่อให้เลือกหลายเดือนรวดเดียวได้ ปิดด้วยปุ่ม "เสร็จ" / คลิกนอก panel / ESC */
 function renderDashMonthPanel(){
   $('dashMonthPanel').innerHTML = `
     <div class="dash-picker-year">
@@ -2302,19 +2957,36 @@ function renderDashMonthPanel(){
     </div>
     <div class="dash-picker-grid">
       ${MONTH_ABBR.map((nm, i) => {
-        const mm = i + 1;
-        const active = dashPickerYear === S.y && mm === S.m;
-        return `<button type="button" class="dash-picker-month${active ? ' active' : ''}" onclick="dashPickMonth(${dashPickerYear},${mm})">${nm}</button>`;
+        const mm = `${dashPickerYear}-${String(i + 1).padStart(2, '0')}`;
+        const active = S.months.includes(mm);
+        return `<button type="button" class="dash-picker-month${active ? ' active' : ''}" onclick="dashToggleMonth('${mm}')">${nm}</button>`;
       }).join('')}
+    </div>
+    <div class="dash-picker-foot">
+      <span class="dash-picker-count">เลือก ${S.months.length} เดือน</span>
+      <button type="button" class="btn sm" onclick="dashResetMonths()">ล้าง</button>
+      <button type="button" class="btn sm" onclick="dashCloseMonthPanel()">เสร็จ</button>
     </div>`;
 }
 window.dashPickerYearNav = function(delta){
   dashPickerYear += delta;
   renderDashMonthPanel();
 };
-window.dashPickMonth = function(y, m){
+/** ติ๊ก/เอาติ๊กออก 1 เดือน — เอาเดือนสุดท้ายออกไม่ได้ (applyMonths() เมิน array ว่าง อยู่แล้ว
+ *  แต่กันไว้ตรงนี้ด้วยเพื่อไม่ให้ปุ่มดูเหมือนกดได้แล้วไม่มีอะไรเกิดขึ้น) */
+window.dashToggleMonth = function(mm){
+  const has = S.months.includes(mm);
+  if (has && S.months.length === 1) return;
+  applyMonths(has ? S.months.filter(x => x !== mm) : [...S.months, mm]);
+  renderDashMonthPanel();
+};
+window.dashResetMonths = function(){
+  const now = new Date();
+  applyMonths([`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`]);
+  renderDashMonthPanel();
+};
+window.dashCloseMonthPanel = function(){
   $('dashMonthPanel').classList.add('hidden');
-  applyMonth(y, m);
 };
 /** Wire the ‹ / เดือน / › controls + the year/month picker panel — called once from showApp()
  *  (mirrors wireToolbar()'s one-time-wiring pattern; DOM elements are static markup, not
@@ -2326,7 +2998,7 @@ function wireMonthPicker(){
     e.stopPropagation();
     const panel = $('dashMonthPanel');
     if (panel.classList.contains('hidden')) {
-      dashPickerYear = S.y;
+      dashPickerYear = Number((S.months[0] || '').slice(0, 4)) || new Date().getFullYear();
       renderDashMonthPanel();
       panel.classList.remove('hidden');
     } else {
@@ -2513,11 +3185,41 @@ function wireToolbar(){
     buildFilterMultiSelects();
     await loadPeriod(true);
   });
+  // 2026-09-09 (§5.60, Task 4): Compare Actual — re-render เฉยๆ ไม่ยิง query ใหม่
+  // (S.actualByAppMonth โหลดไว้ครบแล้วตั้งแต่ loadPeriod()) มีผลเฉพาะตอนกำลังดูแท็บ By App จริงๆ
+  $('cmpActualChk').addEventListener('change', () => {
+    S.compareActual = $('cmpActualChk').checked;
+    savePrefs(PAGE, { compareActual: S.compareActual });
+    if (S.dashView === 'app') renderAppView($('viewContainer'));
+  });
+  // 2026-09-09 (§5.60, Task 5): Download Template / Import Actual MD — admin เท่านั้น (ปุ่มถูก
+  // ซ่อนสำหรับ non-admin อยู่แล้วผ่าน updateAppAdminToolsVisibility() แต่ผูก listener ไว้เสมอ
+  // เผื่อ role เปลี่ยนระหว่าง session — ด่านจริงคือ RLS + guard ใน fn_import_actual_md())
+  $('downloadActualTemplateBtn').addEventListener('click', downloadActualTemplate);
+  $('importActualBtn').addEventListener('click', () => $('importActualFile').click());
+  $('importActualFile').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // เคลียร์ทันที กันเลือกไฟล์เดิมซ้ำแล้ว change event ไม่ยิง
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheetName = wb.SheetNames.includes('Data') ? 'Data' : wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const appCodeSet = new Set(S.appList.map(a => a.app_code));
+      const parsed = parseActualFile(aoa, appCodeSet);
+      await openActualImportModal(parsed);
+    } catch (err) {
+      console.error(err);
+      toast('อ่านไฟล์ไม่สำเร็จ: ' + (err.message || String(err)), true);
+    }
+  });
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
   // Lead/App/Type/Domain/เดือน) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
   // panel เพราะมักเลือกตัวกรองใหม่ต่อทันทีหลังกดล้าง
   // 2026-09-01 (§5.50): ปุ่ม "ค้นหา" (#ovApplyBtn) ถูกลบทิ้งไปพร้อม Start/End — เปลี่ยนเดือนใน
-  // month picker แล้ว apply ทันทีผ่าน applyMonth() (ดู wireMonthPicker()) ไม่มีอะไรให้กดรออีก
+  // month picker แล้ว apply ทันทีผ่าน applyMonths() (ดู wireMonthPicker()) ไม่มีอะไรให้กดรออีก
   $('clearFilterBtn').addEventListener('click', () => {
     S.filter.projects.clear();
     S.filter.leads.clear();
@@ -2535,10 +3237,10 @@ function wireToolbar(){
     $('projectViewSelect').value = S.projectViewMode;
     savePrefs(PAGE, { projectViewMode: S.projectViewMode });
 
-    // เดือนกลับเป็นเดือนปัจจุบัน — applyMonth() ครอบทั้ง state/label/prefs/recompute+render ให้
+    // เดือนกลับเป็นเดือนปัจจุบัน — applyMonths() ครอบทั้ง state/label/prefs/recompute+render ให้
     // (force=false ภายใน ให้ loadPeriod แค่ recompute+render จาก cache เหมือนเดิม)
     const now = new Date();
-    applyMonth(now.getFullYear(), now.getMonth() + 1);
+    applyMonths([`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`]);
   });
 }
 
@@ -2550,6 +3252,8 @@ function switchDashView(view){
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
   $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
+  $('cmpActualFld').classList.toggle('hidden', view !== 'app');   // 2026-09-09, By App tab เท่านั้น (§5.60)
+  updateAppAdminToolsVisibility();
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก
