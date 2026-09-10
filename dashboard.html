@@ -56,6 +56,21 @@
   /* ---- Download Template / Import Actual MD buttons (By App tab, admin only, task 5) ---- */
   #actualAdminTools { display:flex; align-items:center; gap:8px; }
 
+  /* ---- By OS mode buttons (Booked MD / Actual MD / Compare — §5.63 Task 5) — same active
+     look as .view-tab.active so the two toolbar rows read as one consistent system ---- */
+  #osModeTools { display:flex; align-items:center; gap:6px; }
+  .os-mode-btn.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
+
+  /* ---- generic small inline hint banner above a table (currently: By OS Actual mode's
+     "ตัวกรอง Project ไม่มีผลกับ Actual" notice, §5.63 Task 5) ---- */
+  .dash-hint { font-size:12px; color:var(--dk-text3); margin-bottom:8px; }
+
+  /* ---- By OS Actual mode: "ไม่พบใน OS master" fallback group (names from the Excel import
+     that couldn't be matched to any resource) — visually distinct (italic, muted) from the
+     regular matched rows above it, §5.63 Task 5 ---- */
+  .os-unmatched-row td { font-style:italic; color:var(--dk-text3); }
+  .os-unmatched-head { font-weight:700; background:var(--dk-hover); }
+
   /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt/Outsource,
      2026-08-14; min-width 180→148 same reason as .filters select above) ---- */
   .ms { position:relative; }
@@ -335,6 +350,54 @@
   .md-over { color:var(--today); font-weight:700; }
   .md-under { color:var(--danger); font-weight:700; }
 
+  /* ---- By OS โหมด Compare (Task 6, §5.63, 2026-09-10): OS x App x เดือน, Booked vs Actual
+     พร้อมส่วนต่าง — โครงเดียวกับ .dash-app-table (header 2 แถว, sticky top ต่อแถว) แต่มี
+     3 คอลัมน์ freeze (OS/Role/App แทนที่จะเป็นแค่ App เดียว) จึงต้องมี selector ของตัวเอง
+     ใช้ .dash-os-scroll ตัวเดิม (ไม่สร้าง scroll wrapper ใหม่ซ้ำ) */
+  table.dash-compare-table { border-collapse:separate; border-spacing:0; font-size:12.5px; white-space:nowrap; }
+  table.dash-compare-table th, table.dash-compare-table td {
+    padding:7px 10px; border-bottom:1px solid var(--dk-border); border-right:1px solid var(--dk-border);
+  }
+  table.dash-compare-table thead th {
+    position:sticky; background:var(--dk-surface); color:var(--dk-text2); font-weight:700; z-index:20;
+    text-align:center; height:30px; box-sizing:border-box;
+  }
+  table.dash-compare-table thead tr:first-child th { top:0; }
+  table.dash-compare-table thead tr:last-child th { top:30px; }
+  table.dash-compare-table th.sortable { cursor:pointer; user-select:none; }
+  table.dash-compare-table th.sortable:hover { color:var(--dk-text); }
+  table.dash-compare-table th .sort-ico { margin-left:4px; opacity:.6; font-size:10px; }
+  table.dash-compare-table th .sort-ico-idle { opacity:.28; }
+  table.dash-compare-table th.sort-active .sort-ico { opacity:1; color:var(--dk-accent); }
+
+  table.dash-compare-table td.col-cmp-name, table.dash-compare-table th.col-cmp-name {
+    position:sticky; left:0; width:170px; min-width:170px; text-align:left; background:var(--dk-card); z-index:10;
+  }
+  table.dash-compare-table td.col-cmp-role, table.dash-compare-table th.col-cmp-role {
+    position:sticky; left:170px; width:110px; min-width:110px; text-align:left; background:var(--dk-card); z-index:10;
+  }
+  table.dash-compare-table td.col-cmp-app, table.dash-compare-table th.col-cmp-app {
+    position:sticky; left:280px; width:150px; min-width:150px; text-align:left; background:var(--dk-card); z-index:10;
+    box-shadow:2px 0 4px rgba(34,28,21,.08);
+  }
+  table.dash-compare-table thead th.col-cmp-name,
+  table.dash-compare-table thead th.col-cmp-role,
+  table.dash-compare-table thead th.col-cmp-app { z-index:31; background:var(--dk-surface); }
+  table.dash-compare-table tr.dash-total-row td.col-cmp-name,
+  table.dash-compare-table tr.dash-total-row td.col-cmp-role,
+  table.dash-compare-table tr.dash-total-row td.col-cmp-app { background:var(--dk-hover); }
+  /* แถวย่อย (ต่อ App หนึ่ง เมื่อกาง) — เข้มน้อยกว่าแถวพ่อ ให้เห็นว่าเป็นรายละเอียดย่อย */
+  table.dash-compare-table tr.os-sub-row td { color:var(--dk-text2); background:var(--dk-surface); }
+  table.dash-compare-table tr.os-sub-row td.col-cmp-name,
+  table.dash-compare-table tr.os-sub-row td.col-cmp-role,
+  table.dash-compare-table tr.os-sub-row td.col-cmp-app { background:var(--dk-surface); }
+  .dash-compare-tools { display:flex; gap:6px; margin-bottom:8px; }
+  .os-expand {
+    border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; padding:2px 8px;
+    cursor:pointer; font-size:12px; color:var(--dk-text);
+  }
+  .os-expand:hover { background:var(--dk-hover); }
+
   /* ---- Import Actual MD preview modal (task 5) — plain table, not .dash-table (that class
      assumes a page-level sticky header context this modal's own scroll area doesn't have) ---- */
   .actual-import-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:10px; }
@@ -448,6 +511,18 @@
            master + booking/leave สดจาก Supabase อีกครั้ง (loadMasterData() + loadPeriod(true)) -->
       <span class="toolbar-sep">|</span>
       <button class="btn" id="refreshDashBtn">🔄 Refresh</button>
+      <!-- 2026-09-10 (§5.63, Task 5): ปุ่มโหมด Booked/Actual/Compare — By OS tab เท่านั้น
+           toggle hidden ผ่าน updateOsModeVisibility() ใน restoreDashPrefs()/switchDashView()
+           (แพตเทิร์นเดียวกับ #cmpActualFld/#actualAdminTools ข้างบน) ค่าที่เลือกจำใน prefs
+           (osMode) — คลิกแล้ว re-render เฉยๆ ไม่ยิง query ใหม่ (ข้อมูล Actual โหลดไว้ครบแล้วตั้งแต่
+           loadPeriod(), §5.63 Task 3) โหมด Compare ยังไม่ implement เต็ม (Task 6) — renderOsView()
+           แตกไป renderOsCompare() stub ไว้ก่อน -->
+      <span class="toolbar-sep hidden" id="osModeSep">|</span>
+      <div id="osModeTools" class="hidden">
+        <button class="btn os-mode-btn active" id="osModeBooked"  data-mode="booked">Booked MD</button>
+        <button class="btn os-mode-btn"        id="osModeActual"  data-mode="actual">Actual MD</button>
+        <button class="btn os-mode-btn"        id="osModeCompare" data-mode="compare">Compare</button>
+      </div>
       <!-- 2026-09-09 (§5.60, Task 5): Download Template + Import Actual MD — By App tab เท่านั้น
            และเฉพาะ admin (S.isAdmin, จาก app_user.app_role — ห้ามใช้ getCachedRole()) เห็นตัวเลข
            Actual ได้ทุกคนที่ล็อกอิน แต่ import/เปลี่ยนข้อมูลได้เฉพาะ admin เท่านั้น (ชั้น UI นี้เสริม
@@ -701,6 +776,9 @@ const S = {
                                  // (ด่านจริงคือ RLS + guard ใน fn_import_actual_md ไม่ใช่ตรงนี้)
   compareActual: false,          // checkbox "Compare Actual" (แท็บ By App) — โชว์คอลัมน์ Actual/Diff
   actualByAppMonth: {},          // app_code -> 'YYYY-MM' -> md  (จาก view v_actual_md_app_month)
+  actualPersonRows: [],          // แถวดิบจาก v_actual_md_person_month (2026-09-10, §5.63 Task 3)
+  osMode: 'booked',              // booked | actual | compare — ปุ่มโหมดของแท็บ By OS (§5.63)
+  osExpanded: {},                // resource_id -> true (โหมด Compare, view state ไม่จำใน prefs)
   appSort: { key: '', dir: '' }, // sort หัวคอลัมน์แท็บ By App (3 สถานะ §5.59) — '' = ลำดับตั้งต้น
   overallRange: { s:'', e:'' }, // derived จาก months — ซองครอบเดือนแรก..เดือนท้าย (project match only, NOT an MD date filter)
   bookingLeaveLoaded: false,     // has v_booking_daily/v_leave_daily been fetched at least once? (full history — not range-scoped)
@@ -787,6 +865,11 @@ function restoreDashPrefs(){
   if (typeof p.compareActual === 'boolean') S.compareActual = p.compareActual;
   $('cmpActualChk').checked = S.compareActual;
 
+  // §5.63 Task 5: โหมด By OS (Booked/Actual/Compare) — whitelist ก่อนใช้เสมอ (ค่าจาก
+  // storage ไม่น่าไว้ใจ, §5.21) ผิดรูปแบบ = ปล่อยให้ default 'booked' ทำงานต่อ
+  if (['booked', 'actual', 'compare'].includes(p.osMode)) S.osMode = p.osMode;
+  document.querySelectorAll('#osModeTools .os-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === S.osMode));
+
   if (['project', 'os', 'app', 'lead', 'signoff'].includes(p.dashView)) {
     S.dashView = p.dashView;
     document.querySelectorAll('#viewTabs .view-tab').forEach(b => b.classList.toggle('active', b.dataset.view === S.dashView));
@@ -800,6 +883,7 @@ function restoreDashPrefs(){
   // (2026-09-09, Task 4/5 §5.60) — admin tools ยังต้องเช็ค S.isAdmin ด้วย (updateAppAdminToolsVisibility())
   $('cmpActualFld').classList.toggle('hidden', S.dashView !== 'app');
   updateAppAdminToolsVisibility();
+  updateOsModeVisibility(); // §5.63 Task 5 — ปุ่มโหมด Booked/Actual/Compare, By OS tab เท่านั้น
 
   if (['all', 'month'].includes(p.projectViewMode)) {
     S.projectViewMode = p.projectViewMode;
@@ -876,6 +960,14 @@ function updateAppAdminToolsVisibility(){
   const show = S.isAdmin && S.dashView === 'app';
   $('actualAdminTools').classList.toggle('hidden', !show);
   $('actualToolsSep').classList.toggle('hidden', !show);
+}
+/** ปุ่มโหมด Booked MD / Actual MD / Compare (#osModeTools + #osModeSep) — By OS tab
+ *  เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า) และ switchDashView() (ตอนสลับแท็บ) —
+ *  แพตเทิร์นเดียวกับ updateAppAdminToolsVisibility() ข้างบน (§5.63 Task 5) */
+function updateOsModeVisibility(){
+  const show = S.dashView === 'os';
+  $('osModeTools').classList.toggle('hidden', !show);
+  $('osModeSep').classList.toggle('hidden', !show);
 }
 
 async function showApp(session){
@@ -1101,6 +1193,23 @@ async function loadPeriod(force){
         });
         S.actualByAppMonth = map;
       }
+
+      // 2026-09-10 (§5.63, Task 3): v_actual_md_person_month — feeds By OS โหมด Actual/Compare.
+      // ไม่ fatal เหมือนบล็อกด้านบน: patch (sql/patch_2026-09-10_actual_md_approver.sql) อาจยัง
+      // ไม่ถูกรันบน Supabase จริง — By OS โหมด booked ยังใช้งานได้ปกติไม่ว่าจะพลาดหรือไม่
+      const actualPersonRes = await fetchAllRows((from, to) => supabase.from('v_actual_md_person_month')
+        .select('ym,app_code,approver_emp_id,name_key,en_fullname,nickname_name,actual_md')
+        .order('ym', { ascending: true })
+        .order('app_code', { ascending: true })
+        .order('name_key', { ascending: true })
+        .order('approver_choice', { ascending: true })
+        .range(from, to));
+      if (actualPersonRes.error) {
+        console.warn('v_actual_md_person_month load failed (patch may not be applied yet):', actualPersonRes.error);
+        S.actualPersonRows = [];
+      } else {
+        S.actualPersonRows = actualPersonRes.data || [];
+      }
     }
     recomputeAggregates();
     // render FIRST (while still hidden behind the overlay — the content uses
@@ -1268,6 +1377,7 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
   const byProject = {};        // project_key -> md
   const byProjectPhase = {};   // project_key -> phase -> md
   const byOsApp = {};          // resource_id -> app -> md
+  const byOsAppMonth = {};     // resource_id -> app -> 'YYYY-MM' -> md (2026-09-10 §5.63 Task 4 — ป้อนแท็บ By OS โหมด Actual/Compare)
   const byOsTotal = {};        // resource_id -> md
   const bookedOsSet = new Set();
   const dailyBookedByResDay = {}; // 'resId|date' -> md sum (raw booked, ก่อนหัก leave)
@@ -1333,13 +1443,19 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
     if (res && res.resource_type === 'outsource') {
       byOsApp[row.resource_id] = byOsApp[row.resource_id] || {};
       byOsApp[row.resource_id][app] = (byOsApp[row.resource_id][app] || 0) + md;
+
+      const mk = String(row.work_date).slice(0, 7);
+      byOsAppMonth[row.resource_id] = byOsAppMonth[row.resource_id] || {};
+      byOsAppMonth[row.resource_id][app] = byOsAppMonth[row.resource_id][app] || {};
+      byOsAppMonth[row.resource_id][app][mk] = (byOsAppMonth[row.resource_id][app][mk] || 0) + md;
+
       byOsTotal[row.resource_id] = (byOsTotal[row.resource_id] || 0) + md;
       // นับหัวคนที่ "ถูกจอง" จาก booking จริง ไม่เกี่ยวกับวันลา — ลาเต็มช่วงก็ยังถือว่าถูกจอง
       bookedOsSet.add(row.resource_id);
     }
   });
 
-  return { byAppPhase, byAppMonth, phaseTotals, byProject, byProjectPhase, byOsApp, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
+  return { byAppPhase, byAppMonth, phaseTotals, byProject, byProjectPhase, byOsApp, byOsAppMonth, byOsTotal, bookedOsCount: bookedOsSet.size, kpiEffectiveMD };
 }
 
 /* =====================================================================
@@ -1398,10 +1514,14 @@ function sortIco(sortState, key){
   if (sortState.key !== key || !sortState.dir) return '<span class="sort-ico sort-ico-idle">⇅</span>';
   return `<span class="sort-ico">${sortState.dir === 'asc' ? '▲' : '▼'}</span>`;
 }
-function thSort(label, key, sortState, extraClass){
+/** extraAttrs (Task 6, §5.63): บาง caller ต้องเพิ่ม attribute อื่น (เช่น rowspan="2" สำหรับ
+ *  หัวตาราง Compare ที่คอลัมน์ OS/Role คร่อม 2 แถว) — optional, undefined เดิมของ caller
+ *  ที่มีอยู่แล้วส่งแค่ 4 args จึงได้ผลลัพธ์เหมือนเดิมทุกประการ (ไม่กระทบ By Project/By OS/
+ *  By Lead/By App/Signoff ที่ใช้อยู่แล้ว) */
+function thSort(label, key, sortState, extraClass, extraAttrs){
   const active = sortState.key === key && !!sortState.dir;
   const cls = ['sortable', active ? 'sort-active' : '', extraClass||''].join(' ').trim();
-  return `<th class="${cls}" data-sort-key="${esc(key)}">${esc(label)}${sortIco(sortState, key)}</th>`;
+  return `<th class="${cls}" data-sort-key="${esc(key)}"${extraAttrs ? ' ' + extraAttrs : ''}>${esc(label)}${sortIco(sortState, key)}</th>`;
 }
 function genericSort(rows, sortState, keyFns){
   // unsort (กดครบรอบ) หรือ key ที่ไม่รู้จัก (เช่น prefs เก่าที่ชี้ไปที่คอลัมน์ App
@@ -1821,6 +1941,61 @@ function renderAppView(container){
   });
 }
 
+/* normalize ชื่อสำหรับจับคู่ Actual (ไฟล์ Excel) กับ v_resource — view ทำ lower(btrim())
+   มาแล้ว ฝั่งนี้ยังต้องยุบช่องว่างซ้ำกลางชื่อเพิ่มอีกชั้น (2026-09-10, §5.63 Task 3) */
+function normNameKey(s){
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/* Actual MD ต่อ resource x app x เดือน — pure function (เทสต์เรียกตรงได้ ไม่อ่าน S.* เอง)
+   `months` = S.months ('YYYY-MM'), `filter` = { apps:Set, leads:Set }
+   ⚠️ กรองเดือนด้วยเซ็ตเดือนที่เลือกจริง ห้ามใช้ซองวันที่ (§5.60) — 2026-09-10, §5.63 Task 3 */
+function buildActualOsAgg(rows, resources, months, filter){
+  const monthSet = new Set(months || []);
+  const byName = new Map();
+  (resources || []).forEach(r => {
+    const k = normNameKey(r.full_name_en);
+    if (!k) return;
+    if (byName.has(k)) {
+      // spec §4: ชื่อ full_name_en ซ้ำกัน 2 คนขึ้นไป — ยังผูกคนแรกเหมือนเดิม (ไม่เปลี่ยนพฤติกรรม
+      // จับคู่) แค่เตือนให้รู้ตัว (2026-09-10, Fix round 1 ของ §5.63 Task 3 review)
+      console.warn('buildActualOsAgg: duplicate full_name_en key "' + k + '" — binding to first resource', r.resource_id);
+      return;
+    }
+    byName.set(k, r.resource_id);
+  });
+  const byResAppMonth = {}, byResTotal = {}, unmatchedMap = {}, appSet = new Set();
+  (rows || []).forEach(row => {
+    const ym = String(row.ym || '');
+    if (!/^\d{6}$/.test(ym)) return;
+    const mk = ym.slice(0, 4) + '-' + ym.slice(4, 6);
+    if (!monthSet.has(mk)) return;
+    const app = row.app_code || '';
+    if (filter && filter.apps && filter.apps.size && !filter.apps.has(app)) return;
+    if (filter && filter.leads && filter.leads.size
+        && !(row.approver_emp_id && filter.leads.has(row.approver_emp_id))) return;
+    const md = Number(row.actual_md) || 0;
+    appSet.add(app);
+    const rid = byName.get(normNameKey(row.name_key || row.en_fullname));
+    if (rid) {
+      byResAppMonth[rid] = byResAppMonth[rid] || {};
+      byResAppMonth[rid][app] = byResAppMonth[rid][app] || {};
+      byResAppMonth[rid][app][mk] = (byResAppMonth[rid][app][mk] || 0) + md;
+      byResTotal[rid] = (byResTotal[rid] || 0) + md;
+    } else {
+      const key = normNameKey(row.name_key || row.en_fullname);
+      const u = unmatchedMap[key] = unmatchedMap[key]
+        || { key, name: row.nickname_name || row.en_fullname || key, byAppMonth: {}, total: 0 };
+      u.byAppMonth[app] = u.byAppMonth[app] || {};
+      u.byAppMonth[app][mk] = (u.byAppMonth[app][mk] || 0) + md;
+      u.total += md;
+    }
+  });
+  const unmatched = Object.values(unmatchedMap)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return { byResAppMonth, byResTotal, unmatched, apps: [...appSet] };
+}
+
 /* ---- By OS (pivot: OS x App) ---- */
 /** §5.59 (2026-09-03, Gibb): ซ่อน OS ที่ "ลาออกแล้ว **และ** ไม่มี MD ในเดือนที่เลือก"
  *  ออกจากตาราง By OS — เกณฑ์ลาออกใช้ตัวเดียวกับหน้า Outsource (matchesFilters():
@@ -1839,6 +2014,14 @@ function osRowVisible(r, rangeStart){
 /** keyFns ของตาราง By OS — คอลัมน์ App สร้างดังค์ตามชุด app ที่มีจริงในรอบนั้น
  *  (key = `app:<ชื่อแอป>` ใช้ชื่อแอปตรงๆ เพื่อให้ prefs ที่จำไว้ยังชี้ถูกคอลัมน์เดิม
  *  แม้ชุด/ลำดับคอลัมน์จะเปลี่ยนไป — index-based จะเลื่อนไปคนละคอลัมน์) */
+// ใช้ร่วมกันทั้งโหมด Actual (renderOsView) และ Compare (renderOsCompare) — spec §5 บังคับ
+// ว่า hint นี้ต้องขึ้นทั้ง 2 โหมด เพราะตัวเลข Actual (import จาก Excel) ไม่มี Project เลย
+// ตัวกรอง Project บน panel จึงไม่มีผลกับมันในทั้ง 2 โหมด (ทำเป็น helper กันโค้ดซ้ำ)
+function projectFilterHintHTML(){
+  return (S.filter && S.filter.projects && S.filter.projects.size)
+    ? '<div class="dash-hint">ตัวกรอง Project ไม่มีผลกับตัวเลข Actual (ข้อมูล Actual ไม่มี Project)</div>'
+    : '';
+}
 function osKeyFns(apps, agg){
   const kf = {
     osName: r => resName(r.nickname, r.full_name_en),
@@ -1848,13 +2031,124 @@ function osKeyFns(apps, agg){
   apps.forEach(a => { kf['app:' + a] = r => (agg.byOsApp[r.resource_id] || {})[a] || 0; });
   return kf;
 }
+/** By OS — §5.63 Task 5: แตก 3 โหมดตาม S.osMode ('booked' | 'actual' | 'compare')
+ *  - 'compare' ยังไม่ implement เต็ม (Task 6) — ส่งต่อให้ renderOsCompare() (stub ไว้ก่อน)
+ *  - 'booked' (default): โค้ดเดิมทุกบรรทัดตั้งแต่ก่อน Task 5 — นับ MD จาก S.periodAggActiveOnly
+ *    (booking/leave จริง, active project เท่านั้น, §5.48/§5.59)
+ *  - 'actual': นับจาก buildActualOsAgg() (S.actualPersonRows, กรองเดือนด้วย S.months ไม่ใช่
+ *    S.overallRange — ข้อมูล Actual import จาก Excel ไม่มี Project เลย จึงไม่ผูกกับ
+ *    matchProjectDiscovery()/S.filter.projects เหมือนโหมด booked — ตัวกรอง Project บน panel
+ *    จึงไม่มีผลกับตัวเลขนี้ มี .dash-hint เตือนไว้) ชื่อที่ import มาแต่จับคู่กับ resource
+ *    ไม่ได้เลย (buildActualOsAgg()'s unmatchedMap) โผล่เป็นกลุ่มท้ายตาราง "ไม่พบใน OS master"
+ *    — ยอดรวมท้ายตารางนับรวมกลุ่มนี้ด้วยเสมอ (ไม่งั้น MD ของคนกลุ่มนี้หายไปเงียบๆ) */
 function renderOsView(container){
-  // §6: By OS counts MD only on bookings whose project is_active = true.
+  if (S.osMode === 'compare') return renderOsCompare(container);
+
+  const rangeStart = S.overallRange.s || '';
+
+  if (S.osMode === 'actual') {
+    const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
+    const apps = sortedApps(aAgg.apps);
+
+    // แปลงเป็นทรงเดียวกับ periodAggActiveOnly ({byOsApp, byOsTotal}) เพื่อใช้ osKeyFns()/
+    // โครงตารางเดิมตัวเดียวกับโหมด booked ตรงๆ ได้ — เซลล์ = ผลรวมทุกเดือนของ app นั้น
+    // (buildActualOsAgg() เก็บแยกรายเดือนไว้เผื่อ caller อื่นในอนาคตต้องการ breakdown)
+    const shaped = { byOsApp: {}, byOsTotal: aAgg.byResTotal };
+    Object.keys(aAgg.byResAppMonth).forEach(rid => {
+      shaped.byOsApp[rid] = {};
+      Object.keys(aAgg.byResAppMonth[rid]).forEach(app => {
+        shaped.byOsApp[rid][app] = Object.values(aAgg.byResAppMonth[rid][app]).reduce((s, v) => s + v, 0);
+      });
+    });
+
+    const osRows = genericSort(Object.values(S.resourceMap)
+      .filter(r => r.resource_type === 'outsource')
+      .map(r => ({ ...r, total: shaped.byOsTotal[r.resource_id] || 0 }))
+      .filter(r => osRowVisible(r, rangeStart))
+      .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
+      S.osSort, osKeyFns(apps, shaped));
+
+    const hintHTML = projectFilterHintHTML();
+
+    if (!apps.length && !aAgg.unmatched.length) {
+      container.innerHTML = hintHTML + '<div class="empty-state">ไม่มีข้อมูล Actual MD ในเดือนที่เลือก</div>';
+      return;
+    }
+
+    const headApps = apps.map(a => thSort(a, 'app:' + a, S.osSort)).join('');
+    const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
+    let grandTotal = 0;
+
+    const bodyRows = osRows.map(r => {
+      const cells = apps.map(a => {
+        const v = (shaped.byOsApp[r.resource_id] || {})[a] || 0;
+        colTotals[a] += v;
+        return `<td class="td-md-cell">${v ? fmtMD(v) : '<span class="muted">—</span>'}</td>`;
+      }).join('');
+      grandTotal += r.total;
+      return `<tr>
+        <td class="td-os-name">${esc(resName(r.nickname, r.full_name_en))}</td>
+        <td class="td-os-role">${esc(roleLabelFor(r.role_code))}</td>
+        <td class="td-os-total">${fmtMD(r.total)}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    // กลุ่ม "ไม่พบใน OS master" — ยอดรวมท้ายตารางต้องนับรวมด้วยเสมอ (colTotals/grandTotal
+    // ตัวเดียวกับแถวที่ match ได้ข้างบน — ไม่ใช่ผลรวมแยกต่างหาก)
+    let unmatchedRowsHTML = '';
+    if (aAgg.unmatched.length) {
+      const headRow = `<tr class="os-unmatched-row"><td colspan="${3 + apps.length}" class="os-unmatched-head">ไม่พบใน OS master (${aAgg.unmatched.length} คน)</td></tr>`;
+      const rows = aAgg.unmatched.map(u => {
+        const cells = apps.map(a => {
+          const v = Object.values(u.byAppMonth[a] || {}).reduce((s, v2) => s + v2, 0);
+          colTotals[a] += v;
+          return `<td class="td-md-cell">${v ? fmtMD(v) : '<span class="muted">—</span>'}</td>`;
+        }).join('');
+        grandTotal += u.total;
+        return `<tr class="os-unmatched-row">
+          <td class="td-os-name">${esc(u.name)}</td>
+          <td class="td-os-role"></td>
+          <td class="td-os-total">${fmtMD(u.total)}</td>
+          ${cells}
+        </tr>`;
+      }).join('');
+      unmatchedRowsHTML = headRow + rows;
+    }
+
+    const totalRow = `<tr class="dash-total-row">
+      <td class="td-os-name">รวมทั้งหมด</td>
+      <td class="td-os-role"></td>
+      <td class="td-os-total">${fmtMD(grandTotal)}</td>
+      ${apps.map(a => `<td class="td-md-cell">${fmtMD(colTotals[a])}</td>`).join('')}
+    </tr>`;
+
+    container.innerHTML = hintHTML + `
+      <div class="dash-os-scroll">
+        <table class="dash-os-table">
+          <thead><tr>
+            ${thSort('OS','osName',S.osSort,'th-os-name')}
+            ${thSort('Role','role',S.osSort,'th-os-role')}
+            ${thSort('Total','total',S.osSort,'th-os-total')}
+            ${headApps}
+          </tr></thead>
+          <tbody>${bodyRows}${unmatchedRowsHTML || (bodyRows ? '' : `<tr><td colspan="${3+apps.length}" class="empty-state">ไม่มีข้อมูล</td></tr>`)}</tbody>
+          <tfoot>${totalRow}</tfoot>
+        </table>
+      </div>`;
+
+    wireSortHeader(container.querySelector('.dash-os-table thead'), S.osSort, () => {
+      savePrefs(PAGE, { osSort: S.osSort });
+      renderOsView(container);
+    });
+    return;
+  }
+
+  // โหมด 'booked' (default) — §6: By OS counts MD only on bookings whose project is_active = true.
   const agg = S.periodAggActiveOnly || { byOsApp:{}, byOsTotal:{} };
   const appSet = new Set();
   Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
   const apps = sortedApps([...appSet]);
-  const rangeStart = S.overallRange.s || '';
 
   // ลำดับตั้งต้น (สถานะ unsort) = role → ชื่อเล่น เหมือนเดิมทุกประการ แล้วค่อยให้ genericSort()
   // เรียงทับตาม S.osSort ถ้าผู้ใช้กดหัวคอลัมน์ไว้
@@ -1913,6 +2207,244 @@ function renderOsView(container){
   wireSortHeader(container.querySelector('.dash-os-table thead'), S.osSort, () => {
     savePrefs(PAGE, { osSort: S.osSort });
     renderOsView(container);
+  });
+}
+/* ---- By OS โหมด Compare (Task 6, §5.63, 2026-09-10) ----
+   ผสาน Booked (computeAgg().byOsAppMonth, Task 4) กับ Actual (buildActualOsAgg(), Task 3)
+   เป็นแถวเดียวต่อคน 1 คนอาจมีได้หลาย App (แถวย่อยกางดูได้) — แยกเป็น helper เล็กๆ ที่ pure
+   ล้วนๆ (ไม่อ่าน S.* เลยสักตัว) เพื่อไม่ให้ renderOsCompare() ต้อง copy ตรรกะรวมยอดซ้ำจาก
+   ที่อื่น (reviewer ของ Task 5 เตือนเรื่อง copy-paste ระหว่าง booked/actual branch ไว้แล้ว —
+   งานนี้จึงตั้งใจแยกให้ buildCompareRows()/buildCompareCells()/sumCompareCells() เทสต์ตรง
+   ผ่าน vm ได้โดยไม่ต้องพึ่ง DOM/S เลย) ส่วนต่าง d = Booked − Actual เสมอ (ตรงกับ §5.62) */
+
+/** เซลล์ของ 1 (resource, app) ต่อเดือนที่เลือก — bByMonth/aByMonth = 'YYYY-MM' -> md (ไม่มี
+ *  key นั้นแปลว่า 0) คืน { total:{b,a,d}, 'YYYY-MM':{b,a,d} } ตามสัญญาที่ brief กำหนด */
+function buildCompareCells(bByMonth, aByMonth, months){
+  bByMonth = bByMonth || {}; aByMonth = aByMonth || {};
+  const cells = { total: { b: 0, a: 0, d: 0 } };
+  (months || []).forEach(mk => {
+    const b = bByMonth[mk] || 0, a = aByMonth[mk] || 0;
+    cells[mk] = { b, a, d: b - a };
+    cells.total.b += b; cells.total.a += a;
+  });
+  cells.total.d = cells.total.b - cells.total.a;
+  return cells;
+}
+/** รวมเซลล์ของหลาย App (หรือหลายคน สำหรับ tfoot) เป็นก้อนเดียว — ใช้ทั้งตอนคำนวณผลรวม
+ *  ระดับ parent (รวม App ของคนคนเดียว) และตอนคำนวณ tfoot (รวมทุกแถว parent ที่แสดงจริง)
+ *  จุดเดียวกัน ไม่ copy สูตรรวมยอดซ้ำที่ 2 จุด */
+function sumCompareCells(cellsList, months){
+  const out = { total: { b: 0, a: 0, d: 0 } };
+  (months || []).forEach(mk => { out[mk] = { b: 0, a: 0, d: 0 }; });
+  (cellsList || []).forEach(c => {
+    out.total.b += c.total.b; out.total.a += c.total.a;
+    (months || []).forEach(mk => {
+      const cm = c[mk] || {};
+      out[mk].b += cm.b || 0; out[mk].a += cm.a || 0;
+    });
+  });
+  out.total.d = out.total.b - out.total.a;
+  (months || []).forEach(mk => { out[mk].d = out[mk].b - out[mk].a; });
+  return out;
+}
+/** ⚠️ pure function ตามสัญญาใน brief — รับพารามิเตอร์ครบ ไม่อ่าน S.* ข้างในเลย เทสต์เรียก
+ *  ตรงผ่าน vm ได้ทันที
+ *  - bAgg: computeAgg().byOsAppMonth ตรงๆ (resource_id -> app -> 'YYYY-MM' -> md)
+ *  - aAgg: ผลลัพธ์เต็มของ buildActualOsAgg() ({byResAppMonth, unmatched, ...})
+ *  - resources: Object.values(S.resourceMap) — กรองเฉพาะ resource_type==='outsource' เอง
+ *  - rangeStart: S.overallRange.s — ส่งต่อให้ osRowVisible() เช็คเกณฑ์ "ลาออกแล้ว" เดิม
+ *  คืน [{ resource_id, name, role_code, apps:[{app, cells}], cells, unmatched? }] — แถว
+ *  unmatched (จาก aAgg.unmatched, Booked เป็น 0 เสมอเพราะไม่มี Project ให้ผูก) อยู่ท้ายสุด
+ *  เสมอ ไม่ผ่าน osRowVisible() (ไม่มีแนวคิด "ลาออก" สำหรับคนที่จับคู่กับ OS master ไม่ได้เลย) */
+function buildCompareRows(bAgg, aAgg, resources, months, rangeStart){
+  bAgg = bAgg || {};
+  months = months || [];
+  const aByResAppMonth = (aAgg && aAgg.byResAppMonth) || {};
+  const unmatchedList = (aAgg && aAgg.unmatched) || [];
+
+  const matched = (resources || [])
+    .filter(r => r.resource_type === 'outsource')
+    .map(r => {
+      const rid = r.resource_id;
+      const bByApp = bAgg[rid] || {};
+      const aByApp = aByResAppMonth[rid] || {};
+      const appNames = [...new Set([...Object.keys(bByApp), ...Object.keys(aByApp)])]
+        .sort((x, y) => x.localeCompare(y));
+      const apps = appNames.map(app => ({ app, cells: buildCompareCells(bByApp[app], aByApp[app], months) }));
+      const cells = sumCompareCells(apps.map(a => a.cells), months);
+      return {
+        resource_id: rid,
+        name: resName(r.nickname, r.full_name_en),
+        role_code: r.role_code,
+        end_date: r.end_date,
+        is_active: r.is_active,
+        apps,
+        cells,
+      };
+    })
+    .filter(r => osRowVisible({ total: r.cells.total.b + r.cells.total.a, end_date: r.end_date, is_active: r.is_active }, rangeStart));
+
+  const unmatched = unmatchedList.map(u => {
+    const appNames = Object.keys(u.byAppMonth || {}).sort((x, y) => x.localeCompare(y));
+    const apps = appNames.map(app => ({ app, cells: buildCompareCells(null, u.byAppMonth[app], months) }));
+    const cells = sumCompareCells(apps.map(a => a.cells), months);
+    return { resource_id: 'unmatched:' + u.key, name: u.name, role_code: '', apps, cells, unmatched: true };
+  });
+
+  return [...matched, ...unmatched];
+}
+/** keyFns ของตาราง Compare ระดับ parent — คีย์ 'b:total'/'a:total'/'d:total' สำหรับกลุ่ม
+ *  Total, 'b:<YYYY-MM>'/'a:<YYYY-MM>'/'d:<YYYY-MM>' ต่อเดือน (ชื่อคีย์คนละชุดกับ osKeyFns()
+ *  ของโหมด booked/actual ('total'/'app:<ชื่อ>') โดยตั้งใจ — ตารางหน้าตาไม่เหมือนกันเลย ไม่มี
+ *  เหตุผลต้องใช้คีย์ร่วมกัน) */
+function compareKeyFns(months){
+  const kf = {
+    osName: r => r.name,
+    role: r => roleRank(r.role_code),
+    'b:total': r => r.cells.total.b,
+    'a:total': r => r.cells.total.a,
+    'd:total': r => r.cells.total.d,
+  };
+  (months || []).forEach(mk => {
+    kf['b:' + mk] = r => r.cells[mk].b;
+    kf['a:' + mk] = r => r.cells[mk].a;
+    kf['d:' + mk] = r => r.cells[mk].d;
+  });
+  return kf;
+}
+/* เซลล์ Booked/Actual ธรรมดา — 0 โชว์ "—" จางๆ เหมือน appMonthCellHTML() ของแท็บ By App
+   (กัน OS × App × เดือน หลายสิบคอลัมน์เต็มไปด้วยเลข 0 อ่านยาก) */
+function cmpCellHTML(v){ return v ? fmtMD(v) : '<span class="muted">—</span>'; }
+/* เซลล์ส่วนต่าง (Booked − Actual) — โชว์ตัวเลขเสมอแม้เป็น 0 (ต่างจาก cmpCellHTML) เพราะเป็น
+   จุดสำคัญของมุมมอง Compare เอง ไม่อยากให้ผู้ใช้เข้าใจผิดว่า "ไม่มีข้อมูล" — สีตาม §5.62:
+   บวก (จองไว้มากกว่าที่ใช้จริง) = md-over (เขียว), ลบ (ใช้จริงเกินที่จอง) = md-under (แดง) */
+function cmpDiffTd(d){
+  const cls = d > 0 ? 'md-over' : (d < 0 ? 'md-under' : '');
+  return `<td class="right ${cls}">${fmtMD(d)}</td>`;
+}
+/* ก้อน <td> ของ Total + ทุกเดือนที่เลือก (Booked | Actual | B−A ซ้ำทุกกลุ่ม) — ใช้ร่วมทั้ง
+   แถว parent, แถวย่อย (.os-sub-row) และ tfoot จุดเดียว กัน copy โครง <td> ซ้ำ 3 ที่ */
+function cmpTotalCells(cells, months){
+  let html = `<td class="right">${cmpCellHTML(cells.total.b)}</td><td class="right">${cmpCellHTML(cells.total.a)}</td>${cmpDiffTd(cells.total.d)}`;
+  (months || []).forEach(mk => {
+    const c = cells[mk] || { b: 0, a: 0, d: 0 };
+    html += `<td class="right">${cmpCellHTML(c.b)}</td><td class="right">${cmpCellHTML(c.a)}</td>${cmpDiffTd(c.d)}`;
+  });
+  return html;
+}
+/** โหมด Compare (By OS) — Task 6: ตาราง OS x App x เดือน เทียบ Booked vs Actual พร้อม
+ *  ส่วนต่าง ระดับคนแบบกางดู App รายตัวได้ (parent = ผลรวมทุก App, .os-sub-row = ต่อ 1 App)
+ *  กางเฉพาะ resource_id ที่มีอยู่ใน S.osExpanded (view state ล้วนๆ — ไม่เขียนลง prefs ตามที่
+ *  ระบุใน brief ข้อ 4 — สลับโหมด/แท็บแล้วสถานะกาง/หุบหายไปเป็นเรื่องปกติ) แถว unmatched
+ *  ตัดออกก่อน sort เสมอแล้วต่อท้ายทีหลัง ไม่ว่าจะเรียงคอลัมน์ไหน (brief ข้อ 5) */
+function renderOsCompare(container){
+  const rangeStart = S.overallRange.s || '';
+  const months = S.months || [];
+  const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
+  const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
+  const resources = Object.values(S.resourceMap);
+  const allRows = buildCompareRows(bAgg, aAgg, resources, months, rangeStart);
+  const hintHTML = projectFilterHintHTML();
+
+  if (!allRows.length) {
+    container.innerHTML = hintHTML + '<div class="empty-state">ไม่มีข้อมูล Booked/Actual MD สำหรับตัวกรองชุดนี้</div>';
+    return;
+  }
+
+  // unmatched ตัดออกก่อน sort แล้วต่อท้ายทีหลังเสมอ (brief ข้อ 5) — ไม่ว่า S.osSort จะชี้
+  // ไปคอลัมน์ไหน แถวกลุ่มนี้ต้องอยู่ท้ายสุดตลอด
+  const matchedRows = allRows.filter(r => !r.unmatched);
+  const unmatchedRows = allRows.filter(r => r.unmatched);
+  const sortedMatched = genericSort(matchedRows, S.osSort, compareKeyFns(months));
+  const finalRows = [...sortedMatched, ...unmatchedRows];
+
+  const monthHeads = months.map(mk => `<th colspan="3">${esc(monthLabel(mk))}</th>`).join('');
+  const monthSubHeads = months.map(mk => `
+    ${thSort('Booked', 'b:' + mk, S.osSort, 'right')}
+    ${thSort('Actual', 'a:' + mk, S.osSort, 'right')}
+    ${thSort('B − A', 'd:' + mk, S.osSort, 'right')}
+  `).join('');
+
+  const theadRow1 = `<tr>
+    ${thSort('OS', 'osName', S.osSort, 'col-cmp-name', 'rowspan="2"')}
+    ${thSort('Role', 'role', S.osSort, 'col-cmp-role', 'rowspan="2"')}
+    <th class="col-cmp-app" rowspan="2">App</th>
+    <th colspan="3">Total</th>
+    ${monthHeads}
+  </tr>`;
+  const theadRow2 = `<tr>
+    ${thSort('Booked', 'b:total', S.osSort, 'right')}
+    ${thSort('Actual', 'a:total', S.osSort, 'right')}
+    ${thSort('B − A', 'd:total', S.osSort, 'right')}
+    ${monthSubHeads}
+  </tr>`;
+
+  const bodyRows = finalRows.map(r => {
+    const expanded = !!S.osExpanded[r.resource_id];
+    const appCell = r.apps.length >= 2
+      ? `<button class="os-expand" data-rid="${esc(r.resource_id)}">${expanded ? '▾' : '▸'} ${r.apps.length} Apps</button>`
+      : (r.apps.length === 1 ? esc(r.apps[0].app) : '<span class="muted">—</span>');
+    const parentTr = `<tr${r.unmatched ? ' class="os-unmatched-row"' : ''}>
+      <td class="col-cmp-name">${esc(r.name)}</td>
+      <td class="col-cmp-role">${esc(roleLabelFor(r.role_code))}</td>
+      <td class="col-cmp-app">${appCell}</td>
+      ${cmpTotalCells(r.cells, months)}
+    </tr>`;
+    const subTrs = (r.apps.length >= 2 && expanded)
+      ? r.apps.map(ap => `<tr class="os-sub-row">
+          <td class="col-cmp-name"></td>
+          <td class="col-cmp-role"></td>
+          <td class="col-cmp-app">${esc(ap.app)}</td>
+          ${cmpTotalCells(ap.cells, months)}
+        </tr>`).join('')
+      : '';
+    return parentTr + subTrs;
+  }).join('');
+
+  // tfoot = ผลรวมของแถว parent ที่แสดงจริง (รวม unmatched, brief ข้อ 6) — ไม่รวมแถวย่อย
+  // (จะรวมซ้ำ 2 ชั้น เพราะแถวย่อยเป็นแค่ breakdown ของ parent ตัวเดียวกัน)
+  const grandCells = sumCompareCells(finalRows.map(r => r.cells), months);
+  const totalRow = `<tr class="dash-total-row">
+    <td class="col-cmp-name">รวมทั้งหมด (${finalRows.length} คน)</td>
+    <td class="col-cmp-role"></td>
+    <td class="col-cmp-app"></td>
+    ${cmpTotalCells(grandCells, months)}
+  </tr>`;
+
+  container.innerHTML = `
+    ${hintHTML}
+    <div class="dash-compare-tools">
+      <button class="btn sm" id="osExpandAll">กางทั้งหมด</button>
+      <button class="btn sm" id="osCollapseAll">หุบทั้งหมด</button>
+    </div>
+    <div class="dash-os-scroll">
+      <table class="dash-compare-table" id="compareTable">
+        <thead>${theadRow1}${theadRow2}</thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+    </div>`;
+
+  wireSortHeader(container.querySelector('#compareTable thead'), S.osSort, () => {
+    savePrefs(PAGE, { osSort: S.osSort });
+    renderOsCompare(container);
+  });
+  // delegated click listener ตัวเดียว (brief ข้อ: "delegated click listener ตัวเดียวบน
+  // container") จับ .os-expand ของทุกแถว แทนการผูก listener แยกทีละปุ่ม (อาจมีเป็นร้อยแถว)
+  container.querySelector('.dash-os-scroll').addEventListener('click', e => {
+    const btn = e.target.closest('.os-expand');
+    if (!btn) return;
+    S.osExpanded[btn.dataset.rid] = !S.osExpanded[btn.dataset.rid];
+    renderOsCompare(container);
+  });
+  // ปุ่มกาง/หุบทั้งหมด — set S.osExpanded แล้ว re-render เฉยๆ ห้ามเขียนลง prefs (brief ข้อ 4)
+  container.querySelector('#osExpandAll').addEventListener('click', () => {
+    finalRows.forEach(r => { if (r.apps.length >= 2) S.osExpanded[r.resource_id] = true; });
+    renderOsCompare(container);
+  });
+  container.querySelector('#osCollapseAll').addEventListener('click', () => {
+    S.osExpanded = {};
+    renderOsCompare(container);
   });
 }
 function roleLabelFor(code){
@@ -2608,8 +3140,8 @@ async function downloadActualTemplate(){
     const exampleAppCode = (apps[0] && apps[0].app_code) || '';
 
     const dataAoa = [
-      ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Actual_MD'],
-      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 1],
+      ACTUAL_MD_HEADERS,
+      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
     ];
     const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
 
@@ -2628,7 +3160,14 @@ async function downloadActualTemplate(){
   }
 }
 
-const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Actual_MD'];
+const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
+
+/* pivot ของ Excel เขียนคำว่า "(blank)" ลงมาเป็นข้อความจริงในช่องที่ไม่มีค่า — ต้องแปลงเป็น
+   ค่าว่างทุกช่องข้อความ ไม่งั้น approver จะกลายเป็นอีเมลชื่อ (blank) */
+function actualCellText(v){
+  const s = String(v == null ? '' : v).trim();
+  return s.toLowerCase() === '(blank)' ? '' : s;
+}
 
 /** Parse the "Data" sheet of an Actual MD import file — takes a plain AOA (array-of-arrays,
  *  e.g. from `XLSX.utils.sheet_to_json(worksheet, { header: 1 })`) rather than a workbook or
@@ -2641,17 +3180,26 @@ const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Co
  *  Row numbers in `errors`/`warnings` are the ACTUAL EXCEL ROW NUMBER a human editing the
  *  file would see (header row = 1, first data row = 2) — not the 0-based `aoa` index.
  *
+ *  `leadEmailSet` (optional — Set of valid pqa_lead email addresses, lower-cased): when given,
+ *  an `approver_choice` that isn't in it produces a non-blocking warning (import still goes
+ *  through; it just means filtering by UAT Lead in the Compare view won't find the row). When
+ *  omitted (null/undefined), the email check is skipped entirely — the real call site wires this
+ *  in Task 3 once S.leadsAll carries emails; until then it can pass null safely.
+ *
  *  Returns { rows, errors, warnings, byMonth }:
- *   - rows: [{ ym, app_code, project_code, nickname_name, en_fullname, actual_md }] — ready to
- *     pass straight through as `p_rows` to `supabase.rpc('fn_import_actual_md', { p_rows })`.
- *     Exact-duplicate rows (same ym+app_code+project_code+nickname_name+en_fullname) are
- *     merged into ONE row here with actual_md summed (§3.1 spec: "แถวที่ซ้ำเป๊ะจะถูกรวมยอด
- *     ตอนอ่าน") — reported as a warning, not blocked.
+ *   - rows: [{ ym, app_code, project_code, nickname_name, en_fullname, approver_choice,
+ *     actual_md }] — ready to pass straight through as `p_rows` to
+ *     `supabase.rpc('fn_import_actual_md', { p_rows })`. Exact-duplicate rows (same
+ *     ym+app_code+project_code+nickname_name+en_fullname+approver_choice) are merged into ONE
+ *     row here with actual_md summed (§3.1 spec: "แถวที่ซ้ำเป๊ะจะถูกรวมยอดตอนอ่าน") — reported
+ *     as a warning, not blocked. Rows that differ only by approver_choice are DIFFERENT rows
+ *     (real file has the same person/month/project/app approved in pieces by different
+ *     approvers) and are never merged together.
  *   - errors: [{ row, msg }] — blocking; caller must keep the confirm button disabled while
  *     this is non-empty.
  *   - warnings: [{ row, msg }] — non-blocking, informational only.
  *   - byMonth: { 'YYYYMM': { count, totalMD } } — per-month summary for the preview modal. */
-function parseActualFile(aoa, appCodeSet){
+function parseActualFile(aoa, appCodeSet, leadEmailSet){
   const errors = [];
   const warnings = [];
 
@@ -2680,12 +3228,13 @@ function parseActualFile(aoa, appCodeSet){
     const excelRow = idx + 2; // header = row 1, first data row = row 2
     if (isBlankLine(line)) return; // skip fully-blank rows silently (not an error)
 
-    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, mdRaw] = line;
-    const ym = String(ymRaw == null ? '' : ymRaw).trim();
-    const appCode = String(appRaw == null ? '' : appRaw).trim();
-    const nickname_name = String(nickRaw == null ? '' : nickRaw).trim();
-    const en_fullname = String(fullRaw == null ? '' : fullRaw).trim();
-    const project_code = String(pcRaw == null ? '' : pcRaw).trim();
+    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
+    const ym = actualCellText(ymRaw);
+    const appCode = actualCellText(appRaw);
+    const nickname_name = actualCellText(nickRaw);
+    const en_fullname = actualCellText(fullRaw);
+    const project_code = actualCellText(pcRaw);
+    const approver_choice = actualCellText(approverRaw).toLowerCase();
 
     if (!/^\d{6}$/.test(ym)) {
       errors.push({ row: excelRow, msg: `YYYYMM ไม่ถูกต้อง: "${ymRaw == null ? '' : ymRaw}" (ต้องเป็นตัวเลข 6 หลัก เช่น 202602)` });
@@ -2693,19 +3242,22 @@ function parseActualFile(aoa, appCodeSet){
     if (appCodeSet && !appCodeSet.has(appCode)) {
       errors.push({ row: excelRow, msg: `App_ID ไม่มีใน master: "${appCode}"` });
     }
+    if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
+      warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
+    }
     const md = Number(mdRaw);
     const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
     if (mdBlank || isNaN(md) || md < 0) {
       errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
     }
 
-    const key = [ym, appCode, project_code, nickname_name, en_fullname].join('|');
+    const key = [ym, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
     if (seen.has(key)) {
       const target = seen.get(key);
-      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อเดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
+      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
       target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
     } else {
-      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
       seen.set(key, rowObj);
       merged.push(rowObj);
     }
@@ -3205,6 +3757,19 @@ function wireToolbar(){
     savePrefs(PAGE, { compareActual: S.compareActual });
     if (S.dashView === 'app') renderAppView($('viewContainer'));
   });
+  // §5.63 Task 5: ปุ่มโหมด Booked MD / Actual MD / Compare (By OS tab) — re-render เฉยๆ
+  // ไม่ยิง query ใหม่ (S.actualPersonRows/S.periodAggActiveOnly โหลดไว้ครบแล้วตั้งแต่
+  // loadPeriod()) เคลียร์ S.osExpanded ทุกครั้งที่สลับโหมด (view state ของโหมด Compare,
+  // Task 6 — ไม่มีเหตุผลจะจำ expand ค้างข้ามโหมดที่ตารางหน้าตาไม่เหมือนกันเลย)
+  $('osModeTools').addEventListener('click', e => {
+    const btn = e.target.closest('.os-mode-btn');
+    if (!btn) return;
+    S.osMode = btn.dataset.mode;
+    savePrefs(PAGE, { osMode: S.osMode });
+    S.osExpanded = {};
+    document.querySelectorAll('#osModeTools .os-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === S.osMode));
+    if (S.dashView === 'os') renderView();
+  });
   // 2026-09-09 (§5.60, Task 5): Download Template / Import Actual MD — admin เท่านั้น (ปุ่มถูก
   // ซ่อนสำหรับ non-admin อยู่แล้วผ่าน updateAppAdminToolsVisibility() แต่ผูก listener ไว้เสมอ
   // เผื่อ role เปลี่ยนระหว่าง session — ด่านจริงคือ RLS + guard ใน fn_import_actual_md())
@@ -3221,7 +3786,10 @@ function wireToolbar(){
       const ws = wb.Sheets[sheetName];
       const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
       const appCodeSet = new Set(S.appList.map(a => a.app_code));
-      const parsed = parseActualFile(aoa, appCodeSet);
+      // leadEmailSet: S.leadsAll ('pqa_lead') carries `email` already (loadMasterData()) — wired
+      // in during Fix round 1 of §5.63 Task 3 review (2026-09-10)
+      const leadEmailSet = new Set((S.leadsAll || []).map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
+      const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
       await openActualImportModal(parsed);
     } catch (err) {
       console.error(err);
@@ -3267,6 +3835,7 @@ function switchDashView(view){
   $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
   $('cmpActualFld').classList.toggle('hidden', view !== 'app');   // 2026-09-09, By App tab เท่านั้น (§5.60)
   updateAppAdminToolsVisibility();
+  updateOsModeVisibility(); // §5.63 Task 5 — ปุ่มโหมด Booked/Actual/Compare, By OS tab เท่านั้น
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก
