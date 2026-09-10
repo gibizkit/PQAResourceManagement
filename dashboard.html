@@ -391,7 +391,17 @@
   table.dash-compare-table tr.os-sub-row td.col-cmp-name,
   table.dash-compare-table tr.os-sub-row td.col-cmp-role,
   table.dash-compare-table tr.os-sub-row td.col-cmp-app { background:var(--dk-surface); }
-  .dash-compare-tools { display:flex; gap:6px; margin-bottom:8px; }
+  /* ปุ่มกาง/หุบทั้งหมด — ย้ายจากแถวปุ่มข้อความเดิม (.dash-compare-tools) เข้าไปเป็นไอคอนใน
+     หัวคอลัมน์ App แทน (Task 6b, 2026-09-10) แพทเทิร์นเดียวกับ .c0-head/.ico ของ gantt.html
+     แต่ตั้งชื่อ class เฉพาะหน้านี้ (ห้ามใช้ .ico/.c0-head ร่วมกับ gantt.html หรือแก้ theme.css) */
+  .os-app-head { display:flex; align-items:center; justify-content:space-between; gap:4px; }
+  .os-app-head-actions { display:flex; gap:2px; }
+  .os-ico {
+    border:1px solid transparent; background:none; font-size:12px; cursor:pointer;
+    width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center;
+    color:var(--dk-text2); line-height:1; padding:0;
+  }
+  .os-ico:hover { background:var(--dk-hover); border-color:var(--dk-border); }
   .os-expand {
     border:1px solid var(--dk-border-s); background:#fff; border-radius:6px; padding:2px 8px;
     cursor:pointer; font-size:12px; color:var(--dk-text);
@@ -515,8 +525,8 @@
            toggle hidden ผ่าน updateOsModeVisibility() ใน restoreDashPrefs()/switchDashView()
            (แพตเทิร์นเดียวกับ #cmpActualFld/#actualAdminTools ข้างบน) ค่าที่เลือกจำใน prefs
            (osMode) — คลิกแล้ว re-render เฉยๆ ไม่ยิง query ใหม่ (ข้อมูล Actual โหลดไว้ครบแล้วตั้งแต่
-           loadPeriod(), §5.63 Task 3) โหมด Compare ยังไม่ implement เต็ม (Task 6) — renderOsView()
-           แตกไป renderOsCompare() stub ไว้ก่อน -->
+           loadPeriod(), §5.63 Task 3) โหมด Compare implement เต็มแล้ว (Task 6) — renderOsView()
+           แตกไป renderOsCompare() -->
       <span class="toolbar-sep hidden" id="osModeSep">|</span>
       <div id="osModeTools" class="hidden">
         <button class="btn os-mode-btn active" id="osModeBooked"  data-mode="booked">Booked MD</button>
@@ -1954,6 +1964,7 @@ function buildActualOsAgg(rows, resources, months, filter){
   const monthSet = new Set(months || []);
   const byName = new Map();
   (resources || []).forEach(r => {
+    if (r.resource_type !== 'outsource') return;   // insource → ปล่อยให้ตกไป unmatched แทน (C1 fix, 2026-09-10)
     const k = normNameKey(r.full_name_en);
     if (!k) return;
     if (byName.has(k)) {
@@ -2011,9 +2022,6 @@ function osRowVisible(r, rangeStart){
   if (r.is_active === false) return false;                                 // ปิดใช้งาน (ไม่ได้กรอก end_date)
   return true;
 }
-/** keyFns ของตาราง By OS — คอลัมน์ App สร้างดังค์ตามชุด app ที่มีจริงในรอบนั้น
- *  (key = `app:<ชื่อแอป>` ใช้ชื่อแอปตรงๆ เพื่อให้ prefs ที่จำไว้ยังชี้ถูกคอลัมน์เดิม
- *  แม้ชุด/ลำดับคอลัมน์จะเปลี่ยนไป — index-based จะเลื่อนไปคนละคอลัมน์) */
 // ใช้ร่วมกันทั้งโหมด Actual (renderOsView) และ Compare (renderOsCompare) — spec §5 บังคับ
 // ว่า hint นี้ต้องขึ้นทั้ง 2 โหมด เพราะตัวเลข Actual (import จาก Excel) ไม่มี Project เลย
 // ตัวกรอง Project บน panel จึงไม่มีผลกับมันในทั้ง 2 โหมด (ทำเป็น helper กันโค้ดซ้ำ)
@@ -2022,6 +2030,9 @@ function projectFilterHintHTML(){
     ? '<div class="dash-hint">ตัวกรอง Project ไม่มีผลกับตัวเลข Actual (ข้อมูล Actual ไม่มี Project)</div>'
     : '';
 }
+/** keyFns ของตาราง By OS — คอลัมน์ App สร้างดังค์ตามชุด app ที่มีจริงในรอบนั้น
+ *  (key = `app:<ชื่อแอป>` ใช้ชื่อแอปตรงๆ เพื่อให้ prefs ที่จำไว้ยังชี้ถูกคอลัมน์เดิม
+ *  แม้ชุด/ลำดับคอลัมน์จะเปลี่ยนไป — index-based จะเลื่อนไปคนละคอลัมน์) */
 function osKeyFns(apps, agg){
   const kf = {
     osName: r => resName(r.nickname, r.full_name_en),
@@ -2032,7 +2043,7 @@ function osKeyFns(apps, agg){
   return kf;
 }
 /** By OS — §5.63 Task 5: แตก 3 โหมดตาม S.osMode ('booked' | 'actual' | 'compare')
- *  - 'compare' ยังไม่ implement เต็ม (Task 6) — ส่งต่อให้ renderOsCompare() (stub ไว้ก่อน)
+ *  - 'compare' implement เต็มแล้ว (Task 6) — ส่งต่อให้ renderOsCompare()
  *  - 'booked' (default): โค้ดเดิมทุกบรรทัดตั้งแต่ก่อน Task 5 — นับ MD จาก S.periodAggActiveOnly
  *    (booking/leave จริง, active project เท่านั้น, §5.48/§5.59)
  *  - 'actual': นับจาก buildActualOsAgg() (S.actualPersonRows, กรองเดือนด้วย S.months ไม่ใช่
@@ -2368,7 +2379,11 @@ function renderOsCompare(container){
   const theadRow1 = `<tr>
     ${thSort('OS', 'osName', S.osSort, 'col-cmp-name', 'rowspan="2"')}
     ${thSort('Role', 'role', S.osSort, 'col-cmp-role', 'rowspan="2"')}
-    <th class="col-cmp-app" rowspan="2">App</th>
+    <th class="col-cmp-app" rowspan="2"><div class="os-app-head"><span>App</span>
+      <span class="os-app-head-actions">
+        <button class="os-ico" type="button" id="osCollapseAll" title="หุบทั้งหมด">⊟</button>
+        <button class="os-ico" type="button" id="osExpandAll" title="กางทั้งหมด">⊞</button>
+      </span></div></th>
     <th colspan="3">Total</th>
     ${monthHeads}
   </tr>`;
@@ -2413,10 +2428,6 @@ function renderOsCompare(container){
 
   container.innerHTML = `
     ${hintHTML}
-    <div class="dash-compare-tools">
-      <button class="btn sm" id="osExpandAll">กางทั้งหมด</button>
-      <button class="btn sm" id="osCollapseAll">หุบทั้งหมด</button>
-    </div>
     <div class="dash-os-scroll">
       <table class="dash-compare-table" id="compareTable">
         <thead>${theadRow1}${theadRow2}</thead>
@@ -2997,15 +3008,143 @@ async function downloadAppExcel(){
   }
 }
 
-/** By OS tab export — Sheet1 Filter + Sheet2 "OS" pivot (OS × App) เหมือนตาราง By OS บนจอ +
- *  แถวรวมท้ายตาราง คำนวณซ้ำตรรกะเดียวกับ renderOsView() แบบ inline (renderOsView() ไม่ได้แยก
- *  เป็นฟังก์ชันคำนวณต่างหากให้เรียกตรงๆ ได้ — pattern เดียวกับที่ downloadLeadExcel() ทำกับ
- *  renderLeadView() ผ่าน computeLeadCoverage() ก่อนหน้านี้แล้ว). 2026-08-25 ตามคำขอพี่กิ๊บ. */
+/** By OS tab export — §5.63 Task 7: แตกตาม S.osMode (booked/actual/compare) เหมือนตาราง
+ *  By OS บนจอ (renderOsView()/renderOsCompare()) — โหมด actual/compare เรียก
+ *  buildActualOsAgg()/buildCompareRows() ตัวเดียวกับที่บนจอใช้ตรงๆ (ห้ามคำนวณซ้ำเอง กันไฟล์ที่
+ *  ดาวน์โหลดกับตารางบนจอเพี้ยนกันเงียบๆ) Sheet1 "Filter" เพิ่มบรรทัด "โหมด" ต่อท้ายบรรทัดเดิม
+ *  บอกว่ากำลังดาวน์โหลดโหมดไหนอยู่. 2026-08-25 (โครงเดิม) / 2026-09-10 แตก 3 โหมด. */
 async function downloadOsExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
   try {
-    // §6: By OS counts MD only on bookings whose project is_active = true — เหมือน renderOsView()
+    const filterAoa = buildDownloadFilterAoa(false);
+    filterAoa.push(['โหมด', { booked: 'Booked MD', actual: 'Actual MD', compare: 'Compare' }[S.osMode] || 'Booked MD']);
+
+    // ---- โหมด Compare: OS x App x เดือน เทียบ Booked vs Actual — buildCompareRows() ตัวเดียว
+    // กับ renderOsCompare() (ห้าม copy ตรรกะรวมยอดซ้ำ) เขียนแถวย่อย App ทุกแถวเสมอ ไม่สนสถานะ
+    // กาง/หุบของตัวแปร osExpanded บนจอ (เป็นแค่ view state ไม่มีผลกับไฟล์ที่ดาวน์โหลด)
+    if (S.osMode === 'compare') {
+      const rangeStart = S.overallRange.s || '';
+      const months = S.months || [];
+      const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
+      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
+      const allRows = buildCompareRows(bAgg, aAgg, Object.values(S.resourceMap), months, rangeStart);
+
+      if (!allRows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+      // unmatched ตัดออกก่อน sort แล้วต่อท้ายทีหลังเสมอ — เหมือน renderOsCompare()
+      const matchedRows = allRows.filter(r => !r.unmatched);
+      const unmatchedRows = allRows.filter(r => r.unmatched);
+      const sortedMatched = genericSort(matchedRows, S.osSort, compareKeyFns(months));
+      const finalRows = [...sortedMatched, ...unmatchedRows];
+
+      // หัว 2 แถวเหมือนบนจอ: OS | Role | App | Total(Booked/Actual/B−A) | <เดือน>(Booked/Actual/B−A) ...
+      const headRow1 = ['OS', 'Role', 'App', 'Total', '', ''];
+      const headRow2 = ['', '', '', 'Booked', 'Actual', 'B − A'];
+      months.forEach(mk => {
+        headRow1.push(monthLabel(mk), '', '');
+        headRow2.push('Booked', 'Actual', 'B − A');
+      });
+      const compareAoa = [headRow1, headRow2];
+
+      const cellsToRow = (name, role, app, cells) => {
+        const row = [name, role, app, Number(fmtMD(cells.total.b)), Number(fmtMD(cells.total.a)), Number(fmtMD(cells.total.d))];
+        months.forEach(mk => {
+          const c = cells[mk] || { b: 0, a: 0, d: 0 };
+          row.push(Number(fmtMD(c.b)), Number(fmtMD(c.a)), Number(fmtMD(c.d)));
+        });
+        return row;
+      };
+
+      finalRows.forEach(r => {
+        const appLabel = r.apps.length === 1 ? r.apps[0].app : (r.apps.length ? `${r.apps.length} Apps` : '');
+        compareAoa.push(cellsToRow(r.name, roleLabelFor(r.role_code), appLabel, r.cells));
+        r.apps.forEach(ap => {
+          compareAoa.push(cellsToRow('', '', ap.app, ap.cells));
+        });
+      });
+
+      const grandCells = sumCompareCells(finalRows.map(r => r.cells), months);
+      compareAoa.push(cellsToRow(`รวมทั้งหมด (${finalRows.length} คน)`, '', '', grandCells));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(compareAoa), 'OS');
+
+      const filename = downloadFilename('ByOS');
+      writeWorkbookAndDownload(wb, filename);
+      logExcelDownload();
+
+      toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+      return;
+    }
+
+    // ---- โหมด Actual: buildActualOsAgg() ตัวเดียวกับ renderOsView() — โครงตารางเดิมของ booked
+    // แต่ดึงข้อมูลจาก Actual แทน ต่อท้ายกลุ่ม "ไม่พบใน OS master" เสมอเมื่อมี unmatched ----
+    if (S.osMode === 'actual') {
+      const rangeStart = S.overallRange.s || '';
+      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
+      const apps = sortedApps(aAgg.apps);
+      const shaped = { byOsApp: {}, byOsTotal: aAgg.byResTotal };
+      Object.keys(aAgg.byResAppMonth).forEach(rid => {
+        shaped.byOsApp[rid] = {};
+        Object.keys(aAgg.byResAppMonth[rid]).forEach(app => {
+          shaped.byOsApp[rid][app] = Object.values(aAgg.byResAppMonth[rid][app]).reduce((s, v) => s + v, 0);
+        });
+      });
+      const osRows = genericSort(Object.values(S.resourceMap)
+        .filter(r => r.resource_type === 'outsource')
+        .map(r => ({ ...r, total: shaped.byOsTotal[r.resource_id] || 0 }))
+        .filter(r => osRowVisible(r, rangeStart))
+        .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
+        S.osSort, osKeyFns(apps, shaped));
+
+      if (!apps.length && !aAgg.unmatched.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+
+      const osAoa = [['OS', 'Role', 'Total MD', ...apps]];
+      const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
+      let grandTotal = 0;
+      osRows.forEach(r => {
+        grandTotal += r.total;
+        const cells = apps.map(a => {
+          const v = (shaped.byOsApp[r.resource_id] || {})[a] || 0;
+          colTotals[a] += v;
+          return v ? Number(fmtMD(v)) : 0;
+        });
+        osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
+      });
+
+      // กลุ่ม "ไม่พบใน OS master" — ยอดรวมท้ายตาราง (colTotals/grandTotal ตัวเดียวกับข้างบน)
+      // ต้องนับรวมด้วยเสมอ เหมือน renderOsView()
+      if (aAgg.unmatched.length) {
+        osAoa.push([`ไม่พบใน OS master (${aAgg.unmatched.length} คน)`, '', '', ...apps.map(() => '')]);
+        aAgg.unmatched.forEach(u => {
+          const cells = apps.map(a => {
+            const v = Object.values(u.byAppMonth[a] || {}).reduce((s, v2) => s + v2, 0);
+            colTotals[a] += v;
+            return v ? Number(fmtMD(v)) : 0;
+          });
+          grandTotal += u.total;
+          osAoa.push([u.name, '', Number(fmtMD(u.total)), ...cells]);
+        });
+      }
+
+      osAoa.push(['รวมทั้งหมด', '', Number(fmtMD(grandTotal)), ...apps.map(a => Number(fmtMD(colTotals[a])))]);
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(osAoa), 'OS');
+
+      const filename = downloadFilename('ByOS');
+      writeWorkbookAndDownload(wb, filename);
+      logExcelDownload();
+
+      toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+      return;
+    }
+
+    // ---- โหมด Booked (default) — §6: By OS counts MD only on bookings whose project
+    // is_active = true — เหมือน renderOsView() (โค้ดเดิมทุกบรรทัดตั้งแต่ก่อน Task 7) ----
     const agg = S.periodAggActiveOnly || { byOsApp:{}, byOsTotal:{} };
     const appSet = new Set();
     Object.values(agg.byOsApp).forEach(m => Object.keys(m).forEach(a => appSet.add(a)));
@@ -3014,15 +3153,15 @@ async function downloadOsExcel(){
     // §5.59: ซ่อน OS ที่ลาออกแล้วและไม่มี MD ในเดือนที่เลือก — เกณฑ์เดียวกับ renderOsView()
     // (osRowVisible()) เพื่อให้ไฟล์ที่ดาวน์โหลดได้แถวชุดเดียวกับตารางบนจอเสมอ
     const rangeStart = S.overallRange.s || '';
-    const osRows = Object.values(S.resourceMap)
+    const osRows = genericSort(Object.values(S.resourceMap)
       .filter(r => r.resource_type === 'outsource')
       .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
       .filter(r => osRowVisible(r, rangeStart))
-      .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||'')));
+      .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
+      S.osSort, osKeyFns(apps, agg));
 
     if (!apps.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
 
-    const filterAoa = buildDownloadFilterAoa(false);
     const osAoa = [['OS', 'Role', 'Total MD', ...apps]];
     const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
     let grandTotal = 0;
