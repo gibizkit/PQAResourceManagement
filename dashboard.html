@@ -47,20 +47,6 @@
   }
   .filters select:focus { outline:none; border-color:var(--dk-accent); }
 
-  /* ---- Compare Actual checkbox (By App tab, task 4) — mirrors outsource.html's .chk
-     (that page's version is page-local too, no shared copy in theme.css, so copied here
-     verbatim rather than reaching across files) ---- */
-  .chk { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dk-text2); cursor:pointer; user-select:none; }
-  .chk input { width:auto; margin:0; accent-color:var(--dk-accent); }
-
-  /* ---- Download Template / Import Actual MD buttons (By App tab, admin only, task 5) ---- */
-  #actualAdminTools { display:flex; align-items:center; gap:8px; }
-
-  /* ---- By OS mode buttons (Booked MD / Actual MD / Compare — §5.63 Task 5) — same active
-     look as .view-tab.active so the two toolbar rows read as one consistent system ---- */
-  #osModeTools { display:flex; align-items:center; gap:6px; }
-  .os-mode-btn.active { background:var(--dk-accent-d); border-color:var(--dk-accent); color:var(--dk-accent); }
-
   /* ---- generic small inline hint banner above a table (currently: By OS Actual mode's
      "ตัวกรอง Project ไม่มีผลกับ Actual" notice, §5.63 Task 5) ---- */
   .dash-hint { font-size:12px; color:var(--dk-text3); margin-bottom:8px; }
@@ -408,14 +394,6 @@
   }
   .os-expand:hover { background:var(--dk-hover); }
 
-  /* ---- Import Actual MD preview modal (task 5) — plain table, not .dash-table (that class
-     assumes a page-level sticky header context this modal's own scroll area doesn't have) ---- */
-  .actual-import-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:10px; }
-  .actual-import-table th, .actual-import-table td { padding:6px 8px; border-bottom:1px solid var(--dk-border); text-align:left; }
-  .actual-import-table td.right, .actual-import-table th.right { text-align:right; }
-  .actual-import-err-title { color:var(--danger); font-weight:700; margin:10px 0 6px; }
-  .actual-import-warn-title { color:var(--dk-text2); font-weight:700; margin:10px 0 6px; }
-
   .empty-state { padding:40px; text-align:center; color:var(--dk-text3); }
 
   /* ---- loading wrapper: viewContainer (task 1) ----
@@ -521,29 +499,6 @@
            master + booking/leave สดจาก Supabase อีกครั้ง (loadMasterData() + loadPeriod(true)) -->
       <span class="toolbar-sep">|</span>
       <button class="btn" id="refreshDashBtn">🔄 Refresh</button>
-      <!-- 2026-09-10 (§5.63, Task 5): ปุ่มโหมด Booked/Actual/Compare — By OS tab เท่านั้น
-           toggle hidden ผ่าน updateOsModeVisibility() ใน restoreDashPrefs()/switchDashView()
-           (แพตเทิร์นเดียวกับ #cmpActualFld/#actualAdminTools ข้างบน) ค่าที่เลือกจำใน prefs
-           (osMode) — คลิกแล้ว re-render เฉยๆ ไม่ยิง query ใหม่ (ข้อมูล Actual โหลดไว้ครบแล้วตั้งแต่
-           loadPeriod(), §5.63 Task 3) โหมด Compare implement เต็มแล้ว (Task 6) — renderOsView()
-           แตกไป renderOsCompare() -->
-      <span class="toolbar-sep hidden" id="osModeSep">|</span>
-      <div id="osModeTools" class="hidden">
-        <button class="btn os-mode-btn active" id="osModeBooked"  data-mode="booked">Booked MD</button>
-        <button class="btn os-mode-btn"        id="osModeActual"  data-mode="actual">Actual MD</button>
-        <button class="btn os-mode-btn"        id="osModeCompare" data-mode="compare">Compare</button>
-      </div>
-      <!-- 2026-09-09 (§5.60, Task 5): Download Template + Import Actual MD — By App tab เท่านั้น
-           และเฉพาะ admin (S.isAdmin, จาก app_user.app_role — ห้ามใช้ getCachedRole()) เห็นตัวเลข
-           Actual ได้ทุกคนที่ล็อกอิน แต่ import/เปลี่ยนข้อมูลได้เฉพาะ admin เท่านั้น (ชั้น UI นี้เสริม
-           RLS + guard ใน fn_import_actual_md ซึ่งเป็นด่านจริง) toggle hidden ผ่าน
-           updateAppAdminToolsVisibility() ใน restoreDashPrefs()/switchDashView() -->
-      <span class="toolbar-sep hidden" id="actualToolsSep">|</span>
-      <div id="actualAdminTools" class="hidden">
-        <button class="btn" id="downloadActualTemplateBtn">⬇ Template</button>
-        <button class="btn" id="importActualBtn">⬆ Import Actual MD</button>
-        <input type="file" id="importActualFile" accept=".xlsx,.xls" class="hidden">
-      </div>
     </div>
 
     <div class="filters hidden" id="filterPanel">
@@ -582,14 +537,34 @@
         </select>
       </div>
 
-      <!-- 2026-09-09 (§5.60, Task 4): "Compare Actual" checkbox — By App tab เท่านั้น (แพตเทิร์น
-           เดียวกับ #projectViewFld ด้านบน — hidden ยกเว้นตอน S.dashView==='app', toggle ใน
-           restoreDashPrefs()/switchDashView()) ติ๊กแล้วโชว์คอลัมน์ Actual MD/Booked−Actual
-           เพิ่มในตาราง By App — ไม่ยิง query ใหม่ (แค่ re-render จาก S.actualByAppMonth ที่โหลด
-           ไว้แล้ว), ค่าจำใน prefs (compareActual, restore แล้วใน restoreDashPrefs() ตั้งแต่ Task 2/3) -->
-      <div class="fld hidden" id="cmpActualFld">
-        <label>&nbsp;</label>
-        <label class="chk"><input type="checkbox" id="cmpActualChk"> Compare Actual</label>
+      <!-- 2026-09-10 (§5.64) — "Compare Actual" checkbox กลายเป็น Mode dropdown (Booked MD /
+           Actual MD / Compare) แทน By App tab เท่านั้น (แพตเทิร์นเดียวกับ #projectViewFld
+           ด้านบน — hidden ยกเว้นตอน S.dashView==='app', toggle ใน updateAppModeVisibility()
+           ที่เรียกจาก restoreDashPrefs()/switchDashView()) เปลี่ยนโหมดแล้ว re-render เฉยๆ ไม่ยิง
+           query ใหม่ (S.actualByAppMonth โหลดไว้ครบแล้ว), ค่าจำใน prefs (appMode — เดิม
+           compareActual: true/false; ค่าเก่านั้นค้างอยู่ใน sessionStorage ของบางคนจะไม่ match
+           คีย์ appMode เลย ตกไปใช้ default 'booked' เงียบๆ ปลอดภัยเหมือนที่ §5.50/§5.60 เคยทำมา) -->
+      <div class="fld hidden" id="appModeFld">
+        <label>Mode</label>
+        <select id="appModeSelect">
+          <option value="booked">Booked MD</option>
+          <option value="actual">Actual MD</option>
+          <option value="compare">Compare</option>
+        </select>
+      </div>
+
+      <!-- 2026-09-10 (§5.64) — โยกปุ่มโหมด Booked MD/Actual MD/Compare ของแท็บ By OS จาก
+           toolbar (3 ปุ่ม #osModeTools) มาเป็น Mode dropdown ในตัวกรอง panel นี้แทน (แพตเทิร์น
+           เดียวกับ #appModeFld ข้างบน — ทำให้ทั้ง 2 แท็บที่มีแนวคิด "โหมด" หน้าตาตัวกรอง
+           สอดคล้องกัน) hidden ยกเว้นตอน S.dashView==='os', toggle ใน updateOsModeVisibility()
+           ค่าจำใน prefs คีย์ osMode เดิม (ไม่เปลี่ยนชื่อคีย์ — แค่ UI control เปลี่ยนจากปุ่มเป็น select) -->
+      <div class="fld hidden" id="osModeFld">
+        <label>Mode</label>
+        <select id="osModeSelect">
+          <option value="booked">Booked MD</option>
+          <option value="actual">Actual MD</option>
+          <option value="compare">Compare</option>
+        </select>
       </div>
 
       <!-- By Lead filter controls (2026-08-13, replaced the earlier "3 stacked tables"
@@ -668,26 +643,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-
-<!-- ============ IMPORT ACTUAL MD PREVIEW MODAL (Task 5, §5.60 — admin only, By App tab) ============
-     Static overlay + toggle .hidden, same pattern as admin.html's #formOverlay/#projOverlay —
-     content of #actualImportBody is (re)built by openActualImportModal() every time it opens.
-     Confirm button (#actualImportConfirmBtn) stays disabled whenever the parsed file has any
-     blocking errors (see parseActualFile()) — never enabled by accident from a previous file. -->
-<div id="actualImportOverlay" class="overlay hidden">
-  <div class="modal modal-wide">
-    <div class="modal-head">
-      <h3>นำเข้า Actual MD</h3>
-      <button class="x" onclick="closeActualImportModal()">×</button>
-    </div>
-    <div class="modal-body" id="actualImportBody"></div>
-    <div class="modal-foot">
-      <div class="form-err" id="actualImportErr"></div>
-      <button class="btn" onclick="closeActualImportModal()">ยกเลิก</button>
-      <button class="btn accent" id="actualImportConfirmBtn" onclick="confirmActualImport()">ยืนยันนำเข้า</button>
-    </div>
-  </div>
-</div>
 
 <!-- Signoff Review modal (threaded comments) — shared with gantt.html so both pages
      open the exact same modal for "Review Signoff" -->
@@ -782,12 +737,14 @@ const S = {
   // เพราะเดือนที่เลือกอาจไม่ติดกัน — ถ้าเผลอใช้ [s,e] เป็นตัวกรอง MD จะนับเดือนที่ผู้ใช้
   // **ไม่ได้ติ๊ก** เข้ามาเงียบๆ (เช่นติ๊ก ก.พ. + เม.ย. แล้ว MD ของ มี.ค. โผล่มาด้วย)
   months: [],                    // ['YYYY-MM', ...] เรียงแล้ว, อย่างน้อย 1 ตัวเสมอ
-  isAdmin: false,                // จาก app_user.app_role — ใช้คุมปุ่ม Import/Template ของแท็บ By App
-                                 // (ด่านจริงคือ RLS + guard ใน fn_import_actual_md ไม่ใช่ตรงนี้)
-  compareActual: false,          // checkbox "Compare Actual" (แท็บ By App) — โชว์คอลัมน์ Actual/Diff
+  // 2026-09-10 (§5.64): appMode แทนที่ compareActual (เดิม boolean checkbox "Compare Actual")
+  // — Mode dropdown ของแท็บ By App, ค่าเดียวกับ osMode ข้างล่าง: 'booked' | 'actual' | 'compare'
+  // (S.isAdmin ที่เคยคุมปุ่ม Import/Template ตรงนี้ถูกลบไปด้วย — เครื่องมือนั้นย้ายไป
+  // admin.html's Browse File tab แล้ว ซึ่งกั้นสิทธิ์ admin ทั้งหน้าอยู่แล้ว)
+  appMode: 'booked',
   actualByAppMonth: {},          // app_code -> 'YYYY-MM' -> md  (จาก view v_actual_md_app_month)
   actualPersonRows: [],          // แถวดิบจาก v_actual_md_person_month (2026-09-10, §5.63 Task 3)
-  osMode: 'booked',              // booked | actual | compare — ปุ่มโหมดของแท็บ By OS (§5.63)
+  osMode: 'booked',              // booked | actual | compare — โหมดของแท็บ By OS (§5.63/§5.64)
   osExpanded: {},                // resource_id -> true (โหมด Compare, view state ไม่จำใน prefs)
   appSort: { key: '', dir: '' }, // sort หัวคอลัมน์แท็บ By App (3 สถานะ §5.59) — '' = ลำดับตั้งต้น
   overallRange: { s:'', e:'' }, // derived จาก months — ซองครอบเดือนแรก..เดือนท้าย (project match only, NOT an MD date filter)
@@ -872,13 +829,17 @@ function restoreDashPrefs(){
     if (ok.length) S.months = [...new Set(ok)].sort();
   }
 
-  if (typeof p.compareActual === 'boolean') S.compareActual = p.compareActual;
-  $('cmpActualChk').checked = S.compareActual;
+  // 2026-09-10 (§5.64): "appMode" แทนที่ "compareActual" (เดิม boolean checkbox) — whitelist
+  // ก่อนใช้เสมอ (ค่าจาก storage ไม่น่าไว้ใจ, §5.21) ค่าเก่า compareActual: true/false ที่อาจ
+  // ค้างอยู่ใน sessionStorage ของบางคนจะไม่ match คีย์ appMode เลย (คนละคีย์) ตกไปใช้ default
+  // 'booked' เงียบๆ ปลอดภัย (เหมือนที่ §5.50/§5.60 เคยทำมาตอนเปลี่ยนคีย์ prefs)
+  if (['booked', 'actual', 'compare'].includes(p.appMode)) S.appMode = p.appMode;
+  $('appModeSelect').value = S.appMode;
 
-  // §5.63 Task 5: โหมด By OS (Booked/Actual/Compare) — whitelist ก่อนใช้เสมอ (ค่าจาก
+  // §5.63/§5.64: โหมด By OS (Booked/Actual/Compare) — whitelist ก่อนใช้เสมอ (ค่าจาก
   // storage ไม่น่าไว้ใจ, §5.21) ผิดรูปแบบ = ปล่อยให้ default 'booked' ทำงานต่อ
   if (['booked', 'actual', 'compare'].includes(p.osMode)) S.osMode = p.osMode;
-  document.querySelectorAll('#osModeTools .os-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === S.osMode));
+  $('osModeSelect').value = S.osMode;
 
   if (['project', 'os', 'app', 'lead', 'signoff'].includes(p.dashView)) {
     S.dashView = p.dashView;
@@ -889,11 +850,8 @@ function restoreDashPrefs(){
   $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
   // View (All MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
   $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
-  // Compare Actual checkbox + Download Template/Import Actual MD buttons — By App tab เท่านั้น
-  // (2026-09-09, Task 4/5 §5.60) — admin tools ยังต้องเช็ค S.isAdmin ด้วย (updateAppAdminToolsVisibility())
-  $('cmpActualFld').classList.toggle('hidden', S.dashView !== 'app');
-  updateAppAdminToolsVisibility();
-  updateOsModeVisibility(); // §5.63 Task 5 — ปุ่มโหมด Booked/Actual/Compare, By OS tab เท่านั้น
+  updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
+  updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
 
   if (['all', 'month'].includes(p.projectViewMode)) {
     S.projectViewMode = p.projectViewMode;
@@ -961,23 +919,19 @@ function restoreDashPrefs(){
 function isUnsortedPref(key, dir){
   return (key === '' || key == null) && (dir === '' || dir == null);
 }
-/** ปุ่ม Download Template / Import Actual MD (#actualAdminTools + #actualToolsSep) —
- *  โชว์เฉพาะ S.isAdmin (จาก app_user.app_role — ห้ามใช้ getCachedRole()) และตอนกำลังดูแท็บ
- *  By App เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า) และ switchDashView() (ตอนสลับแท็บ)
- *  — นี่คือชั้น UI เท่านั้น ด่านจริงคือ RLS (`actual_md_write` = is_admin()) + guard ใน
- *  fn_import_actual_md() (§5.60) */
-function updateAppAdminToolsVisibility(){
-  const show = S.isAdmin && S.dashView === 'app';
-  $('actualAdminTools').classList.toggle('hidden', !show);
-  $('actualToolsSep').classList.toggle('hidden', !show);
+/** Mode dropdown (#appModeFld) — By App tab เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า)
+ *  และ switchDashView() (ตอนสลับแท็บ). 2026-09-10 (§5.64): Download Template/Import Actual MD
+ *  (เดิมโชว์คู่กับ checkbox นี้ผ่านฟังก์ชันคุมสิทธิ์ admin แยกต่างหาก) ย้ายไปอยู่ที่
+ *  admin.html's Browse File tab แล้ว — dashboard.html ไม่ต้องเช็คสิทธิ์ admin เองอีกต่อไป
+ *  (ตัวเลข Actual ยังอ่านได้ทุกคนที่ล็อกอินเหมือนเดิม — RLS `actual_md_read` = is_authenticated()) */
+function updateAppModeVisibility(){
+  $('appModeFld').classList.toggle('hidden', S.dashView !== 'app');
 }
-/** ปุ่มโหมด Booked MD / Actual MD / Compare (#osModeTools + #osModeSep) — By OS tab
- *  เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า) และ switchDashView() (ตอนสลับแท็บ) —
- *  แพตเทิร์นเดียวกับ updateAppAdminToolsVisibility() ข้างบน (§5.63 Task 5) */
+/** Mode dropdown (#osModeFld) — By OS tab เท่านั้น เรียกจากทั้ง restoreDashPrefs() (ตอนบูตหน้า)
+ *  และ switchDashView() (ตอนสลับแท็บ) — แพตเทิร์นเดียวกับ updateAppModeVisibility() ข้างบน
+ *  (2026-09-10, §5.64 — เดิมเป็น 3 ปุ่ม toolbar #osModeTools ก่อนงานนี้, §5.63 Task 5) */
 function updateOsModeVisibility(){
-  const show = S.dashView === 'os';
-  $('osModeTools').classList.toggle('hidden', !show);
-  $('osModeSep').classList.toggle('hidden', !show);
+  $('osModeFld').classList.toggle('hidden', S.dashView !== 'os');
 }
 
 async function showApp(session){
@@ -993,9 +947,6 @@ async function showApp(session){
     .eq('email', session.user.email).maybeSingle();
   if (u) { who = u.display_name; role = u.app_role; }
   $('who').innerHTML = `<b>${esc(who)}</b>${role?` · ${esc(role)}`:''}`;
-  // ⚠️ ใช้ค่าจาก app_user เท่านั้นเป็นตัวตัดสินสิทธิ์ — getCachedRole() เป็นแค่ค่า optimistic
-  // ไว้กันเมนู Admin กระพริบตอนสลับหน้า ห้ามเอามาคุมปุ่ม Import
-  S.isAdmin = (role === 'admin');
   setCachedRole(session.user.email, role);
   paintNavAdmin(role);
   S.user = { displayName: who, role, userId: session.user.id, pqaEmpId: (u && u.pqa_emp_id) || null };
@@ -1882,6 +1833,14 @@ function appKeyFns(months){
 function appMonthCellHTML(v){
   return v ? fmtMD(v) : '<span class="muted">—</span>';
 }
+/** By App — 2026-09-10 (§5.64): แตก 3 โหมดตาม S.appMode ('booked' | 'actual' | 'compare'),
+ *  mirror pattern เดียวกับ renderOsView()/renderOsCompare() ของแท็บ By OS (§5.63) — เดิมมีแค่
+ *  2 สถานะ (checkbox S.compareActual: false/true) ตอนนี้เพิ่มโหมด 'actual' คั่นกลาง (ตาราง
+ *  Actual-only ล้วน สมมาตรกับ 'booked' แค่สลับฟิลด์ actualTotal/actualByMonth แทน
+ *  bookedTotal/bookedByMonth) — โหมด 'compare' คือพฤติกรรมเดิมทุกประการตอน compareActual===true
+ *  ไม่ได้แตะ, โหมด 'booked' คือพฤติกรรมเดิมทุกประการตอน compareActual===false ไม่ได้แตะ.
+ *  โหมด Actual/Compare มี hint เดียวกับ By OS ("ตัวกรอง Project ไม่มีผลกับ Actual") เพราะข้อมูล
+ *  Actual (import จาก Excel) ไม่มี Project ผูกอยู่เหมือนกัน — ใช้ projectFilterHintHTML() ร่วมกัน */
 function renderAppView(container){
   const rows = buildAppRows();
   if (!rows.length) {
@@ -1889,54 +1848,99 @@ function renderAppView(container){
     return;
   }
   const months = S.months || [];
-  const compareActual = S.compareActual;
+  const mode = S.appMode; // 'booked' | 'actual' | 'compare'
   const sorted = genericSort(rows, S.appSort, appKeyFns(months));
 
   const appHeadActive = S.appSort.key === 'app' && !!S.appSort.dir;
   const appHeadCls = ['sortable', appHeadActive ? 'sort-active' : '', 'col-app-freeze'].join(' ').trim();
-  const theadRow1 = `<tr>
-    <th class="${appHeadCls}" rowspan="2" data-sort-key="app">App${sortIco(S.appSort,'app')}</th>
-    <th colspan="${compareActual ? 3 : 1}">Total</th>
-    <th colspan="${months.length}">Booked MD</th>
-    ${compareActual ? `<th colspan="${months.length}">Actual MD</th>` : ''}
-  </tr>`;
-  const theadRow2 = `<tr>
-    ${thSort('Booked','bookedTotal',S.appSort,'right')}
-    ${compareActual ? thSort('Actual','actualTotal',S.appSort,'right') : ''}
-    ${compareActual ? thSort('Booked − Actual','diff',S.appSort,'right') : ''}
-    ${months.map(mm => thSort(monthLabel(mm), 'b:' + mm, S.appSort, 'right')).join('')}
-    ${compareActual ? months.map(mm => thSort(monthLabel(mm), 'a:' + mm, S.appSort, 'right')).join('') : ''}
-  </tr>`;
 
-  let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
-  const gBookedByMonth = {}, gActualByMonth = {};
-  months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
+  const hintHTML = (mode === 'actual' || mode === 'compare') ? projectFilterHintHTML() : '';
 
-  const bodyRows = sorted.map(r => {
-    gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
-    months.forEach(mm => { gBookedByMonth[mm] += r.bookedByMonth[mm]; gActualByMonth[mm] += r.actualByMonth[mm]; });
-    const diffCls = r.diff > 0 ? 'md-over' : (r.diff < 0 ? 'md-under' : '');
-    return `<tr>
-      <td class="col-app-freeze" title="${esc(r.app)}">${esc(r.app)}</td>
-      <td class="right">${fmtMD(r.bookedTotal)}</td>
-      ${compareActual ? `<td class="right">${fmtMD(r.actualTotal)}</td>` : ''}
-      ${compareActual ? `<td class="right ${diffCls}">${fmtMD(r.diff)}</td>` : ''}
-      ${months.map(mm => `<td class="right">${appMonthCellHTML(r.bookedByMonth[mm])}</td>`).join('')}
-      ${compareActual ? months.map(mm => `<td class="right">${appMonthCellHTML(r.actualByMonth[mm])}</td>`).join('') : ''}
+  let theadRow1, theadRow2, bodyRows, totalRow;
+
+  if (mode === 'compare') {
+    theadRow1 = `<tr>
+      <th class="${appHeadCls}" rowspan="2" data-sort-key="app">App${sortIco(S.appSort,'app')}</th>
+      <th colspan="3">Total</th>
+      <th colspan="${months.length}">Booked MD</th>
+      <th colspan="${months.length}">Actual MD</th>
     </tr>`;
-  }).join('');
+    theadRow2 = `<tr>
+      ${thSort('Booked','bookedTotal',S.appSort,'right')}
+      ${thSort('Actual','actualTotal',S.appSort,'right')}
+      ${thSort('Booked − Actual','diff',S.appSort,'right')}
+      ${months.map(mm => thSort(monthLabel(mm), 'b:' + mm, S.appSort, 'right')).join('')}
+      ${months.map(mm => thSort(monthLabel(mm), 'a:' + mm, S.appSort, 'right')).join('')}
+    </tr>`;
 
-  const gDiffCls = gDiff > 0 ? 'md-over' : (gDiff < 0 ? 'md-under' : '');
-  const totalRow = `<tr class="dash-total-row">
-    <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
-    <td class="right">${fmtMD(gBookedTotal)}</td>
-    ${compareActual ? `<td class="right">${fmtMD(gActualTotal)}</td>` : ''}
-    ${compareActual ? `<td class="right ${gDiffCls}">${fmtMD(gDiff)}</td>` : ''}
-    ${months.map(mm => `<td class="right">${fmtMD(gBookedByMonth[mm])}</td>`).join('')}
-    ${compareActual ? months.map(mm => `<td class="right">${fmtMD(gActualByMonth[mm])}</td>`).join('') : ''}
-  </tr>`;
+    let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
+    const gBookedByMonth = {}, gActualByMonth = {};
+    months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
 
-  container.innerHTML = `
+    bodyRows = sorted.map(r => {
+      gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
+      months.forEach(mm => { gBookedByMonth[mm] += r.bookedByMonth[mm]; gActualByMonth[mm] += r.actualByMonth[mm]; });
+      const diffCls = r.diff > 0 ? 'md-over' : (r.diff < 0 ? 'md-under' : '');
+      return `<tr>
+        <td class="col-app-freeze" title="${esc(r.app)}">${esc(r.app)}</td>
+        <td class="right">${fmtMD(r.bookedTotal)}</td>
+        <td class="right">${fmtMD(r.actualTotal)}</td>
+        <td class="right ${diffCls}">${fmtMD(r.diff)}</td>
+        ${months.map(mm => `<td class="right">${appMonthCellHTML(r.bookedByMonth[mm])}</td>`).join('')}
+        ${months.map(mm => `<td class="right">${appMonthCellHTML(r.actualByMonth[mm])}</td>`).join('')}
+      </tr>`;
+    }).join('');
+
+    const gDiffCls = gDiff > 0 ? 'md-over' : (gDiff < 0 ? 'md-under' : '');
+    totalRow = `<tr class="dash-total-row">
+      <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
+      <td class="right">${fmtMD(gBookedTotal)}</td>
+      <td class="right">${fmtMD(gActualTotal)}</td>
+      <td class="right ${gDiffCls}">${fmtMD(gDiff)}</td>
+      ${months.map(mm => `<td class="right">${fmtMD(gBookedByMonth[mm])}</td>`).join('')}
+      ${months.map(mm => `<td class="right">${fmtMD(gActualByMonth[mm])}</td>`).join('')}
+    </tr>`;
+  } else {
+    // mode === 'booked' (default, เดิม compareActual===false) | 'actual' (ใหม่) — โครงเดียวกัน
+    // เป๊ะ สลับแค่ว่าอ่านฟิลด์ booked* หรือ actual*
+    const totalKey = mode === 'actual' ? 'actualTotal' : 'bookedTotal';
+    const byMonthKey = mode === 'actual' ? 'actualByMonth' : 'bookedByMonth';
+    const monthKeyPrefix = mode === 'actual' ? 'a:' : 'b:';
+    const totalLabel = mode === 'actual' ? 'Actual' : 'Booked';
+    const monthHeadLabel = mode === 'actual' ? 'Actual MD' : 'Booked MD';
+
+    theadRow1 = `<tr>
+      <th class="${appHeadCls}" rowspan="2" data-sort-key="app">App${sortIco(S.appSort,'app')}</th>
+      <th colspan="1">Total</th>
+      <th colspan="${months.length}">${monthHeadLabel}</th>
+    </tr>`;
+    theadRow2 = `<tr>
+      ${thSort(totalLabel, totalKey, S.appSort, 'right')}
+      ${months.map(mm => thSort(monthLabel(mm), monthKeyPrefix + mm, S.appSort, 'right')).join('')}
+    </tr>`;
+
+    let gTotal = 0;
+    const gByMonth = {};
+    months.forEach(mm => { gByMonth[mm] = 0; });
+
+    bodyRows = sorted.map(r => {
+      gTotal += r[totalKey];
+      months.forEach(mm => { gByMonth[mm] += r[byMonthKey][mm]; });
+      return `<tr>
+        <td class="col-app-freeze" title="${esc(r.app)}">${esc(r.app)}</td>
+        <td class="right">${fmtMD(r[totalKey])}</td>
+        ${months.map(mm => `<td class="right">${appMonthCellHTML(r[byMonthKey][mm])}</td>`).join('')}
+      </tr>`;
+    }).join('');
+
+    totalRow = `<tr class="dash-total-row">
+      <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
+      <td class="right">${fmtMD(gTotal)}</td>
+      ${months.map(mm => `<td class="right">${fmtMD(gByMonth[mm])}</td>`).join('')}
+    </tr>`;
+  }
+
+  container.innerHTML = hintHTML + `
     <div class="dash-app-scroll">
       <table class="dash-app-table" id="appTable">
         <thead>${theadRow1}${theadRow2}</thead>
@@ -2941,10 +2945,11 @@ async function downloadProjectExcel(){
   }
 }
 
-/** By App tab export (task 6, §5.60) — Sheet1 Filter (+ "Compare Actual" ใช่/ไม่ใช่ ต่อท้าย
- *  เดือนที่เลือก) + Sheet2 "App" ตรงกับตาราง By App บนจอเป๊ะ ทั้งการเรียง (genericSort() ผ่าน
- *  appKeyFns() ตัวเดียวกับ renderAppView() ใช้) และคอลัมน์ที่โชว์ — ไม่ติ๊ก Compare Actual =
- *  ไม่มีคอลัมน์ Actual MD/Booked − Actual ในชีตเลย (ไม่ใช่แค่ซ่อน) เหมือนตารางบนจอ */
+/** By App tab export — 2026-09-10 (§5.64): แตกตาม S.appMode (booked/actual/compare) เหมือน
+ *  ตาราง By App บนจอ (renderAppView()) — Sheet1 "Filter" เพิ่มบรรทัด "โหมด" ต่อท้ายเดือนที่เลือก
+ *  (แพตเทิร์นเดียวกับ downloadOsExcel()'s "โหมด" row) + Sheet2 "App" ตรงกับตารางบนจอเป๊ะ ทั้งการ
+ *  เรียง (genericSort() ผ่าน appKeyFns() ตัวเดียวกับ renderAppView() ใช้) และคอลัมน์ที่โชว์ — โหมด
+ *  booked/actual ไม่มีคอลัมน์ของอีกฝั่งในชีตเลย (ไม่ใช่แค่ซ่อน) เหมือนตารางบนจอ */
 async function downloadAppExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
@@ -2952,43 +2957,61 @@ async function downloadAppExcel(){
     const rows = buildAppRows();
     if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
     const months = S.months || [];
-    const compareActual = S.compareActual;
+    const mode = S.appMode; // 'booked' | 'actual' | 'compare'
     const sorted = genericSort(rows, S.appSort, appKeyFns(months));
 
     const filterAoa = buildDownloadFilterAoa(false);
-    filterAoa.push(['Compare Actual', compareActual ? 'ใช่' : 'ไม่ใช่']);
+    filterAoa.push(['โหมด', { booked: 'Booked MD', actual: 'Actual MD', compare: 'Compare' }[mode] || 'Booked MD']);
 
-    const header = ['App', 'Booked MD'];
-    if (compareActual) header.push('Actual MD', 'Booked − Actual');
-    months.forEach(mm => header.push(`Booked ${monthLabel(mm)}`));
-    if (compareActual) months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
-    const appAoa = [header];
+    const appAoa = [];
+    let totalRow;
 
-    let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
-    const gBookedByMonth = {}, gActualByMonth = {};
-    months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
+    if (mode === 'compare') {
+      const header = ['App', 'Booked MD', 'Actual MD', 'Booked − Actual'];
+      months.forEach(mm => header.push(`Booked ${monthLabel(mm)}`));
+      months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
+      appAoa.push(header);
 
-    sorted.forEach(r => {
-      gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
-      const row = [r.app, Number(fmtMD(r.bookedTotal))];
-      if (compareActual) row.push(Number(fmtMD(r.actualTotal)), Number(fmtMD(r.diff)));
-      months.forEach(mm => {
-        gBookedByMonth[mm] += r.bookedByMonth[mm];
-        row.push(Number(fmtMD(r.bookedByMonth[mm])));
+      let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
+      const gBookedByMonth = {}, gActualByMonth = {};
+      months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
+
+      sorted.forEach(r => {
+        gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
+        const row = [r.app, Number(fmtMD(r.bookedTotal)), Number(fmtMD(r.actualTotal)), Number(fmtMD(r.diff))];
+        months.forEach(mm => { gBookedByMonth[mm] += r.bookedByMonth[mm]; row.push(Number(fmtMD(r.bookedByMonth[mm]))); });
+        months.forEach(mm => { gActualByMonth[mm] += r.actualByMonth[mm]; row.push(Number(fmtMD(r.actualByMonth[mm]))); });
+        appAoa.push(row);
       });
-      if (compareActual) {
-        months.forEach(mm => {
-          gActualByMonth[mm] += r.actualByMonth[mm];
-          row.push(Number(fmtMD(r.actualByMonth[mm])));
-        });
-      }
-      appAoa.push(row);
-    });
 
-    const totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gBookedTotal))];
-    if (compareActual) totalRow.push(Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff)));
-    months.forEach(mm => totalRow.push(Number(fmtMD(gBookedByMonth[mm]))));
-    if (compareActual) months.forEach(mm => totalRow.push(Number(fmtMD(gActualByMonth[mm]))));
+      totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gBookedTotal)), Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff))];
+      months.forEach(mm => totalRow.push(Number(fmtMD(gBookedByMonth[mm]))));
+      months.forEach(mm => totalRow.push(Number(fmtMD(gActualByMonth[mm]))));
+    } else {
+      // mode === 'booked' | 'actual' — โครงเดียวกันเป๊ะ สลับแค่ว่าอ่านฟิลด์ booked* หรือ actual*
+      const totalKey = mode === 'actual' ? 'actualTotal' : 'bookedTotal';
+      const byMonthKey = mode === 'actual' ? 'actualByMonth' : 'bookedByMonth';
+      const totalHeadLabel = mode === 'actual' ? 'Actual MD' : 'Booked MD';
+      const monthColPrefix = mode === 'actual' ? 'Actual' : 'Booked';
+
+      const header = ['App', totalHeadLabel];
+      months.forEach(mm => header.push(`${monthColPrefix} ${monthLabel(mm)}`));
+      appAoa.push(header);
+
+      let gTotal = 0;
+      const gByMonth = {};
+      months.forEach(mm => { gByMonth[mm] = 0; });
+
+      sorted.forEach(r => {
+        gTotal += r[totalKey];
+        const row = [r.app, Number(fmtMD(r[totalKey]))];
+        months.forEach(mm => { gByMonth[mm] += r[byMonthKey][mm]; row.push(Number(fmtMD(r[byMonthKey][mm]))); });
+        appAoa.push(row);
+      });
+
+      totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gTotal))];
+      months.forEach(mm => totalRow.push(Number(fmtMD(gByMonth[mm]))));
+    }
     appAoa.push(totalRow);
 
     const wb = XLSX.utils.book_new();
@@ -3252,270 +3275,6 @@ function downloadDashboardExcel(){
   if (S.dashView === 'lead') return downloadLeadExcel();
   if (S.dashView === 'signoff') return downloadSignoffExcel();
 }
-
-/* =====================================================================
-   IMPORT ACTUAL MD (task 5, §5.60) — Download Template + parse/preview/confirm
-   (admin only — enforced for real by RLS `actual_md_write`/`actual_md_read` policies +
-   the is_admin() guard inside pqa.fn_import_actual_md(); #actualAdminTools being hidden
-   for non-admins is a UI convenience layer only, see updateAppAdminToolsVisibility())
-   ===================================================================== */
-/** Download Template button — .xlsx with 2 sheets: "Data" (the columns admins fill in,
- *  plus one example row) and "App_ID" (every ACTIVE app_code + app_name from master, so
- *  whoever fills the template knows exactly which codes are valid). Deliberately queries
- *  `app` fresh with `.eq('is_active', true)` here rather than reusing S.appList (which is
- *  NOT filtered by is_active — it also feeds the "App" ตัวกรอง dropdown and other pages'
- *  sort ordering, and changing what it contains is out of scope for this task) — the spec
- *  (§5.3) asks specifically for only the active set in this one sheet. `app` is a tiny
- *  lookup table (~28 rows) — nowhere near fetchAllRows()'s 1000-row cap, consistent with
- *  loadMasterData()'s own unpaginated `app` query. */
-async function downloadActualTemplate(){
-  const btn = $('downloadActualTemplateBtn');
-  btn.disabled = true;
-  try {
-    const { data, error } = await supabase.from('app').select('app_code,app_name')
-      .eq('is_active', true).order('sort_order', { nullsFirst: false });
-    if (error) throw error;
-    const apps = data || [];
-    const exampleAppCode = (apps[0] && apps[0].app_code) || '';
-
-    const dataAoa = [
-      ACTUAL_MD_HEADERS,
-      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
-    ];
-    const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataAoa), 'Data');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(appIdAoa), 'App_ID');
-
-    const filename = `actual_md_template_${fileTimeStamp(new Date())}.xlsx`;
-    writeWorkbookAndDownload(wb, filename);
-    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
-  } catch (err) {
-    console.error(err);
-    toast('ดาวน์โหลด Template ไม่สำเร็จ: ' + (err.message || String(err)), true);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
-
-/* pivot ของ Excel เขียนคำว่า "(blank)" ลงมาเป็นข้อความจริงในช่องที่ไม่มีค่า — ต้องแปลงเป็น
-   ค่าว่างทุกช่องข้อความ ไม่งั้น approver จะกลายเป็นอีเมลชื่อ (blank) */
-function actualCellText(v){
-  const s = String(v == null ? '' : v).trim();
-  return s.toLowerCase() === '(blank)' ? '' : s;
-}
-
-/** Parse the "Data" sheet of an Actual MD import file — takes a plain AOA (array-of-arrays,
- *  e.g. from `XLSX.utils.sheet_to_json(worksheet, { header: 1 })`) rather than a workbook or
- *  a File, and an explicit `appCodeSet` (Set of valid pqa.app.app_code values) rather than
- *  reading S.appList itself — both deliberate so this stays a pure function a test can call
- *  directly with fabricated data, no real .xlsx file or live Supabase/S.* needed (per the
- *  orchestrating task's explicit instruction — the plan doc's original sketch of
- *  `parseActualFile(workbook)` is superseded by this signature for testability).
- *
- *  Row numbers in `errors`/`warnings` are the ACTUAL EXCEL ROW NUMBER a human editing the
- *  file would see (header row = 1, first data row = 2) — not the 0-based `aoa` index.
- *
- *  `leadEmailSet` (optional — Set of valid pqa_lead email addresses, lower-cased): when given,
- *  an `approver_choice` that isn't in it produces a non-blocking warning (import still goes
- *  through; it just means filtering by UAT Lead in the Compare view won't find the row). When
- *  omitted (null/undefined), the email check is skipped entirely — the real call site wires this
- *  in Task 3 once S.leadsAll carries emails; until then it can pass null safely.
- *
- *  Returns { rows, errors, warnings, byMonth }:
- *   - rows: [{ ym, app_code, project_code, nickname_name, en_fullname, approver_choice,
- *     actual_md }] — ready to pass straight through as `p_rows` to
- *     `supabase.rpc('fn_import_actual_md', { p_rows })`. Exact-duplicate rows (same
- *     ym+app_code+project_code+nickname_name+en_fullname+approver_choice) are merged into ONE
- *     row here with actual_md summed (§3.1 spec: "แถวที่ซ้ำเป๊ะจะถูกรวมยอดตอนอ่าน") — reported
- *     as a warning, not blocked. Rows that differ only by approver_choice are DIFFERENT rows
- *     (real file has the same person/month/project/app approved in pieces by different
- *     approvers) and are never merged together.
- *   - errors: [{ row, msg }] — blocking; caller must keep the confirm button disabled while
- *     this is non-empty.
- *   - warnings: [{ row, msg }] — non-blocking, informational only.
- *   - byMonth: { 'YYYYMM': { count, totalMD } } — per-month summary for the preview modal. */
-function parseActualFile(aoa, appCodeSet, leadEmailSet){
-  const errors = [];
-  const warnings = [];
-
-  if (!Array.isArray(aoa) || !aoa.length) {
-    errors.push({ row: 1, msg: 'ไฟล์ว่างเปล่า หรืออ่านไฟล์ไม่ได้' });
-    return { rows: [], errors, warnings, byMonth: {} };
-  }
-
-  const header = (aoa[0] || []).map(h => String(h == null ? '' : h).trim());
-  const headerOk = ACTUAL_MD_HEADERS.every((h, i) => header[i] === h);
-  if (!headerOk) {
-    errors.push({ row: 1, msg: `ไฟล์ไม่ตรง template — หัวคอลัมน์ต้องเป็น ${ACTUAL_MD_HEADERS.join(', ')}` });
-    return { rows: [], errors, warnings, byMonth: {} };
-  }
-
-  const dataLines = aoa.slice(1);
-  const isBlankLine = line => !line || line.every(c => c === undefined || c === null || String(c).trim() === '');
-  if (!dataLines.some(line => !isBlankLine(line))) {
-    errors.push({ row: 2, msg: 'ไม่มีแถวข้อมูลเลย' });
-    return { rows: [], errors, warnings, byMonth: {} };
-  }
-
-  const seen = new Map(); // dedupe key -> merged row object (still carries `row` for the warning message)
-  const merged = [];
-  dataLines.forEach((line, idx) => {
-    const excelRow = idx + 2; // header = row 1, first data row = row 2
-    if (isBlankLine(line)) return; // skip fully-blank rows silently (not an error)
-
-    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
-    const ym = actualCellText(ymRaw);
-    const appCode = actualCellText(appRaw);
-    const nickname_name = actualCellText(nickRaw);
-    const en_fullname = actualCellText(fullRaw);
-    const project_code = actualCellText(pcRaw);
-    const approver_choice = actualCellText(approverRaw).toLowerCase();
-
-    if (!/^\d{6}$/.test(ym)) {
-      errors.push({ row: excelRow, msg: `YYYYMM ไม่ถูกต้อง: "${ymRaw == null ? '' : ymRaw}" (ต้องเป็นตัวเลข 6 หลัก เช่น 202602)` });
-    }
-    if (appCodeSet && !appCodeSet.has(appCode)) {
-      errors.push({ row: excelRow, msg: `App_ID ไม่มีใน master: "${appCode}"` });
-    }
-    if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
-      warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
-    }
-    const md = Number(mdRaw);
-    const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
-    if (mdBlank || isNaN(md) || md < 0) {
-      errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
-    }
-
-    const key = [ym, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
-    if (seen.has(key)) {
-      const target = seen.get(key);
-      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
-      target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
-    } else {
-      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
-      seen.set(key, rowObj);
-      merged.push(rowObj);
-    }
-  });
-
-  const byMonth = {};
-  merged.forEach(r => {
-    byMonth[r.ym] = byMonth[r.ym] || { count: 0, totalMD: 0 };
-    byMonth[r.ym].count += 1;
-    byMonth[r.ym].totalMD += Number(r.actual_md) || 0;
-  });
-
-  const rows = merged.map(({ row, ...rest }) => rest); // strip the internal `row` bookkeeping field
-  return { rows, errors, warnings, byMonth };
-}
-
-/** Row counts of EXISTING pqa.actual_md data for the months a just-parsed file touches —
- *  shown in the preview modal so an admin can see, before confirming, how many rows each
- *  month's "delete then insert" (fn_import_actual_md, §3.4) will remove. Queries the raw
- *  table (not the aggregated v_actual_md_app_month view) because it's specifically a ROW
- *  count, not an MD sum. `months` here are already 'YYYYMM' strings (parseActualFile()'s
- *  own `ym` format — no conversion needed, unlike S.actualByAppMonth's 'YYYY-MM' keys).
- *  Wrapped in fetchAllRows() per §5.49 even though this table is tiny in practice. */
-async function fetchExistingActualRowCounts(months){
-  if (!months || !months.length) return {};
-  const { data, error } = await fetchAllRows((from, to) => supabase.from('actual_md')
-    .select('ym')
-    .in('ym', months)
-    .order('ym', { ascending: true })
-    .order('actual_id', { ascending: true })
-    .range(from, to));
-  if (error) { console.warn('fetchExistingActualRowCounts failed:', error); return {}; }
-  const counts = {};
-  (data || []).forEach(r => { counts[r.ym] = (counts[r.ym] || 0) + 1; });
-  return counts;
-}
-
-/** Build the #actualImportBody innerHTML for the preview modal — per-month summary table
- *  (new row count / existing rows that will be deleted / total MD) + an errors table
- *  (blocking, capped at 50 rows + "และอีก N รายการ") + a warnings table (non-blocking,
- *  same cap). Pure-ish: takes `parsed` (parseActualFile()'s return) and `existingCounts`
- *  (fetchExistingActualRowCounts()'s return) as arguments. */
-function buildActualImportModalBody(parsed, existingCounts){
-  const months = Object.keys(parsed.byMonth).sort();
-  const monthRows = months.map(ym => {
-    const disp = monthLabel(ym.slice(0, 4) + '-' + ym.slice(4, 6));
-    const info = parsed.byMonth[ym];
-    return `<tr><td>${esc(disp)}</td><td class="right">${info.count}</td><td class="right">${existingCounts[ym] || 0}</td><td class="right">${fmtMD(info.totalMD)}</td></tr>`;
-  }).join('');
-
-  const errBlock = parsed.errors.length ? `
-    <div class="actual-import-err-title">พบข้อผิดพลาด ${parsed.errors.length} รายการ (ต้องแก้ไฟล์แล้วอัปโหลดใหม่)</div>
-    <table class="actual-import-table">
-      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
-      <tbody>${parsed.errors.slice(0, 50).map(e => `<tr><td>${e.row}</td><td>${esc(e.msg)}</td></tr>`).join('')}</tbody>
-    </table>
-    ${parsed.errors.length > 50 ? `<div class="muted">และอีก ${parsed.errors.length - 50} รายการ</div>` : ''}
-  ` : '';
-
-  const warnBlock = parsed.warnings.length ? `
-    <div class="actual-import-warn-title">คำเตือน ${parsed.warnings.length} รายการ (ไม่บล็อกการนำเข้า)</div>
-    <table class="actual-import-table">
-      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
-      <tbody>${parsed.warnings.slice(0, 50).map(w => `<tr><td>${w.row}</td><td>${esc(w.msg)}</td></tr>`).join('')}</tbody>
-    </table>
-    ${parsed.warnings.length > 50 ? `<div class="muted">และอีก ${parsed.warnings.length - 50} รายการ</div>` : ''}
-  ` : '';
-
-  return `
-    <p>ไฟล์นี้มี <b>${parsed.rows.length}</b> แถว ครอบคลุม <b>${months.length}</b> เดือน — การนำเข้าจะ
-    <b>ลบข้อมูลเดิมของเดือนที่มีในไฟล์ทั้งหมด แล้วใส่ใหม่ทั้งหมด</b> (เดือนอื่นที่ไม่อยู่ในไฟล์นี้จะไม่ถูกแตะ)</p>
-    <table class="actual-import-table">
-      <thead><tr><th>เดือน</th><th class="right">แถวใหม่</th><th class="right">แถวเดิมที่จะถูกลบ</th><th class="right">ยอด MD รวม</th></tr></thead>
-      <tbody>${monthRows}</tbody>
-    </table>
-    ${errBlock}
-    ${warnBlock}
-  `;
-}
-
-let _actualImportParsed = null; // parseActualFile()'s result for the file currently in the preview modal
-
-/** เปิด modal พรีวิว — เรียกหลังอ่านไฟล์+parseActualFile() เสร็จเสมอ (ไม่มีทางเขียนลง DB ตรงๆ
- *  โดยไม่ผ่านหน้าพรีวิวนี้ก่อน, §5.3). ปุ่มยืนยัน disabled ตราบใดที่ parsed.errors.length > 0. */
-async function openActualImportModal(parsed){
-  _actualImportParsed = parsed;
-  const months = Object.keys(parsed.byMonth).sort();
-  const existingCounts = await fetchExistingActualRowCounts(months);
-  $('actualImportBody').innerHTML = buildActualImportModalBody(parsed, existingCounts);
-  $('actualImportErr').textContent = '';
-  $('actualImportConfirmBtn').disabled = parsed.errors.length > 0;
-  $('actualImportOverlay').classList.remove('hidden');
-}
-window.closeActualImportModal = function(){
-  $('actualImportOverlay').classList.add('hidden');
-  _actualImportParsed = null;
-};
-/** ยืนยันนำเข้าจริง — เขียนผ่าน RPC เดียว `fn_import_actual_md` เท่านั้น (ไม่มีทาง
- *  `supabase.from('actual_md').insert(...)` ตรงๆ — delete+insert ต้องเป็น transaction เดียว
- *  ตามกติกา §3 ของโปรเจกต์). สำเร็จ → toast จำนวนแถวที่ลบ/เพิ่ม → ปิด modal → loadPeriod(true)
- *  โหลด v_actual_md_app_month (+ booking/leave) ใหม่จาก Supabase สดๆ แล้ว re-render — ล้มเหลว →
- *  โชว์ error ใน modal ไม่ปิด modal (ให้แก้/ลองใหม่ได้โดยไม่ต้องเลือกไฟล์ซ้ำ). */
-window.confirmActualImport = async function(){
-  if (!_actualImportParsed || _actualImportParsed.errors.length) return;
-  const btn = $('actualImportConfirmBtn');
-  btn.disabled = true;
-  $('actualImportErr').textContent = '';
-  try {
-    const { data, error } = await supabase.rpc('fn_import_actual_md', { p_rows: _actualImportParsed.rows });
-    if (error) throw error;
-    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
-    closeActualImportModal();
-    await loadPeriod(true);
-  } catch (err) {
-    console.error(err);
-    $('actualImportErr').textContent = 'นำเข้าไม่สำเร็จ: ' + (err.message || String(err));
-    btn.disabled = false;
-  }
-};
 
 /* ---- Signoff ---- */
 const SIGNOFF_KEYFNS = {
@@ -3889,51 +3648,24 @@ function wireToolbar(){
     buildFilterMultiSelects();
     await loadPeriod(true);
   });
-  // 2026-09-09 (§5.60, Task 4): Compare Actual — re-render เฉยๆ ไม่ยิง query ใหม่
-  // (S.actualByAppMonth โหลดไว้ครบแล้วตั้งแต่ loadPeriod()) มีผลเฉพาะตอนกำลังดูแท็บ By App จริงๆ
-  $('cmpActualChk').addEventListener('change', () => {
-    S.compareActual = $('cmpActualChk').checked;
-    savePrefs(PAGE, { compareActual: S.compareActual });
+  // 2026-09-10 (§5.64): Mode dropdown แท็บ By App (Booked MD / Actual MD / Compare) — re-render
+  // เฉยๆ ไม่ยิง query ใหม่ (S.actualByAppMonth โหลดไว้ครบแล้วตั้งแต่ loadPeriod()) มีผลเฉพาะตอน
+  // กำลังดูแท็บ By App จริงๆ — เดิมเป็น checkbox "Compare Actual" (S.compareActual) ก่อนงานนี้
+  $('appModeSelect').addEventListener('change', () => {
+    S.appMode = $('appModeSelect').value;
+    savePrefs(PAGE, { appMode: S.appMode });
     if (S.dashView === 'app') renderAppView($('viewContainer'));
   });
-  // §5.63 Task 5: ปุ่มโหมด Booked MD / Actual MD / Compare (By OS tab) — re-render เฉยๆ
-  // ไม่ยิง query ใหม่ (S.actualPersonRows/S.periodAggActiveOnly โหลดไว้ครบแล้วตั้งแต่
-  // loadPeriod()) เคลียร์ S.osExpanded ทุกครั้งที่สลับโหมด (view state ของโหมด Compare,
-  // Task 6 — ไม่มีเหตุผลจะจำ expand ค้างข้ามโหมดที่ตารางหน้าตาไม่เหมือนกันเลย)
-  $('osModeTools').addEventListener('click', e => {
-    const btn = e.target.closest('.os-mode-btn');
-    if (!btn) return;
-    S.osMode = btn.dataset.mode;
+  // 2026-09-10 (§5.64): Mode dropdown แท็บ By OS (Booked MD / Actual MD / Compare) — เดิมเป็น
+  // 3 ปุ่มใน toolbar (#osModeTools) ก่อนงานนี้ — re-render เฉยๆ ไม่ยิง query ใหม่
+  // (S.actualPersonRows/S.periodAggActiveOnly โหลดไว้ครบแล้วตั้งแต่ loadPeriod()) เคลียร์
+  // S.osExpanded ทุกครั้งที่สลับโหมด (view state ของโหมด Compare — ไม่มีเหตุผลจะจำ expand
+  // ค้างข้ามโหมดที่ตารางหน้าตาไม่เหมือนกันเลย)
+  $('osModeSelect').addEventListener('change', () => {
+    S.osMode = $('osModeSelect').value;
     savePrefs(PAGE, { osMode: S.osMode });
     S.osExpanded = {};
-    document.querySelectorAll('#osModeTools .os-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === S.osMode));
     if (S.dashView === 'os') renderView();
-  });
-  // 2026-09-09 (§5.60, Task 5): Download Template / Import Actual MD — admin เท่านั้น (ปุ่มถูก
-  // ซ่อนสำหรับ non-admin อยู่แล้วผ่าน updateAppAdminToolsVisibility() แต่ผูก listener ไว้เสมอ
-  // เผื่อ role เปลี่ยนระหว่าง session — ด่านจริงคือ RLS + guard ใน fn_import_actual_md())
-  $('downloadActualTemplateBtn').addEventListener('click', downloadActualTemplate);
-  $('importActualBtn').addEventListener('click', () => $('importActualFile').click());
-  $('importActualFile').addEventListener('change', async e => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ''; // เคลียร์ทันที กันเลือกไฟล์เดิมซ้ำแล้ว change event ไม่ยิง
-    if (!file) return;
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const sheetName = wb.SheetNames.includes('Data') ? 'Data' : wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      const appCodeSet = new Set(S.appList.map(a => a.app_code));
-      // leadEmailSet: S.leadsAll ('pqa_lead') carries `email` already (loadMasterData()) — wired
-      // in during Fix round 1 of §5.63 Task 3 review (2026-09-10)
-      const leadEmailSet = new Set((S.leadsAll || []).map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
-      const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
-      await openActualImportModal(parsed);
-    } catch (err) {
-      console.error(err);
-      toast('อ่านไฟล์ไม่สำเร็จ: ' + (err.message || String(err)), true);
-    }
   });
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
   // Lead/App/Type/Domain/เดือน) กลับเป็นค่า default เดียวกับตอนเพิ่งล็อกอิน ไม่ auto-collapse
@@ -3972,9 +3704,8 @@ function switchDashView(view){
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
   $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
-  $('cmpActualFld').classList.toggle('hidden', view !== 'app');   // 2026-09-09, By App tab เท่านั้น (§5.60)
-  updateAppAdminToolsVisibility();
-  updateOsModeVisibility(); // §5.63 Task 5 — ปุ่มโหมด Booked/Actual/Compare, By OS tab เท่านั้น
+  updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
+  updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก

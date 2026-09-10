@@ -291,6 +291,22 @@
   .sublead-row .btn {
     padding: 6px 10px;
   }
+
+  /* ---- Browse File tab (2026-09-10, §5.64) — moved here from dashboard.html's By App
+     toolbar so file-import tooling lives with the rest of admin's data-management UI.
+     Two independently-selectable sections (Download Template / Upload) so a future 2nd
+     file type just adds an <option> + a dispatch case, no restructuring. ---- */
+  .bf-section { margin-bottom: 28px; }
+  .bf-section h3 { font-size: 14px; margin: 0 0 10px; }
+
+  /* ---- Import Actual MD preview modal (moved from dashboard.html, §5.64) — plain table,
+     not the admin `.table-wrap` sticky-header table since this modal has its own small
+     scroll area. ---- */
+  .actual-import-table { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:10px; }
+  .actual-import-table th, .actual-import-table td { padding:6px 8px; border-bottom:1px solid var(--dk-border); text-align:left; }
+  .actual-import-table td.right, .actual-import-table th.right { text-align:right; }
+  .actual-import-err-title { color:var(--danger); font-weight:700; margin:10px 0 6px; }
+  .actual-import-warn-title { color:var(--dk-text2); font-weight:700; margin:10px 0 6px; }
 </style>
 </head>
 <body>
@@ -361,6 +377,7 @@
       <button class="tab-btn" onclick="switchTab('project_status')">Project Status</button>
       <button class="tab-btn" onclick="switchTab('tester_role')">Tester Role</button>
       <button class="tab-btn" onclick="switchTab('app_user')">User</button>
+      <button class="tab-btn" onclick="switchTab('browse_file')">Browse File</button>
     </div>
 
     <!-- ============ PROJECT TAB ============ -->
@@ -583,6 +600,37 @@
         </table>
       </div>
     </div>
+
+    <!-- ============ BROWSE FILE TAB ============ (2026-09-10, §5.64)
+         Moved here from dashboard.html's By App toolbar (Download Template/Import Actual MD)
+         — this page already gates the ENTIRE page behind STATE.isAdmin (non-admins never get
+         past #accessDenied above), so this tab needs no extra admin check of its own. Built
+         as a dropdown-per-section (not hardcoded to Actual MD) so a future 2nd file type is
+         just a new <option> + a dispatch `case` in the click handlers below, not a rewrite. -->
+    <div id="tab-browse_file" class="tab-content">
+      <div class="page-head">
+        <h2>Browse File</h2>
+      </div>
+      <div class="bf-section">
+        <h3>ดาวน์โหลด Template</h3>
+        <div class="toolbar">
+          <select id="bfTemplateType">
+            <option value="actual_md">Actual MD</option>
+          </select>
+          <button class="btn" id="bfDownloadTemplateBtn">⬇ Download Template</button>
+        </div>
+      </div>
+      <div class="bf-section">
+        <h3>นำเข้าข้อมูล (Upload)</h3>
+        <div class="toolbar">
+          <select id="bfUploadType">
+            <option value="actual_md">Actual MD</option>
+          </select>
+          <input type="file" id="bfUploadFile" accept=".xlsx,.xls" class="hidden">
+          <button class="btn" id="bfUploadBtn">⬆ Upload</button>
+        </div>
+      </div>
+    </div>
     </div>
     <!-- /#adminContent -->
 
@@ -695,6 +743,26 @@
   </div>
 </div>
 
+<!-- ============ IMPORT ACTUAL MD PREVIEW MODAL (moved from dashboard.html, 2026-09-10 §5.64) ============
+     Static overlay + toggle .hidden, same pattern as #formOverlay/#projOverlay above — content
+     of #actualImportBody is (re)built by openActualImportModal() every time it opens. Confirm
+     button (#actualImportConfirmBtn) stays disabled whenever the parsed file has any blocking
+     errors (see parseActualFile()) — never enabled by accident from a previous file. -->
+<div id="actualImportOverlay" class="overlay hidden">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3>นำเข้า Actual MD</h3>
+      <button class="x" onclick="closeActualImportModal()">×</button>
+    </div>
+    <div class="modal-body" id="actualImportBody"></div>
+    <div class="modal-foot">
+      <div class="form-err" id="actualImportErr"></div>
+      <button class="btn" onclick="closeActualImportModal()">ยกเลิก</button>
+      <button class="btn accent" id="actualImportConfirmBtn" onclick="confirmActualImport()">ยืนยันนำเข้า</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -702,7 +770,11 @@ import { supabase, $, toast, esc, dDisp, d2s, parseInputDate, statusPill, fmtDat
          leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
          initLeadSearch, getLeadSearchValue, leadSearchHasUnresolvedText,
          loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn,
-         initNotificationBell } from './common.js';
+         initNotificationBell, fetchAllRows, monthLabel } from './common.js';
+// SheetJS — ใช้กับ Browse File tab (Download Template/Upload Actual MD, moved here from
+// dashboard.html's By App toolbar, 2026-09-10 §5.64) เดียวกับที่ dashboard.html เคย import
+// (เวอร์ชันเดียวกันเป๊ะ — ห้ามเปลี่ยนเวอร์ชันโดยไม่ตั้งใจ)
+import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs';
 
 // holiday map { 'yyyy-MM-dd': desc } ใช้เฉพาะคำนวณ WD ใน Project modal (แยกจาก STATE.holidays ที่เป็น array ของแท็บ Holiday)
 let projectHolidayMap = {};
@@ -840,8 +912,10 @@ function fillStatusSelect(selected) {
 }
 
 async function loadPqaLeads() {
+  // email เพิ่มเข้ามา 2026-09-10 (§5.64) — ใช้สร้าง leadEmailSet ให้ parseActualFile() เช็ค
+  // Approver_Choice ตอน Upload Actual MD (Browse File tab) — moved มาจาก dashboard.html
   const { data, error } = await supabase.from('pqa_lead')
-    .select('emp_id,short_name,nickname')
+    .select('emp_id,short_name,nickname,email')
     .eq('is_active', true);
   if (error) {
     console.warn('pqa_lead', error);
@@ -891,6 +965,8 @@ window.switchTab = function(tab) {
   } else if (tab === 'app_release_schedule') {
     // ต้องมี release_app (dropdown App ในฟอร์ม) พร้อมก่อนโหลดตารางเสมอ
     ensureReleaseAppsLoaded().then(() => loadData('app_release_schedule'));
+  } else if (tab === 'browse_file') {
+    // ไม่มีตารางข้อมูล master ให้โหลด — เป็นแค่ Download Template/Upload tools (§5.64)
   } else {
     loadData(tab);
   }
@@ -2308,6 +2384,300 @@ window.deleteRecord = async function(table, pk) {
     }
   }
 };
+
+/* =====================================================================
+   BROWSE FILE TAB — Download Template / Import Actual MD
+   (2026-09-10, §5.64 — moved verbatim from dashboard.html's By App toolbar. Admin-only
+   is enforced for real by RLS `actual_md_write`/`actual_md_read` policies + the is_admin()
+   guard inside pqa.fn_import_actual_md() — this whole page is already gated behind
+   STATE.isAdmin (see showApp()/#accessDenied above), so no extra UI check is needed here.)
+   ===================================================================== */
+
+/* Effective MD ผ่านการคูณสัดส่วนได้ float noise (เช่น 12 → 11.999999999999998) — ปัดทศนิยม
+   1 ตำแหน่งก่อนเสมอ (ก๊อปมาจาก dashboard.html ตรงๆ, page-local helper ทั้ง 2 ไฟล์ ไม่ได้ใช้
+   ร่วมกันผ่าน common.js) */
+function fmtMD(v){
+  if (v == null || v === '') return '0';
+  const n = Number(v);
+  if (isNaN(n)) return '0';
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+/** yyyyMMddHHmmss ตามเวลาเครื่องผู้ใช้ — ใช้ตั้งชื่อไฟล์ template (ก๊อปจาก dashboard.html) */
+function fileTimeStamp(d){
+  const p2 = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+}
+
+/** ประกอบ workbook → .xlsx ไฟล์ → สั่งดาวน์โหลดผ่าน temp <a download> (ก๊อปจาก dashboard.html) */
+function writeWorkbookAndDownload(wb, filename){
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Download Template button — .xlsx with 2 sheets: "Data" (the columns admins fill in, plus
+ *  one example row) and "App_ID" (every ACTIVE app_code + app_name from master). Deliberately
+ *  queries `app` fresh with `.eq('is_active', true)` rather than reusing projectAppList (which
+ *  is already filtered the same way here, but this keeps the query self-contained/explicit
+ *  like the original dashboard.html version did). */
+async function downloadActualTemplate(){
+  const btn = $('bfDownloadTemplateBtn');
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabase.from('app').select('app_code,app_name')
+      .eq('is_active', true).order('sort_order', { nullsFirst: false });
+    if (error) throw error;
+    const apps = data || [];
+    const exampleAppCode = (apps[0] && apps[0].app_code) || '';
+
+    const dataAoa = [
+      ACTUAL_MD_HEADERS,
+      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
+    ];
+    const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataAoa), 'Data');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(appIdAoa), 'App_ID');
+
+    const filename = `actual_md_template_${fileTimeStamp(new Date())}.xlsx`;
+    writeWorkbookAndDownload(wb, filename);
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Template ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
+
+/* pivot ของ Excel เขียนคำว่า "(blank)" ลงมาเป็นข้อความจริงในช่องที่ไม่มีค่า — ต้องแปลงเป็น
+   ค่าว่างทุกช่องข้อความ ไม่งั้น approver จะกลายเป็นอีเมลชื่อ (blank) */
+function actualCellText(v){
+  const s = String(v == null ? '' : v).trim();
+  return s.toLowerCase() === '(blank)' ? '' : s;
+}
+
+/** Parse the "Data" sheet of an Actual MD import file — takes a plain AOA (array-of-arrays)
+ *  and an explicit `appCodeSet`/`leadEmailSet` rather than reading global state directly, so
+ *  it stays a pure function a test can call with fabricated data (moved verbatim from
+ *  dashboard.html, §5.60/§5.63 — see that history for the full design rationale).
+ *
+ *  Returns { rows, errors, warnings, byMonth } — `rows` ready to pass straight through as
+ *  `p_rows` to `supabase.rpc('fn_import_actual_md', { p_rows })`. */
+function parseActualFile(aoa, appCodeSet, leadEmailSet){
+  const errors = [];
+  const warnings = [];
+
+  if (!Array.isArray(aoa) || !aoa.length) {
+    errors.push({ row: 1, msg: 'ไฟล์ว่างเปล่า หรืออ่านไฟล์ไม่ได้' });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const header = (aoa[0] || []).map(h => String(h == null ? '' : h).trim());
+  const headerOk = ACTUAL_MD_HEADERS.every((h, i) => header[i] === h);
+  if (!headerOk) {
+    errors.push({ row: 1, msg: `ไฟล์ไม่ตรง template — หัวคอลัมน์ต้องเป็น ${ACTUAL_MD_HEADERS.join(', ')}` });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const dataLines = aoa.slice(1);
+  const isBlankLine = line => !line || line.every(c => c === undefined || c === null || String(c).trim() === '');
+  if (!dataLines.some(line => !isBlankLine(line))) {
+    errors.push({ row: 2, msg: 'ไม่มีแถวข้อมูลเลย' });
+    return { rows: [], errors, warnings, byMonth: {} };
+  }
+
+  const seen = new Map(); // dedupe key -> merged row object (still carries `row` for the warning message)
+  const merged = [];
+  dataLines.forEach((line, idx) => {
+    const excelRow = idx + 2; // header = row 1, first data row = row 2
+    if (isBlankLine(line)) return; // skip fully-blank rows silently (not an error)
+
+    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
+    const ym = actualCellText(ymRaw);
+    const appCode = actualCellText(appRaw);
+    const nickname_name = actualCellText(nickRaw);
+    const en_fullname = actualCellText(fullRaw);
+    const project_code = actualCellText(pcRaw);
+    const approver_choice = actualCellText(approverRaw).toLowerCase();
+
+    if (!/^\d{6}$/.test(ym)) {
+      errors.push({ row: excelRow, msg: `YYYYMM ไม่ถูกต้อง: "${ymRaw == null ? '' : ymRaw}" (ต้องเป็นตัวเลข 6 หลัก เช่น 202602)` });
+    }
+    if (appCodeSet && !appCodeSet.has(appCode)) {
+      errors.push({ row: excelRow, msg: `App_ID ไม่มีใน master: "${appCode}"` });
+    }
+    if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
+      warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
+    }
+    const md = Number(mdRaw);
+    const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
+    if (mdBlank || isNaN(md) || md < 0) {
+      errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
+    }
+
+    const key = [ym, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
+    if (seen.has(key)) {
+      const target = seen.get(key);
+      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
+      target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
+    } else {
+      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      seen.set(key, rowObj);
+      merged.push(rowObj);
+    }
+  });
+
+  const byMonth = {};
+  merged.forEach(r => {
+    byMonth[r.ym] = byMonth[r.ym] || { count: 0, totalMD: 0 };
+    byMonth[r.ym].count += 1;
+    byMonth[r.ym].totalMD += Number(r.actual_md) || 0;
+  });
+
+  const rows = merged.map(({ row, ...rest }) => rest); // strip the internal `row` bookkeeping field
+  return { rows, errors, warnings, byMonth };
+}
+
+/** Row counts of EXISTING pqa.actual_md data for the months a just-parsed file touches —
+ *  shown in the preview modal (moved verbatim from dashboard.html — see §5.49 for why
+ *  fetchAllRows() wraps this even though the table is tiny in practice). */
+async function fetchExistingActualRowCounts(months){
+  if (!months || !months.length) return {};
+  const { data, error } = await fetchAllRows((from, to) => supabase.from('actual_md')
+    .select('ym')
+    .in('ym', months)
+    .order('ym', { ascending: true })
+    .order('actual_id', { ascending: true })
+    .range(from, to));
+  if (error) { console.warn('fetchExistingActualRowCounts failed:', error); return {}; }
+  const counts = {};
+  (data || []).forEach(r => { counts[r.ym] = (counts[r.ym] || 0) + 1; });
+  return counts;
+}
+
+/** Build the #actualImportBody innerHTML for the preview modal (moved verbatim from
+ *  dashboard.html). */
+function buildActualImportModalBody(parsed, existingCounts){
+  const months = Object.keys(parsed.byMonth).sort();
+  const monthRows = months.map(ym => {
+    const disp = monthLabel(ym.slice(0, 4) + '-' + ym.slice(4, 6));
+    const info = parsed.byMonth[ym];
+    return `<tr><td>${esc(disp)}</td><td class="right">${info.count}</td><td class="right">${existingCounts[ym] || 0}</td><td class="right">${fmtMD(info.totalMD)}</td></tr>`;
+  }).join('');
+
+  const errBlock = parsed.errors.length ? `
+    <div class="actual-import-err-title">พบข้อผิดพลาด ${parsed.errors.length} รายการ (ต้องแก้ไฟล์แล้วอัปโหลดใหม่)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.errors.slice(0, 50).map(e => `<tr><td>${e.row}</td><td>${esc(e.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.errors.length > 50 ? `<div class="muted">และอีก ${parsed.errors.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  const warnBlock = parsed.warnings.length ? `
+    <div class="actual-import-warn-title">คำเตือน ${parsed.warnings.length} รายการ (ไม่บล็อกการนำเข้า)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.warnings.slice(0, 50).map(w => `<tr><td>${w.row}</td><td>${esc(w.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.warnings.length > 50 ? `<div class="muted">และอีก ${parsed.warnings.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  return `
+    <p>ไฟล์นี้มี <b>${parsed.rows.length}</b> แถว ครอบคลุม <b>${months.length}</b> เดือน — การนำเข้าจะ
+    <b>ลบข้อมูลเดิมของเดือนที่มีในไฟล์ทั้งหมด แล้วใส่ใหม่ทั้งหมด</b> (เดือนอื่นที่ไม่อยู่ในไฟล์นี้จะไม่ถูกแตะ)</p>
+    <table class="actual-import-table">
+      <thead><tr><th>เดือน</th><th class="right">แถวใหม่</th><th class="right">แถวเดิมที่จะถูกลบ</th><th class="right">ยอด MD รวม</th></tr></thead>
+      <tbody>${monthRows}</tbody>
+    </table>
+    ${errBlock}
+    ${warnBlock}
+  `;
+}
+
+let _actualImportParsed = null; // parseActualFile()'s result for the file currently in the preview modal
+
+/** เปิด modal พรีวิว — เรียกหลังอ่านไฟล์+parseActualFile() เสร็จเสมอ (moved verbatim from
+ *  dashboard.html). ปุ่มยืนยัน disabled ตราบใดที่ parsed.errors.length > 0. */
+async function openActualImportModal(parsed){
+  _actualImportParsed = parsed;
+  const months = Object.keys(parsed.byMonth).sort();
+  const existingCounts = await fetchExistingActualRowCounts(months);
+  $('actualImportBody').innerHTML = buildActualImportModalBody(parsed, existingCounts);
+  $('actualImportErr').textContent = '';
+  $('actualImportConfirmBtn').disabled = parsed.errors.length > 0;
+  $('actualImportOverlay').classList.remove('hidden');
+}
+window.closeActualImportModal = function(){
+  $('actualImportOverlay').classList.add('hidden');
+  _actualImportParsed = null;
+};
+/** ยืนยันนำเข้าจริง — เขียนผ่าน RPC เดียว `fn_import_actual_md` เท่านั้น (moved from
+ *  dashboard.html — the one difference: this admin.html version does NOT call
+ *  `loadPeriod(true)` afterward since that's a dashboard.html-only function; Dashboard has
+ *  its own refresh button that will pick up fresh Actual MD data next time someone
+ *  opens that page). สำเร็จ → toast จำนวนแถวที่ลบ/เพิ่ม → ปิด modal — ล้มเหลว → โชว์ error
+ *  ใน modal ไม่ปิด modal (ให้แก้/ลองใหม่ได้โดยไม่ต้องเลือกไฟล์ซ้ำ). */
+window.confirmActualImport = async function(){
+  if (!_actualImportParsed || _actualImportParsed.errors.length) return;
+  const btn = $('actualImportConfirmBtn');
+  btn.disabled = true;
+  $('actualImportErr').textContent = '';
+  try {
+    const { data, error } = await supabase.rpc('fn_import_actual_md', { p_rows: _actualImportParsed.rows });
+    if (error) throw error;
+    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
+    closeActualImportModal();
+  } catch (err) {
+    console.error(err);
+    $('actualImportErr').textContent = 'นำเข้าไม่สำเร็จ: ' + (err.message || String(err));
+    btn.disabled = false;
+  }
+};
+
+/* dispatch ตาม dropdown เลือกชนิดไฟล์ — เพิ่มไฟล์ชนิดที่ 2 ในอนาคต = เพิ่ม <option> ใน
+   #bfTemplateType/#bfUploadType + เพิ่ม case ที่นี่ ไม่ต้องรื้อโครงสร้างเลย (ตามที่พี่กิ๊บขอ) */
+$('bfDownloadTemplateBtn').addEventListener('click', () => {
+  const type = $('bfTemplateType').value;
+  if (type === 'actual_md') downloadActualTemplate();
+  else toast('ยังไม่รองรับไฟล์ชนิดนี้', true);
+});
+$('bfUploadBtn').addEventListener('click', () => {
+  const type = $('bfUploadType').value;
+  if (type === 'actual_md') $('bfUploadFile').click();
+  else toast('ยังไม่รองรับไฟล์ชนิดนี้', true);
+});
+$('bfUploadFile').addEventListener('change', async e => {
+  const type = $('bfUploadType').value;
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ''; // เคลียร์ทันที กันเลือกไฟล์เดิมซ้ำแล้ว change event ไม่ยิง
+  if (!file) return;
+  if (type !== 'actual_md') { toast('ยังไม่รองรับไฟล์ชนิดนี้', true); return; }
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheetName = wb.SheetNames.includes('Data') ? 'Data' : wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const appCodeSet = new Set(projectAppList.map(a => a.app_code));
+    const leadEmailSet = new Set((STATE.pqaLeads || []).map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
+    const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
+    await openActualImportModal(parsed);
+  } catch (err) {
+    console.error(err);
+    toast('อ่านไฟล์ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  }
+});
 
 /* ============ ESC closes the modal (req 2) ============ */
 document.addEventListener('keydown', e => {
