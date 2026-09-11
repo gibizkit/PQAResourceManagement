@@ -88,6 +88,15 @@
   .ms-tools button { font-size:11px; padding:4px 9px; border-radius:7px; border:1px solid var(--dk-border-s); background:#fff; color:var(--dk-text2); }
   .ms-tools button:hover { background:var(--dk-hover); }
 
+  /* 2026-09-11 (Change A) — #msProject grayed out + non-interactive whenever the active tab's
+     Mode reads Actual data (Actual MD has no project_key — see updateProjectFilterEnabled()).
+     pointer-events:none blocks opening the panel from a click; makeMultiSelect()'s btn.onclick
+     also guards on this class directly as a second layer (pointer-events doesn't cover every
+     activation path, e.g. a synthetic click). S.filter.projects itself is NEVER cleared by this
+     — purely presentational + input-blocking, so flipping back to Booked mode restores whatever
+     was selected before, untouched. */
+  .ms.is-disabled { opacity:.5; pointer-events:none; }
+
   /* ---- narrow single-line cells: clip with ellipsis, full text shown via title tooltip ----
      widened (was 80px/100px) so App + Project Name are readable without opening the tooltip —
      used by both the By Project table (App/Project Name) and the Signoff table (App/Project Name) */
@@ -852,6 +861,7 @@ function restoreDashPrefs(){
   $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
   updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
+  updateProjectFilterEnabled(); // 2026-09-11 (Change A) — เผื่อ dashView/appMode/osMode ที่ restore มาทำให้ต้องปิด #msProject ตั้งแต่บูต
 
   if (['all', 'month'].includes(p.projectViewMode)) {
     S.projectViewMode = p.projectViewMode;
@@ -932,6 +942,19 @@ function updateAppModeVisibility(){
  *  (2026-09-10, §5.64 — เดิมเป็น 3 ปุ่ม toolbar #osModeTools ก่อนงานนี้, §5.63 Task 5) */
 function updateOsModeVisibility(){
   $('osModeFld').classList.toggle('hidden', S.dashView !== 'os');
+}
+/** Change A (2026-09-11): gray out + disable #msProject whenever the active tab's Mode reads
+ *  Actual data — Actual MD has no project_key (buildActualOsAgg()/buildActualAppMonth() never
+ *  see one), so the Project filter provably has no effect there. "Disabled" = non-interactive
+ *  (see .ms.is-disabled in <style> + the guard in makeMultiSelect()'s btn.onclick), NOT cleared
+ *  — S.filter.projects is left untouched so flipping back to Booked mode restores it exactly.
+ *  Call from everywhere S.dashView/S.appMode/S.osMode can change: both Mode <select> change
+ *  handlers, switchDashView(), restoreDashPrefs(), and at boot (restoreDashPrefs() covers boot
+ *  too, since showApp() calls it once on load). */
+function updateProjectFilterEnabled(){
+  const disabled = (S.dashView === 'app' && S.appMode !== 'booked')
+    || (S.dashView === 'os' && S.osMode !== 'booked');
+  $('msProject').classList.toggle('is-disabled', disabled);
 }
 
 async function showApp(session){
@@ -1623,6 +1646,14 @@ function matchProjectDiscovery(pk, months){
   return projectMatchesRange(pk, months) && projectPassesExtraFilters(pk);
 }
 
+/** Change C (2026-09-11): whether ANY of the Project/UAT Lead/App multiselect filters is
+ *  currently set — used to decide whether zero-result rows should be hidden from By OS/By App
+ *  (see osRowVisible()'s 3rd arg / appRowHasResult()). Empty on all 3 = "no restriction", same
+ *  convention as projectPassesExtraFilters(). */
+function anyExtraFilterApplied(){
+  return !!(S.filter.projects.size || S.filter.leads.size || S.filter.apps.size);
+}
+
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 
 /** "Project Period" DISPLAY string for project `pk` = TC Prep phase start_date through the
@@ -1794,9 +1825,50 @@ function renderProjectView(container){
  *  intersection) — an App with Actual MD but zero Booked (or vice versa) still needs a row,
  *  otherwise an import mismatch would silently disappear instead of showing up as a big
  *  Booked − Actual diff. */
+/** Change B (2026-09-11, investigated + fixed): S.actualByAppMonth (from view
+ *  v_actual_md_app_month) is a pre-aggregated app-level sum with NO approver_emp_id column at
+ *  all — so before this fix, the UAT Lead multiselect had ZERO effect on By App's Actual/
+ *  Compare numbers (buildAppRows() read S.actualByAppMonth unconditionally, and nothing in that
+ *  view even carries who approved each row). By OS's Actual/Compare (buildActualOsAgg()) was
+ *  already correct — it reads S.actualPersonRows (view v_actual_md_person_month, which DOES
+ *  carry approver_emp_id resolved server-side by the DB view, not mapped client-side from an
+ *  email) and already applies exact-match + drop-null-approver semantics whenever a Lead filter
+ *  is active. This function mirrors that same per-row filtering, aggregating by app+month
+ *  instead of by resource, so By App gets the same fix. Pure function — no S.* access — so it
+ *  can be exercised directly via vm like buildActualOsAgg().
+ *  ⚠️ Only ever called by buildAppRows() below when S.filter.leads is non-empty — when no Lead
+ *  filter is set, buildAppRows() keeps reading S.actualByAppMonth directly so By App's Actual
+ *  totals stay byte-for-byte identical to before this fix (hard invariant — both sources sum
+ *  the exact same actual_md rows, the person-level view just carries one extra column). */
+function buildActualAppMonth(rows, months, filter){
+  const monthSet = new Set(months || []);
+  const out = {};
+  (rows || []).forEach(row => {
+    const ym = String(row.ym || '');
+    if (!/^\d{6}$/.test(ym)) return;
+    const mk = ym.slice(0, 4) + '-' + ym.slice(4, 6);
+    if (!monthSet.has(mk)) return;
+    const app = row.app_code || '';
+    if (filter && filter.apps && filter.apps.size && !filter.apps.has(app)) return;
+    // exact-match only + drop rows with no approver at all, mirroring buildActualOsAgg()'s
+    // Lead filter (Gibb: "เลือกเฉพาะที่ตรงเท่านั้น กรณี Approver_choice = null ไม่ต้องแสดง")
+    if (filter && filter.leads && filter.leads.size
+        && !(row.approver_emp_id && filter.leads.has(row.approver_emp_id))) return;
+    const md = Number(row.actual_md) || 0;
+    out[app] = out[app] || {};
+    out[app][mk] = (out[app][mk] || 0) + md;
+  });
+  return out;
+}
+
 function buildAppRows(){
   const booked = (S.periodAggActiveOnly || {}).byAppMonth || {};
-  const actual = S.actualByAppMonth || {};
+  // Change B: switch to the per-row (Lead-aware) source ONLY when a Lead filter is active — see
+  // buildActualAppMonth()'s doc comment for why this must stay conditional on S.filter.leads
+  // specifically (not S.filter.apps too) to preserve today's exact totals when no Lead filter is set.
+  const actual = (S.filter.leads && S.filter.leads.size)
+    ? buildActualAppMonth(S.actualPersonRows, S.months, S.filter)
+    : (S.actualByAppMonth || {});
   const apps = sortedApps([...new Set([...Object.keys(booked), ...Object.keys(actual)])]);
   return apps.map(app => {
     const bookedByMonth = {}, actualByMonth = {};
@@ -1833,6 +1905,16 @@ function appKeyFns(months){
 function appMonthCellHTML(v){
   return v ? fmtMD(v) : '<span class="muted">—</span>';
 }
+/** Change C (2026-09-11): whether app row `r` (from buildAppRows()) "has a result" under the
+ *  given By App mode — used to hide zero-total rows once ANY of the Project/UAT Lead/App
+ *  multiselect filters is applied (anyExtraFilterApplied()), so a filtered view isn't mostly
+ *  zero noise. compare mode: nonzero Booked OR Actual (a 0-booked/nonzero-actual row is still a
+ *  real, meaningful finding — must NOT be hidden). booked/actual mode: nonzero in that one
+ *  total. No filter applied = every row still shows, unchanged from before this fix. */
+function appRowHasResult(r, mode){
+  if (mode === 'compare') return r.bookedTotal !== 0 || r.actualTotal !== 0;
+  return (mode === 'actual' ? r.actualTotal : r.bookedTotal) !== 0;
+}
 /** By App — 2026-09-10 (§5.64): แตก 3 โหมดตาม S.appMode ('booked' | 'actual' | 'compare'),
  *  mirror pattern เดียวกับ renderOsView()/renderOsCompare() ของแท็บ By OS (§5.63) — เดิมมีแค่
  *  2 สถานะ (checkbox S.compareActual: false/true) ตอนนี้เพิ่มโหมด 'actual' คั่นกลาง (ตาราง
@@ -1842,14 +1924,18 @@ function appMonthCellHTML(v){
  *  โหมด Actual/Compare มี hint เดียวกับ By OS ("ตัวกรอง Project ไม่มีผลกับ Actual") เพราะข้อมูล
  *  Actual (import จาก Excel) ไม่มี Project ผูกอยู่เหมือนกัน — ใช้ projectFilterHintHTML() ร่วมกัน */
 function renderAppView(container){
+  const months = S.months || [];
+  const mode = S.appMode; // 'booked' | 'actual' | 'compare'
   const rows = buildAppRows();
-  if (!rows.length) {
+  // Change C (2026-09-11): any Project/UAT Lead/App filter set → drop rows with 0 in every
+  // number this mode shows (see appRowHasResult()) — no filter set = unchanged (every row
+  // that has SOME MD anywhere still shows, exactly like before this fix).
+  const visibleRows = anyExtraFilterApplied() ? rows.filter(r => appRowHasResult(r, mode)) : rows;
+  if (!visibleRows.length) {
     container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booked/Actual MD สำหรับตัวกรองชุดนี้</div>';
     return;
   }
-  const months = S.months || [];
-  const mode = S.appMode; // 'booked' | 'actual' | 'compare'
-  const sorted = genericSort(rows, S.appSort, appKeyFns(months));
+  const sorted = genericSort(visibleRows, S.appSort, appKeyFns(months));
 
   const appHeadActive = S.appSort.key === 'app' && !!S.appSort.dir;
   const appHeadCls = ['sortable', appHeadActive ? 'sort-active' : '', 'col-app-freeze'].join(' ').trim();
@@ -1893,7 +1979,7 @@ function renderAppView(container){
 
     const gDiffCls = gDiff > 0 ? 'md-over' : (gDiff < 0 ? 'md-under' : '');
     totalRow = `<tr class="dash-total-row">
-      <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
+      <td class="col-app-freeze">รวมทั้งหมด (${visibleRows.length} apps)</td>
       <td class="right">${fmtMD(gBookedTotal)}</td>
       <td class="right">${fmtMD(gActualTotal)}</td>
       <td class="right ${gDiffCls}">${fmtMD(gDiff)}</td>
@@ -1934,7 +2020,7 @@ function renderAppView(container){
     }).join('');
 
     totalRow = `<tr class="dash-total-row">
-      <td class="col-app-freeze">รวมทั้งหมด (${rows.length} apps)</td>
+      <td class="col-app-freeze">รวมทั้งหมด (${visibleRows.length} apps)</td>
       <td class="right">${fmtMD(gTotal)}</td>
       ${months.map(mm => `<td class="right">${fmtMD(gByMonth[mm])}</td>`).join('')}
     </tr>`;
@@ -2019,9 +2105,17 @@ function buildActualOsAgg(rows, resources, months, filter){
  *  ⚠️ เงื่อนไข `total > 0 ให้แสดงเสมอ` สำคัญ (ยืนยันโดย Gibb): คนที่ลาออกไปแล้วแต่ยังมี
  *  booking ค้างอยู่ในเดือนนั้นต้องยังโชว์ ไม่งั้น MD ของเขาจะหายจากตารางแต่ยังอยู่ในระบบ
  *  ⇒ ผลรวมท้ายตาราง (คิดจากแถวที่ render จริง) เพี้ยนไปจาก MD จริงเงียบๆ
- *  (mirror ใน downloadOsExcel() ด้วย — export ต้องได้แถวชุดเดียวกับบนจอ) */
-function osRowVisible(r, rangeStart){
+ *  (mirror ใน downloadOsExcel() ด้วย — export ต้องได้แถวชุดเดียวกับบนจอ)
+ *
+ *  Change C (2026-09-11, new 3rd arg `filterApplied`): เมื่อมีตัวกรอง Project/UAT Lead/App
+ *  ตัวใดตัวหนึ่งถูกตั้งไว้ (anyExtraFilterApplied()) — ซ่อนแถว total===0 เสมอ ไม่ว่าจะลาออก/
+ *  ปิดใช้งานหรือไม่ก็ตาม (ตัดสินก่อนกฎ resigned/inactive เดิมเลย) กัน filtered view เต็มไป
+ *  ด้วยแถว 0 ที่ไม่มีความหมาย — **ไม่มีตัวกรองเลย (filterApplied=false, default) พฤติกรรมต้อง
+ *  เหมือนเดิมทุกประการ** (invariant ที่ต้องคง: total>0 โชว์เสมอ, resigned/inactive+0 ซ่อน,
+ *  active+0 ยังโชว์) */
+function osRowVisible(r, rangeStart, filterApplied){
   if (r.total > 0) return true;
+  if (filterApplied) return false;                                        // Change C: มีตัวกรอง + total=0 → ซ่อนเสมอ
   if (r.end_date && rangeStart && r.end_date < rangeStart) return false;   // ลาออกก่อนเดือนที่เลือก
   if (r.is_active === false) return false;                                 // ปิดใช้งาน (ไม่ได้กรอก end_date)
   return true;
@@ -2060,10 +2154,16 @@ function renderOsView(container){
   if (S.osMode === 'compare') return renderOsCompare(container);
 
   const rangeStart = S.overallRange.s || '';
+  // Change C (2026-09-11): any Project/UAT Lead/App filter set → hide zero-result rows (see
+  // osRowVisible()'s 3rd arg + the unmatched-group filtering below in the 'actual' branch).
+  const filterApplied = anyExtraFilterApplied();
 
   if (S.osMode === 'actual') {
     const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
     const apps = sortedApps(aAgg.apps);
+    // Change C: same rule applies to the "ไม่พบใน OS master" group — an unmatched person with
+    // 0 MD under the current filter selection is dropped just like a matched OS row would be.
+    const visibleUnmatched = filterApplied ? aAgg.unmatched.filter(u => u.total !== 0) : aAgg.unmatched;
 
     // แปลงเป็นทรงเดียวกับ periodAggActiveOnly ({byOsApp, byOsTotal}) เพื่อใช้ osKeyFns()/
     // โครงตารางเดิมตัวเดียวกับโหมด booked ตรงๆ ได้ — เซลล์ = ผลรวมทุกเดือนของ app นั้น
@@ -2079,12 +2179,18 @@ function renderOsView(container){
     const osRows = genericSort(Object.values(S.resourceMap)
       .filter(r => r.resource_type === 'outsource')
       .map(r => ({ ...r, total: shaped.byOsTotal[r.resource_id] || 0 }))
-      .filter(r => osRowVisible(r, rangeStart))
+      .filter(r => osRowVisible(r, rangeStart, filterApplied))
       .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
       S.osSort, osKeyFns(apps, shaped));
 
     const hintHTML = projectFilterHintHTML();
 
+    // Unchanged from before Change C (kept exactly as-is — deliberately NOT gated on
+    // filterApplied/osRows/visibleUnmatched): "everything got filtered/hidden to 0 rows" is
+    // already handled gracefully further down by the inline tbody fallback
+    // (`unmatchedRowsHTML || (bodyRows ? '' : '<tr>...ไม่มีข้อมูล</tr>')`), so no extra bailout
+    // is needed here — adding one would risk changing this branch's behavior even when
+    // filterApplied is false, which must stay byte-identical to before this fix.
     if (!apps.length && !aAgg.unmatched.length) {
       container.innerHTML = hintHTML + '<div class="empty-state">ไม่มีข้อมูล Actual MD ในเดือนที่เลือก</div>';
       return;
@@ -2112,9 +2218,9 @@ function renderOsView(container){
     // กลุ่ม "ไม่พบใน OS master" — ยอดรวมท้ายตารางต้องนับรวมด้วยเสมอ (colTotals/grandTotal
     // ตัวเดียวกับแถวที่ match ได้ข้างบน — ไม่ใช่ผลรวมแยกต่างหาก)
     let unmatchedRowsHTML = '';
-    if (aAgg.unmatched.length) {
-      const headRow = `<tr class="os-unmatched-row"><td colspan="${3 + apps.length}" class="os-unmatched-head">ไม่พบใน OS master (${aAgg.unmatched.length} คน)</td></tr>`;
-      const rows = aAgg.unmatched.map(u => {
+    if (visibleUnmatched.length) {
+      const headRow = `<tr class="os-unmatched-row"><td colspan="${3 + apps.length}" class="os-unmatched-head">ไม่พบใน OS master (${visibleUnmatched.length} คน)</td></tr>`;
+      const rows = visibleUnmatched.map(u => {
         const cells = apps.map(a => {
           const v = Object.values(u.byAppMonth[a] || {}).reduce((s, v2) => s + v2, 0);
           colTotals[a] += v;
@@ -2170,10 +2276,14 @@ function renderOsView(container){
   const osRows = genericSort(Object.values(S.resourceMap)
     .filter(r => r.resource_type === 'outsource')
     .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
-    .filter(r => osRowVisible(r, rangeStart))
+    .filter(r => osRowVisible(r, rangeStart, filterApplied))
     .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
     S.osSort, osKeyFns(apps, agg));
 
+  // Unchanged from before Change C — see the identical note in the 'actual' branch above: the
+  // "everything got hidden by the filter" case is already handled gracefully by the inline
+  // tbody fallback further down (`bodyRows || '<tr>...ไม่มีข้อมูล</tr>'`), so no extra bailout
+  // is added here (adding one would risk changing behavior even when filterApplied is false).
   if (!apps.length) {
     container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booking ในช่วงที่เลือก</div>';
     return;
@@ -2268,10 +2378,14 @@ function sumCompareCells(cellsList, months){
  *  - aAgg: ผลลัพธ์เต็มของ buildActualOsAgg() ({byResAppMonth, unmatched, ...})
  *  - resources: Object.values(S.resourceMap) — กรองเฉพาะ resource_type==='outsource' เอง
  *  - rangeStart: S.overallRange.s — ส่งต่อให้ osRowVisible() เช็คเกณฑ์ "ลาออกแล้ว" เดิม
+ *  - filterApplied (2026-09-11, Change C, optional — defaults false so any pre-existing 5-arg
+ *    call keeps working unchanged): เมื่อ true ซ่อนแถวที่ total (b+a) = 0 เสมอ (ผ่าน
+ *    osRowVisible()'s 3rd arg สำหรับแถว matched) และตัด unmatched ที่ actual = 0 ออกด้วย
+ *    (unmatched ไม่มี Booked ผูกอยู่แล้ว — "มีผลลัพธ์" = actual ≠ 0 เท่านั้น)
  *  คืน [{ resource_id, name, role_code, apps:[{app, cells}], cells, unmatched? }] — แถว
  *  unmatched (จาก aAgg.unmatched, Booked เป็น 0 เสมอเพราะไม่มี Project ให้ผูก) อยู่ท้ายสุด
  *  เสมอ ไม่ผ่าน osRowVisible() (ไม่มีแนวคิด "ลาออก" สำหรับคนที่จับคู่กับ OS master ไม่ได้เลย) */
-function buildCompareRows(bAgg, aAgg, resources, months, rangeStart){
+function buildCompareRows(bAgg, aAgg, resources, months, rangeStart, filterApplied){
   bAgg = bAgg || {};
   months = months || [];
   const aByResAppMonth = (aAgg && aAgg.byResAppMonth) || {};
@@ -2297,14 +2411,18 @@ function buildCompareRows(bAgg, aAgg, resources, months, rangeStart){
         cells,
       };
     })
-    .filter(r => osRowVisible({ total: r.cells.total.b + r.cells.total.a, end_date: r.end_date, is_active: r.is_active }, rangeStart));
+    .filter(r => osRowVisible({ total: r.cells.total.b + r.cells.total.a, end_date: r.end_date, is_active: r.is_active }, rangeStart, filterApplied));
 
-  const unmatched = unmatchedList.map(u => {
-    const appNames = Object.keys(u.byAppMonth || {}).sort((x, y) => x.localeCompare(y));
-    const apps = appNames.map(app => ({ app, cells: buildCompareCells(null, u.byAppMonth[app], months) }));
-    const cells = sumCompareCells(apps.map(a => a.cells), months);
-    return { resource_id: 'unmatched:' + u.key, name: u.name, role_code: '', apps, cells, unmatched: true };
-  });
+  // Change C: unmatched rows have no Booked at all (nothing to book against — they never
+  // matched an OS master resource), so "has a result" for them means nonzero Actual only.
+  const unmatched = unmatchedList
+    .filter(u => !filterApplied || u.total !== 0)
+    .map(u => {
+      const appNames = Object.keys(u.byAppMonth || {}).sort((x, y) => x.localeCompare(y));
+      const apps = appNames.map(app => ({ app, cells: buildCompareCells(null, u.byAppMonth[app], months) }));
+      const cells = sumCompareCells(apps.map(a => a.cells), months);
+      return { resource_id: 'unmatched:' + u.key, name: u.name, role_code: '', apps, cells, unmatched: true };
+    });
 
   return [...matched, ...unmatched];
 }
@@ -2358,7 +2476,8 @@ function renderOsCompare(container){
   const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
   const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
   const resources = Object.values(S.resourceMap);
-  const allRows = buildCompareRows(bAgg, aAgg, resources, months, rangeStart);
+  // Change C (2026-09-11): any Project/UAT Lead/App filter set → hide zero-result rows.
+  const allRows = buildCompareRows(bAgg, aAgg, resources, months, rangeStart, anyExtraFilterApplied());
   const hintHTML = projectFilterHintHTML();
 
   if (!allRows.length) {
@@ -2954,11 +3073,14 @@ async function downloadAppExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
   try {
-    const rows = buildAppRows();
-    if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
     const months = S.months || [];
     const mode = S.appMode; // 'booked' | 'actual' | 'compare'
-    const sorted = genericSort(rows, S.appSort, appKeyFns(months));
+    const rows = buildAppRows();
+    // Change C (2026-09-11): must match renderAppView()'s visible row set exactly, so the
+    // downloaded file always agrees with what's on screen (and therefore with its own footer total).
+    const visibleRows = anyExtraFilterApplied() ? rows.filter(r => appRowHasResult(r, mode)) : rows;
+    if (!visibleRows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+    const sorted = genericSort(visibleRows, S.appSort, appKeyFns(months));
 
     const filterAoa = buildDownloadFilterAoa(false);
     filterAoa.push(['โหมด', { booked: 'Booked MD', actual: 'Actual MD', compare: 'Compare' }[mode] || 'Booked MD']);
@@ -2984,7 +3106,7 @@ async function downloadAppExcel(){
         appAoa.push(row);
       });
 
-      totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gBookedTotal)), Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff))];
+      totalRow = [`รวมทั้งหมด (${visibleRows.length} apps)`, Number(fmtMD(gBookedTotal)), Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff))];
       months.forEach(mm => totalRow.push(Number(fmtMD(gBookedByMonth[mm]))));
       months.forEach(mm => totalRow.push(Number(fmtMD(gActualByMonth[mm]))));
     } else {
@@ -3009,7 +3131,7 @@ async function downloadAppExcel(){
         appAoa.push(row);
       });
 
-      totalRow = [`รวมทั้งหมด (${rows.length} apps)`, Number(fmtMD(gTotal))];
+      totalRow = [`รวมทั้งหมด (${visibleRows.length} apps)`, Number(fmtMD(gTotal))];
       months.forEach(mm => totalRow.push(Number(fmtMD(gByMonth[mm]))));
     }
     appAoa.push(totalRow);
@@ -3051,7 +3173,8 @@ async function downloadOsExcel(){
       const months = S.months || [];
       const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
       const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
-      const allRows = buildCompareRows(bAgg, aAgg, Object.values(S.resourceMap), months, rangeStart);
+      // Change C (2026-09-11): must match renderOsCompare()'s visible row set exactly.
+      const allRows = buildCompareRows(bAgg, aAgg, Object.values(S.resourceMap), months, rangeStart, anyExtraFilterApplied());
 
       if (!allRows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
 
@@ -3106,8 +3229,11 @@ async function downloadOsExcel(){
     // แต่ดึงข้อมูลจาก Actual แทน ต่อท้ายกลุ่ม "ไม่พบใน OS master" เสมอเมื่อมี unmatched ----
     if (S.osMode === 'actual') {
       const rangeStart = S.overallRange.s || '';
+      // Change C (2026-09-11): must match renderOsView()'s visible row set exactly.
+      const filterApplied = anyExtraFilterApplied();
       const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
       const apps = sortedApps(aAgg.apps);
+      const visibleUnmatched = filterApplied ? aAgg.unmatched.filter(u => u.total !== 0) : aAgg.unmatched;
       const shaped = { byOsApp: {}, byOsTotal: aAgg.byResTotal };
       Object.keys(aAgg.byResAppMonth).forEach(rid => {
         shaped.byOsApp[rid] = {};
@@ -3118,7 +3244,7 @@ async function downloadOsExcel(){
       const osRows = genericSort(Object.values(S.resourceMap)
         .filter(r => r.resource_type === 'outsource')
         .map(r => ({ ...r, total: shaped.byOsTotal[r.resource_id] || 0 }))
-        .filter(r => osRowVisible(r, rangeStart))
+        .filter(r => osRowVisible(r, rangeStart, filterApplied))
         .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
         S.osSort, osKeyFns(apps, shaped));
 
@@ -3138,10 +3264,10 @@ async function downloadOsExcel(){
       });
 
       // กลุ่ม "ไม่พบใน OS master" — ยอดรวมท้ายตาราง (colTotals/grandTotal ตัวเดียวกับข้างบน)
-      // ต้องนับรวมด้วยเสมอ เหมือน renderOsView()
-      if (aAgg.unmatched.length) {
-        osAoa.push([`ไม่พบใน OS master (${aAgg.unmatched.length} คน)`, '', '', ...apps.map(() => '')]);
-        aAgg.unmatched.forEach(u => {
+      // ต้องนับรวมด้วยเสมอ เหมือน renderOsView() (visibleUnmatched — Change C)
+      if (visibleUnmatched.length) {
+        osAoa.push([`ไม่พบใน OS master (${visibleUnmatched.length} คน)`, '', '', ...apps.map(() => '')]);
+        visibleUnmatched.forEach(u => {
           const cells = apps.map(a => {
             const v = Object.values(u.byAppMonth[a] || {}).reduce((s, v2) => s + v2, 0);
             colTotals[a] += v;
@@ -3174,12 +3300,13 @@ async function downloadOsExcel(){
     const apps = sortedApps([...appSet]);
 
     // §5.59: ซ่อน OS ที่ลาออกแล้วและไม่มี MD ในเดือนที่เลือก — เกณฑ์เดียวกับ renderOsView()
-    // (osRowVisible()) เพื่อให้ไฟล์ที่ดาวน์โหลดได้แถวชุดเดียวกับตารางบนจอเสมอ
+    // (osRowVisible()) เพื่อให้ไฟล์ที่ดาวน์โหลดได้แถวชุดเดียวกับตารางบนจอเสมอ — 2026-09-11
+    // (Change C) เพิ่มเงื่อนไขซ่อน total=0 เมื่อมีตัวกรองด้วย (filterApplied, 3rd arg)
     const rangeStart = S.overallRange.s || '';
     const osRows = genericSort(Object.values(S.resourceMap)
       .filter(r => r.resource_type === 'outsource')
       .map(r => ({ ...r, total: agg.byOsTotal[r.resource_id] || 0 }))
-      .filter(r => osRowVisible(r, rangeStart))
+      .filter(r => osRowVisible(r, rangeStart, anyExtraFilterApplied()))
       .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
       S.osSort, osKeyFns(apps, agg));
 
@@ -3517,6 +3644,10 @@ function makeMultiSelect(hostId, items, selectedSet, labelAll){
   // เปิด dropdown ตัวไหน → หุบตัวอื่นทั้งหมดก่อน (เปิดได้ทีละอันเท่านั้น)
   btn.onclick = (e) => {
     e.stopPropagation();
+    // Change A (2026-09-11): host แบบ #msProject อาจถูกปิดใช้งาน (is-disabled) ตอน Mode
+    // เป็น Actual/Compare — pointer-events:none กันคลิกอยู่แล้วเป็นชั้นแรก แต่กันซ้ำที่นี่ด้วย
+    // เผื่อ activation path อื่นที่ไม่ผ่าน pointer events (เช่น click แบบ synthetic)
+    if (host.classList.contains('is-disabled')) return;
     const willOpen = panel.classList.contains('hidden');
     closeAllMsPanels();
     if (willOpen) { panel.classList.remove('hidden'); search.focus(); }
@@ -3654,6 +3785,7 @@ function wireToolbar(){
   $('appModeSelect').addEventListener('change', () => {
     S.appMode = $('appModeSelect').value;
     savePrefs(PAGE, { appMode: S.appMode });
+    updateProjectFilterEnabled(); // 2026-09-11 (Change A)
     if (S.dashView === 'app') renderAppView($('viewContainer'));
   });
   // 2026-09-10 (§5.64): Mode dropdown แท็บ By OS (Booked MD / Actual MD / Compare) — เดิมเป็น
@@ -3665,6 +3797,7 @@ function wireToolbar(){
     S.osMode = $('osModeSelect').value;
     savePrefs(PAGE, { osMode: S.osMode });
     S.osExpanded = {};
+    updateProjectFilterEnabled(); // 2026-09-11 (Change A)
     if (S.dashView === 'os') renderView();
   });
   // req (2026-08-25 ตามคำขอพี่กิ๊บ): ปุ่ม "ล้าง" — เคลียร์ตัวกรองทั้งหมด (Project/UAT
@@ -3706,6 +3839,7 @@ function switchDashView(view){
   $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
   updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
+  updateProjectFilterEnabled(); // 2026-09-11 (Change A) — สลับแท็บอาจเปลี่ยนว่า #msProject ควรถูกปิดใช้งานไหม
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก

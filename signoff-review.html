@@ -8,6 +8,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="theme.css">
 <style>
+  /* ---- fix: rail ซ้ายมือ (.sr-rail-list) เลื่อนดูรายการยาวๆ ไม่ได้ ต้องเลื่อนทั้งหน้าแทน ----
+     ต้นเหตุ: #app (theme.css) เป็นแค่ min-height:100vh (ไม่ใช่ height:100vh + overflow:hidden)
+     → เมื่อเนื้อหารวมสูงเกิน viewport, #app ยืดตามเนื้อหาแทนที่จะหยุดที่ 100vh → .sr-shell
+     (flex:1) ไม่มี containing block ที่ถูกจำกัดความสูงจริงให้อ้างอิง แม้ตัวมันเองจะมี
+     min-height:0 อยู่แล้วก็ตาม → ทั้งหน้ากลาย scroll แทนที่จะเป็น .sr-rail-list/.sr-scroll
+     ที่ scroll ของตัวเอง — แก้ตามแพทเทิร์นเดียวกับ admin.html §5.29 ของ CLAUDE.md: บังคับ
+     #app ให้สูงเต็มจอพอดีด้วย flexbox แทนการเดา px (scope เฉพาะหน้านี้ — อยู่ใน <style>
+     ของ signoff-review.html เอง ไม่กระทบ gantt.html/dashboard.html/outsource.html/
+     calendar.html/admin.html ที่ใช้ #app ร่วมกันจาก theme.css) หน้านี้ไม่มี .main wrapper
+     (.sr-page-head/.sr-shell เป็นลูกตรงของ #app) จึงไม่ต้องแตะ .main เลย */
+  #app {
+    height: 100vh;
+    overflow: hidden;
+  }
+
   /* ---- topbar nav (canonical, same markup/classes as other pages) ---- */
   .topbar .nav { display:flex; gap:4px; margin-left:6px; }
   .topbar .nav a {
