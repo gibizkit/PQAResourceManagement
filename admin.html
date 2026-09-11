@@ -2718,6 +2718,43 @@ function isValidDateStr(s){
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+/** Normalize a raw Work_Date cell value เป็น 'yyyy-mm-dd' ก่อนส่งเข้า isValidDateStr() เดิม
+ *  (2026-09-11 bug fix) — ไฟล์ที่อ่านด้วย XLSX.utils.sheet_to_json(ws, {header:1}) (ไม่ได้เปิด
+ *  cellDates:true) คืนเซลล์ที่เป็น Date จริงใน Excel เป็น **Excel serial number** ดิบๆ
+ *  (เช่น 46266 = 2026-09-01) — isValidDateStr() เดิมรับแค่สตริง 'yyyy-mm-dd' เท่านั้น ทำให้ทุกแถว
+ *  ที่มี Work_Date เป็นวันที่จริง (ไม่ใช่พิมพ์เป็นข้อความ) ถูกบล็อกหมดทั้งที่ข้อมูลถูกต้อง
+ *  ⚠️ ไม่แก้ isValidDateStr() ให้หลวมลง (ยังคง round-trip เช็ค date rollover เหมือนเดิมทุกประการ)
+ *  — ฟังก์ชันนี้แค่ normalize รูปร่างค่าให้ตรงกับที่ isValidDateStr() คาดหวังอยู่แล้ว
+ *  - สตริง 'yyyy-mm-dd' → ไม่เปลี่ยน (พฤติกรรมเดิม)
+ *  - ตัวเลข (Excel serial date, อาจมีเศษทศนิยมของเวลาติดมา) → 'yyyy-mm-dd' ผ่าน
+ *    XLSX.SSF.parse_date_code() (ฟังก์ชันของ SheetJS เอง จัดการ 1900 leap-year bug ให้ถูกต้อง
+ *    แล้ว — ห้ามคำนวณ epoch เองด้วยมือ)
+ *  - object Date (เผื่ออนาคตเปลี่ยนไปอ่านด้วย cellDates:true) → 'yyyy-mm-dd'
+ *  - สตริงตัวเลขล้วน (defensive — sheet_to_json({header:1}) ไม่เคยคืนแบบนี้ให้เซลล์วันที่จริง
+ *    แต่เผื่อไว้ให้ทนทาน) → แปลงเหมือนตัวเลข
+ *  - อย่างอื่น/ว่าง/serial ≤ 0 หรือไม่ finite → คืนผ่าน actualCellText() เหมือนเดิม ปล่อยให้
+ *    isValidDateStr() เป็นคนตัดสิน (ข้อความ error เดิมยังทำงานกับไฟล์ที่พิมพ์วันที่มั่วจริงๆ) */
+function toWorkDateStr(v){
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return actualCellText(v);
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  }
+  let n = null;
+  if (typeof v === 'number') {
+    n = v;
+  } else if (typeof v === 'string') {
+    const s = actualCellText(v);
+    if (/^\d+(\.\d+)?$/.test(s)) n = Number(s);
+  }
+  if (n != null && Number.isFinite(n) && n > 0) {
+    const dc = XLSX.SSF.parse_date_code(n);
+    if (dc && dc.y) {
+      return `${dc.y}-${String(dc.m).padStart(2, '0')}-${String(dc.d).padStart(2, '0')}`;
+    }
+  }
+  return actualCellText(v);
+}
+
 /** Parse the "Data" sheet ของไฟล์ Actual MD รายวัน — แยกจาก parseActualFile() เดิมโดยตั้งใจ
  *  (คนละตาราง คนละคีย์วันที่ — work_date แทน ym) แต่ reuse actualCellText()/รูปแบบ dedupe/
  *  errors-warnings เดิมทั้งหมด เป็น pure function รับ aoa/appCodeSet/leadEmailSet ตรงๆ เทสได้
@@ -2756,7 +2793,7 @@ function parseActualDailyFile(aoa, appCodeSet, leadEmailSet){
     if (isBlankLine(line)) return; // ข้ามแถวว่างเปล่าทั้งแถวเงียบๆ (ไม่ใช่ error)
 
     const [dateRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
-    const work_date = actualCellText(dateRaw);
+    const work_date = toWorkDateStr(dateRaw); // 2026-09-11: normalize Excel serial date ก่อน validate (ดู toWorkDateStr() ด้านบน)
     const appCode = actualCellText(appRaw);
     const nickname_name = actualCellText(nickRaw);
     const en_fullname = actualCellText(fullRaw);
