@@ -871,8 +871,14 @@ async function loadAll() {
       supabase.from('outsource_staff')
         .select('eid,en_fullname,nickname,nickname_name,role_code,end_date,is_active')
         .eq('is_active', true),
+      // 2026-09-11: pqa.resource ไม่มีคอลัมน์ is_active ของตัวเองแล้ว (patch
+      // single_is_active_source — จุดควบคุมเดียวคือ outsource_staff.is_active)
+      // — query นี้แค่ทำ map eid→resource_id เฉยๆ ไม่ต้องกรอง active ที่นี่
+      // (คนที่ active จริงกรองมาจาก staffRows ข้างบนอยู่แล้ว) เดิม .eq('is_active', true)
+      // อ้างคอลัมน์ที่ถูกตัดทิ้งไปแล้ว ทำให้ทั้ง query error เงียบๆ (PostgREST คืน
+      // {data:null,error:...} ไม่ throw) → eidToResId ว่างเปล่า → ตาราง OS ทั้งหน้าว่างเปล่า
       supabase.from('resource').select('resource_id,outsource_eid')
-        .eq('resource_type', 'outsource').eq('is_active', true),
+        .eq('resource_type', 'outsource'),
       // 2026-09-02: paginated with fetchAllRows() — unbounded select() silently drops rows past
       // Supabase's Max Rows cap (1000, see fetchAllRows() in common.js). v_project_wide is 1 row
       // per project (low-risk today) but paginated too, same rationale as dashboard.html §5.49.
