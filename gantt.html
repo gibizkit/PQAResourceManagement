@@ -858,7 +858,12 @@ async function loadAll(){
       loadHolidaysSafe(),
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
-      supabase.from('project_phase').select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order'),
+      fetchAllRows((from, to) => supabase.from('project_phase')
+        .select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order')
+        .order('project_key', { ascending: true })
+        .order('phase_code', { ascending: true })
+        .order('phase_label', { ascending: true })
+        .range(from, to)),   // 2026-09-11: paginated — unbounded select() silently drops rows past Supabase's Max Rows cap, same gap as booking (2026-08-25) / dashboard.html §5.49 / calendar.html (2026-09-02); unique index (project_key, phase_code, coalesce(phase_label,'')) — sql/01_schema.sql
       supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor'),
       supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,manager_emp_id').eq('is_active', true),
       fetchAllRows((from, to) => supabase.from('booking')
