@@ -701,6 +701,27 @@ function clearPendingAttachComposers(){
   if (editAttach) editAttach.clear();
 }
 
+/* ---------------------------------------------------------------------------
+ * ตำแหน่ง scroll ของ .sr-scroll (แผงขวา) ข้าม re-render
+ * renderRoomFull() เขียนทับ convPane.innerHTML ทั้งก้อนทุกครั้ง → .sr-scroll ถูกสร้างใหม่
+ * scrollTop จึงกลับเป็น 0 เสมอ = อ่านค้างอยู่กลางเธรดแล้วกดอีโมจิ/ส่งคอมเมนต์/มี realtime
+ * event เข้ามา หน้าจะเด้งขึ้นบนสุดทุกครั้ง — เก็บค่าไว้ก่อน render แล้วคืนหลัง render
+ * คืนเฉพาะเมื่อยังเป็นห้องเดิม (สลับห้อง = ต้องเริ่มอ่านจากบนสุดตามเดิม)
+ * ------------------------------------------------------------------------- */
+let _srScrollSave = null;   // { pk, top }
+function saveConvScroll(pk){
+  if (pk == null) return;
+  const el = document.querySelector('.sr-scroll');
+  if (el) _srScrollSave = { pk, top: el.scrollTop };
+}
+function restoreConvScroll(pk){
+  const save = _srScrollSave;
+  _srScrollSave = null;
+  if (!save || save.pk !== pk || !save.top) return;
+  const el = document.querySelector('.sr-scroll');
+  if (el) el.scrollTop = save.top;
+}
+
 async function loadRoom(pk){
   // เก็บข้อความที่พิมพ์ค้างไว้ (ยังไม่กด "ส่ง"/"บันทึก") ก่อน re-render ทั้งก้อน — ไม่งั้นถ้ามี
   // realtime event มาระหว่างนั้น (คนอื่นคอมเมนต์ใหม่ กด reaction ฯลฯ หรือแม้แต่ของเราเองจากอีกแท็บ)
@@ -718,6 +739,10 @@ async function loadRoom(pk){
   }
   const _composerTa = document.querySelector('.sr-composer-text');
   if (_composerTa && _composerTa.value) _draft.composer = _composerTa.value;
+
+  // เก็บตำแหน่ง scroll ไว้ก่อน — ต้องทำ "ก่อน" ล้าง convPane ด้านล่าง ไม่งั้น .sr-scroll หายไปแล้ว
+  // (S.room ตอนนี้ยังเป็นห้องเดิม ถ้าเป็นการสลับห้อง pk จะไม่ตรง → restoreConvScroll ข้ามให้เอง)
+  saveConvScroll(S.room ? S.room.pk : null);
 
   $('convPane').innerHTML = '<div class="sr-empty">กำลังโหลด...</div>';
   try {
@@ -1092,6 +1117,9 @@ function buildComposerHTML(proj){
 function renderRoomFull(pk){
   const proj = S.projMap[pk];
   if (!proj || !S.room) { renderConvEmpty(); return; }
+  // เส้นทางที่ไม่ผ่าน loadRoom() (rerenderRoomKeepData: เปิด/ปิดกล่องตอบกลับ-แก้ไข-picker)
+  // ยังไม่ได้เก็บตำแหน่ง scroll ไว้ → เก็บตรงนี้เองก่อนเขียนทับ innerHTML
+  if (!_srScrollSave) saveConvScroll(S.room.pk);
   $('convPane').innerHTML = `
     ${buildRoomHeaderHTML(proj)}
     <div class="sr-scroll">
@@ -1099,6 +1127,7 @@ function renderRoomFull(pk){
       ${buildThreadHTML(proj)}
     </div>
     ${buildComposerHTML(proj)}`;
+  restoreConvScroll(pk);
 
   // โหลดรูปย่อของทุกคอมเมนต์ที่เพิ่ง render + ผูก paste-to-attach ใหม่ทุกช่องพิมพ์ที่มีอยู่ตอนนี้
   hydrateAttachmentThumbs($('convPane'));
