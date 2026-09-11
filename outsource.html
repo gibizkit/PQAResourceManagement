@@ -109,6 +109,17 @@
     width: auto;
     margin: 0;
   }
+  /* Mode = Actual MD: ปิดการใช้งานบางตัวกรอง (§4.6) — ค่าที่เลือกไว้ไม่ถูกล้าง
+     แค่ปิดการโต้ตอบด้วย pointer-events + สีจาง ดู applyOsModeGating() */
+  .chk.disabled { opacity: .45; cursor: not-allowed; }
+  .chk.disabled input { cursor: not-allowed; }
+  .fld.fld-disabled .ms-btn { opacity: .45; pointer-events: none; cursor: not-allowed; }
+  .fld-hint {
+    font-size: 11px;
+    color: var(--dk-text3);
+    margin-top: 3px;
+  }
+  .fld-hint.hidden { display: none; }
 
   /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt) ---- */
   .ms { position:relative; }
@@ -267,6 +278,13 @@
   .td-day.half  { background: var(--os-cell-half); color: var(--dk-text); font-weight: 700; font-size: 10px; }
   .td-day.leave { background: var(--os-cell-leave); color: #fff; font-weight: 700; font-size: 10px; }
 
+  /* Mode = Actual MD (§5.67-D, §4.3): แรเงา 3 ระดับตามค่า MD จริงของวันนั้น — คนละโทนสีกับ
+     Booked (--os-cell-full/half) ตั้งใจ กันสับสนว่ากำลังดู Booked หรือ Actual อยู่ */
+  .td-day.act-cell { cursor: default; }
+  .td-day.act-hi   { background: #4C7A8C; color: #fff; font-weight: 700; }
+  .td-day.act-mid  { background: #8FB6C4; color: var(--dk-text); font-weight: 700; font-size: 11px; }
+  .td-day.act-lo   { background: #DCEAEE; color: var(--dk-text); font-size: 10px; }
+
   tr.grp-sep td {
     background: var(--dk-hover);
     color: var(--dk-text2);
@@ -411,9 +429,10 @@
     </div>
 
     <div class="filters hidden" id="filterPanel">
-      <div class="fld">
+      <div class="fld" id="fldProject">
         <label>Project</label>
         <div class="ms" id="msProject"></div>
+        <div class="fld-hint hidden" id="msProjectHint">ตัวกรองนี้ใช้กับ Actual MD ไม่ได้</div>
       </div>
       <div class="fld">
         <label>UAT Lead</label>
@@ -431,6 +450,13 @@
           <option value="app">App</option>
           <option value="lead">UAT Lead</option>
           <option value="none">None</option>
+        </select>
+      </div>
+      <div class="fld" id="osModeFld">
+        <label>Mode</label>
+        <select id="osModeSelect">
+          <option value="booked" selected>Booked MD</option>
+          <option value="actual">Actual MD</option>
         </select>
       </div>
       <div class="fld">
@@ -582,6 +608,22 @@
   </div>
 </div>
 
+<!-- ============ ACTUAL MD RANGE INFO POPUP (§4.7) ============ -->
+<div id="actualRangeOverlay" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Actual MD</h3>
+      <span class="x" onclick="closeActualRangeOverlay()">×</span>
+    </div>
+    <div class="modal-body">
+      <p id="actualRangeMsg"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" onclick="closeActualRangeOverlay()">ตกลง</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -624,8 +666,24 @@ const S = {
   leaves: [],
   bookingsByResource: {},
   leavesByResource: {},
-  range: { s: null, e: null }
+  range: { s: null, e: null },
+  // Mode = Booked MD (default) / Actual MD (§5.67 — spec 2026-09-11-outsource-actual-md-daily-design.md)
+  osMode: 'booked',
+  // Group by = 'project' ไม่รองรับในโหมด Actual — เก็บค่าที่ต้อง fallback ไว้ชั่วคราวที่นี่
+  // (ไม่ใช่ prefs) เพื่อคืนกลับให้ตอนสลับกลับ Booked โดยไม่เขียนทับ sessionStorage (§4.6)
+  groupByBeforeActual: null,
+  // Actual MD รายวัน (§5.67-D, spec §4.4/§4.5) — cache แยกจาก Booked data ทั้งหมด
+  actual: {
+    loadedKey: null,          // `${S.range.s}|${S.range.e}` ของช่วงล่าสุดที่ fetch ไปแล้ว (สำเร็จ/พลาดก็ตั้งไว้ กันยิงซ้ำ — §4.4)
+    rawRows: [],              // แถวดิบจาก v_actual_md_daily_person + _resourceId (จับคู่ชื่อแล้ว, null = ไม่พบใน OS master)
+    byKeyDate: {},             // (actualCellKey(p) + '|' + work_date) -> [{app_code, actual_md}] — หลังกรอง App/UAT Lead แล้ว
+    matchedIdsWithData: new Set(), // resourceId ที่มี Actual row อย่างน้อย 1 แถวหลังกรอง App/UAT Lead
+    unmatchedList: []          // [{resourceId:null, fullName, ...}] คนที่จับคู่กับ OS master ไม่ได้ (§4.5)
+  }
 };
+
+const OS_MODES = ['booked', 'actual'];
+function isActualMode() { return S.osMode === 'actual'; }
 
 // Manage Booking modal globals
 let MB_NAME = null;   // resourceId
@@ -816,6 +874,9 @@ function restoreFilterPrefs() {
   if (typeof p.skills === 'string') $('fSkills').value = p.skills;
   if (['booked', 'project', 'app', 'lead', 'none'].includes(p.groupByMode)) $('selGroupBy').value = p.groupByMode;
   if (typeof p.conflict === 'boolean') $('chkConflict').checked = p.conflict;
+  // Mode = Booked/Actual (§5.67) — whitelist validate ตามกติกา §5.21: ค่าที่ไม่รู้จักตกไป 'booked' เงียบๆ
+  S.osMode = OS_MODES.includes(p.osMode) ? p.osMode : 'booked';
+  $('osModeSelect').value = S.osMode;
 
   // ต้อง restore ก่อน loadAll()/buildFilterMultiSelects() เพื่อให้ multi-select ขึ้น checked ถูกตั้งแต่แรก
   S.filter.projects = prefSet(p.projects);
@@ -824,6 +885,8 @@ function restoreFilterPrefs() {
 
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
   updateToggleFilterBtnLabel();
+  // gating ตามโหมดที่ restore มา — ไม่เด้ง popup ตอนโหลดหน้า (popup เด้งเฉพาะตอนผู้ใช้สลับโหมดเอง, §4.7)
+  applyOsModeGating();
 }
 
 // sync ข้อความปุ่ม toggle ให้ตรงกับสถานะ filterPanel เสมอ (Open Filter/Close Filter)
@@ -833,6 +896,14 @@ function updateToggleFilterBtnLabel(){
   $('toggleFilterBtn').textContent = open ? '🔎 Close Filter' : '🔎 Open Filter';
 }
 
+// ค่า groupByMode "จริง" ที่ต้องเขียนลง prefs — ต่างจาก $('selGroupBy').value ตรงๆ เมื่ออยู่
+// โหมด Actual และ DOM ถูก fallback เป็น 'none' ชั่วคราว (applyOsModeGating(), §4.6): ต้องคง
+// ค่า 'project' เดิมไว้ใน prefs เสมอ ไม่งั้นสลับกลับ Booked แล้วจะได้ 'none' แทน 'project'
+function groupByModeForPrefs() {
+  if (isActualMode() && S.groupByBeforeActual) return S.groupByBeforeActual;
+  return $('selGroupBy').value;
+}
+
 // dump ค่า filter ปัจจุบัน (+panelOpen จาก DOM) ลง sessionStorage — เรียกทุกจุดที่ filter เปลี่ยน
 function saveFilterPrefs() {
   savePrefs('outsource', {
@@ -840,14 +911,75 @@ function saveFilterPrefs() {
     skills: $('fSkills').value,
     start: S.range.s,
     end: S.range.e,
-    groupByMode: $('selGroupBy').value,
+    groupByMode: groupByModeForPrefs(),
     conflict: $('chkConflict').checked,
+    osMode: S.osMode,
     projects: [...S.filter.projects],
     leads: [...S.filter.leads],
     apps: [...S.filter.apps],
     panelOpen: !$('filterPanel').classList.contains('hidden'),
   });
 }
+
+/* ============ MODE = ACTUAL MD — GATING + INFO POPUP (§4.6/§4.7) ============ */
+// ปิดใช้งานตัวกรองที่ไม่มีผลกับ Actual MD เมื่ออยู่โหมด Actual — เรียกซ้ำได้ตลอด (idempotent)
+// ไม่เคยล้างค่าที่ผู้ใช้เลือกไว้เลย (Project/Group by) แค่ปิดการโต้ตอบ/fallback DOM ชั่วคราว
+function applyOsModeGating() {
+  const actual = isActualMode();
+
+  // 1) Project multi-select — disabled + สีจาง + hint, ค่าที่เลือกไว้ (S.filter.projects) ไม่ถูกแตะ
+  const projFld = document.getElementById('fldProject');
+  if (projFld) projFld.classList.toggle('fld-disabled', actual);
+  const projHint = $('msProjectHint');
+  if (projHint) projHint.classList.toggle('hidden', !actual);
+
+  // 2) Group by = Project ใช้กับ Actual ไม่ได้ → fallback DOM เป็น 'none' ชั่วคราว โดยไม่เขียนทับ
+  //    prefs (saveFilterPrefs() อ่านค่าจริงผ่าน groupByModeForPrefs() แทน ไม่ใช่ DOM ตรงๆ)
+  const grpSel = $('selGroupBy');
+  const projOpt = grpSel.querySelector('option[value="project"]');
+  if (actual) {
+    if (grpSel.value === 'project') {
+      S.groupByBeforeActual = 'project';
+      grpSel.value = 'none';
+    }
+    if (projOpt) projOpt.disabled = true;
+  } else {
+    if (projOpt) projOpt.disabled = false;
+    if (S.groupByBeforeActual) {
+      grpSel.value = S.groupByBeforeActual;
+      S.groupByBeforeActual = null;
+    }
+  }
+
+  // 3) Show only conflict — ไม่เกี่ยวกับ Actual MD (conflict มาจาก booking ชนกัน)
+  const chk = $('chkConflict');
+  chk.disabled = actual;
+  const chkLabel = chk.closest('.chk');
+  if (chkLabel) chkLabel.classList.toggle('disabled', actual);
+}
+
+// popup บอกช่วงข้อมูล Actual MD — เด้งทุกครั้งที่ผู้ใช้สลับ "เข้า" โหมด Actual (ไม่จำว่าเคยเห็นแล้ว)
+// อ่านจาก pqa.v_actual_md_daily_range (แถวเดียว ไม่ต้องโหลดทั้งตารางมานับ) — โหลดพลาด/ยังไม่มีตาราง
+// (patch อาจยังไม่ได้รันบน Supabase จริง) ต้องไม่ fatal
+async function showActualRangeInfo() {
+  let msg = 'ยังไม่มีข้อมูล Actual MD — อัปโหลดได้ที่ Admin > Browse File';
+  try {
+    const { data, error } = await supabase
+      .from('v_actual_md_daily_range')
+      .select('min_date,max_date,row_count')
+      .maybeSingle();
+    if (!error && data && Number(data.row_count) > 0 && data.min_date && data.max_date) {
+      msg = `Actual MD มีข้อมูลตั้งแต่ ${dDisp(data.min_date)} ถึง ${dDisp(data.max_date)}`;
+    }
+  } catch (e) {
+    console.warn('v_actual_md_daily_range load error', e);
+  }
+  $('actualRangeMsg').textContent = msg;
+  $('actualRangeOverlay').classList.remove('hidden');
+}
+window.closeActualRangeOverlay = function () {
+  $('actualRangeOverlay').classList.add('hidden');
+};
 
 /* ============ LOAD MASTER + RANGE DATA ============ */
 function setDefaultRangeIfEmpty() {
@@ -897,7 +1029,9 @@ async function loadAll() {
         .range(from, to)),   // unique index (project_key, phase_code, coalesce(phase_label,'')) — sql/01_schema.sql
       supabase.from('outsource_skill').select('eid,skills'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
-      supabase.from('pqa_lead').select('emp_id,short_name').eq('is_active', true).order('short_name', { ascending: true })
+      // email เพิ่มเข้ามา (§5.67-D) — ใช้จับคู่ approver_choice (อีเมล) ของ Actual MD รายวัน
+      // กับ short_name เพื่อให้ตัวกรอง UAT Lead ใช้กับโหมด Actual ได้ (booked mode ไม่ใช้ email เลย)
+      supabase.from('pqa_lead').select('emp_id,short_name,email').eq('is_active', true).order('short_name', { ascending: true })
     ]);
 
     S.holidays = holidays || {};
@@ -961,6 +1095,9 @@ async function loadAll() {
 
     setDefaultRangeIfEmpty();
     await reloadRangeData();
+    // เข้าหน้ามาแล้วอยู่โหมด Actual อยู่แล้ว (restore มาจาก prefs) — โหลด Actual ครั้งแรก
+    // (lazy load, §4.4) ไม่เด้ง popup ตอนบูตหน้า (popup เด้งเฉพาะตอนผู้ใช้สลับโหมดเอง)
+    if (isActualMode()) await ensureActualData();
     renderGrid();
   } catch (e) {
     $('osTbody').innerHTML =
@@ -1159,6 +1296,208 @@ function buildDayCell(p, ds, rowFilter) {
   return `<td class="${cls}"${titleAttr}${onclick}>${content}</td>`;
 }
 
+// ============ MODE = ACTUAL MD (§5.67, spec 2026-09-11-outsource-actual-md-daily-design.md) ============
+// Contract ระหว่าง Task C (โครง/gating) ↔ Task D (ของจริง) — ห้ามเปลี่ยนชื่อ 2 ตัวนี้
+// (ดู docs/superpowers/plans/2026-09-11-outsource-actual-md-daily.md หัวข้อ "Contract")
+
+// normalize ชื่อสำหรับจับคู่ Actual (ไฟล์ Excel นำเข้าผ่าน Admin) กับ v_resource.full_name_en —
+// SQL view v_actual_md_daily_person ทำ lower(btrim()) มาแล้ว (สร้าง name_key) แต่ยังต้องยุบ
+// ช่องว่างซ้ำกลางชื่อเพิ่มอีกชั้นฝั่งนี้ (เหมือน dashboard.html normNameKey(), §5.63 Task 3)
+// — idempotent: เรียกซ้ำกับค่าที่ normalize แล้วไม่เปลี่ยนอะไร จึงใช้กับทั้ง p.fullName (ดิบ)
+// และ row.name_key (normalize มาจาก SQL แล้ว) ได้เหมือนกัน
+function normNameKey(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// key สำหรับ index ของ cell หนึ่งช่อง (คนละความหมายกับ resourceId ตรงๆ เพราะคนที่ไม่พบใน
+// OS master ไม่มี resourceId — ใช้ name_key แทน, prefix 'r:'/'n:' กันชนกันเผื่อ id ซ้ำ key)
+function actualCellKey(p) {
+  return p && p.resourceId != null ? ('r:' + p.resourceId) : ('n:' + (p && p._actualNameKey || ''));
+}
+
+// จับคู่ en_fullname ของ Actual data (ผ่าน normNameKey) กับ S.osStaff.fullName — ชื่อซ้ำกัน
+// ผูกกับคนแรกที่เจอเสมอ (deterministic ไม่สุ่ม, แพทเทิร์นเดียวกับ dashboard.html buildActualOsAgg())
+function buildActualNameIndex() {
+  const map = {};
+  S.osStaff.forEach(p => {
+    const k = normNameKey(p.fullName);
+    if (!k || map[k] != null) return;
+    map[k] = p.resourceId;
+  });
+  return map;
+}
+
+// Task D เติม logic จริง: โหลด pqa.v_actual_md_daily_person (ห่อ fetchAllRows()) กรองตาม
+// S.range ปัจจุบัน + normNameKey() จับคู่กับ v_resource, สร้าง index ให้ buildActualDayCell()
+// อ่านแบบ O(1), และ cache ไว้ไม่ query ซ้ำถ้าโหมด/ช่วงวันที่ไม่เปลี่ยน (โหลด lazy — §4.4)
+async function ensureActualData() {
+  const rangeKey = `${S.range.s}|${S.range.e}`;
+  // ช่วงวันที่เดิม (fetch ไปแล้วไม่ว่าสำเร็จหรือพลาด) → ไม่ยิง query ซ้ำ แค่รีเฟรช index
+  // ตามตัวกรอง App/UAT Lead ปัจจุบัน (อาจเปลี่ยนไปตั้งแต่ fetch ครั้งก่อน)
+  if (S.actual.loadedKey === rangeKey) {
+    refreshActualIndex();
+    return;
+  }
+  try {
+    const s = S.range.s, e = S.range.e;
+    const res = await fetchAllRows((from, to) => supabase.from('v_actual_md_daily_person')
+      .select('work_date,name_key,app_code,approver_choice,actual_md')
+      .gte('work_date', s).lte('work_date', e)
+      .order('work_date', { ascending: true })
+      .order('name_key', { ascending: true })
+      .order('app_code', { ascending: true })
+      .range(from, to));
+    if (res.error) throw res.error;
+    const nameIdx = buildActualNameIndex();
+    S.actual.rawRows = (res.data || []).map(row => ({
+      work_date: row.work_date,
+      name_key: row.name_key,
+      app_code: row.app_code,
+      approver_choice: row.approver_choice,
+      actual_md: row.actual_md,
+      _resourceId: nameIdx[normNameKey(row.name_key)] ?? null
+    }));
+  } catch (e) {
+    // ไม่ fatal — patch อาจยังไม่ได้รันบน Supabase จริง (view ยังไม่มี) หรือ network error
+    console.warn('ensureActualData: load v_actual_md_daily_person error', e);
+    toast('โหลด Actual MD ไม่สำเร็จ: ' + (e && e.message || String(e)), true);
+    S.actual.rawRows = [];
+  }
+  S.actual.loadedKey = rangeKey;
+  refreshActualIndex();
+}
+
+// สร้าง index ใหม่จาก S.actual.rawRows (ในหน่วยความจำล้วน ไม่ query) — เรียกได้ทุกครั้งที่ render
+// โหมด Actual (renderTbody) เพราะตัวกรอง App/UAT Lead เปลี่ยนได้โดยไม่ต้อง fetch ใหม่ (§4.4)
+function refreshActualIndex() {
+  const byKeyDate = {};
+  const unmatchedMap = {};
+  const matchedIdsWithData = new Set();
+
+  // approver_choice เป็นอีเมล — ต้อง map เป็น short_name ของ pqa_lead ถึงจะเทียบกับ
+  // S.filter.leads ได้ (multi-select UAT Lead ใช้ short_name เป็น value เหมือน Booked mode)
+  const emailToLeadShort = {};
+  S.leads.forEach(l => { if (l.email) emailToLeadShort[String(l.email).toLowerCase()] = l.short_name; });
+
+  (S.actual.rawRows || []).forEach(row => {
+    if (S.filter.apps.size && !S.filter.apps.has(row.app_code)) return;
+    if (S.filter.leads.size) {
+      const leadShort = row.approver_choice ? emailToLeadShort[String(row.approver_choice).toLowerCase()] : null;
+      if (!(leadShort && S.filter.leads.has(leadShort))) return;
+    }
+    const isMatched = row._resourceId != null;
+    const key = isMatched ? ('r:' + row._resourceId) : ('n:' + row.name_key);
+    const dk = key + '|' + row.work_date;
+    (byKeyDate[dk] = byKeyDate[dk] || []).push({ app_code: row.app_code, actual_md: row.actual_md });
+    if (isMatched) {
+      matchedIdsWithData.add(row._resourceId);
+    } else {
+      // ไม่พบใน OS master — ไม่ทิ้ง กองเป็น virtual "person" ให้ buildRow วาดแถวได้เหมือนคนจริง
+      // (ไม่มี resourceId จริง จึงไม่มี booking/leave/conflict ผูกด้วย — §4.5)
+      unmatchedMap[row.name_key] = unmatchedMap[row.name_key] || {
+        resourceId: null, eid: null, fullName: row.name_key, nickname: '', nicknameName: row.name_key,
+        roleCode: null, skills: '', endDate: null,
+        _actualNameKey: row.name_key, _actualUnmatched: true
+      };
+    }
+  });
+
+  S.actual.byKeyDate = byKeyDate;
+  S.actual.matchedIdsWithData = matchedIdsWithData;
+  S.actual.unmatchedList = Object.values(unmatchedMap)
+    .sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
+}
+
+// ตัวกรอง Actual mode เฉพาะ (แยกจาก matchesFilters() เดิมของ Booked mode โดยตั้งใจ — ห้ามแก้
+// matchesFilters() ตามกติกา §5.67 regression guard) — ชื่อ/สกิล/วันลาออก เหมือนเดิมทุกประการ
+// แต่: (1) Project ไม่มีผลกับ Actual เลย (§4.6 — ไม่เช็ค S.filter.projects) (2) App/UAT Lead
+// เช็คจาก Actual data จริง (S.actual.matchedIdsWithData ที่ refreshActualIndex() กรองมาให้แล้ว)
+// ไม่ใช่จาก Booking เหมือน matchesFilters()
+function matchesActualFilters(p) {
+  const nameQ = $('fName').value.trim().toLowerCase();
+  const skillQ = $('fSkills').value.trim().toLowerCase();
+  if (nameQ) {
+    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''}`.toLowerCase();
+    if (!hay.includes(nameQ)) return false;
+  }
+  if (skillQ && !(p.skills || '').toLowerCase().includes(skillQ)) return false;
+  if (p.endDate && S.range.s && p.endDate < S.range.s) return false;
+  if ((S.filter.apps.size || S.filter.leads.size) && !S.actual.matchedIdsWithData.has(p.resourceId)) return false;
+  return true;
+}
+
+// คนที่ไม่พบใน OS master (§4.5) ที่ผ่านตัวกรองชื่อด้วย (สกิลไม่เกี่ยวเพราะไม่มีข้อมูลสกิลของ
+// คนกลุ่มนี้ — App/UAT Lead กรองไปแล้วตอนสร้าง S.actual.unmatchedList ใน refreshActualIndex())
+function unmatchedActualRowsFiltered() {
+  const nameQ = $('fName').value.trim().toLowerCase();
+  if (!nameQ) return S.actual.unmatchedList || [];
+  return (S.actual.unmatchedList || []).filter(u => String(u.fullName || '').toLowerCase().includes(nameQ));
+}
+
+// สร้างกลุ่มท้ายตาราง "ไม่พบใน OS master (N คน)" ของโหมด Actual — แยกเป็นฟังก์ชันเดี่ยว
+// (คืนรูปแบบเดียวกับ renderByProjectGroups()/renderByAttrGroups() คือ {html, count}) เพื่อให้
+// เทสต์เรียกตรงได้โดยไม่ต้องประกอบ DOM/state ทั้งหน้า — เรียกจาก renderTbody() เท่านั้น
+function renderUnmatchedActualGroup(days, conflictMap, colspan) {
+  const unmatched = unmatchedActualRowsFiltered();
+  if (!unmatched.length) return { html: '', count: 0 };
+  const html =
+    `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">👤 ไม่พบใน OS master (${unmatched.length} คน)</span></td></tr>` +
+    unmatched.map(u => buildRow(u, days, conflictMap)).join('');
+  return { html, count: unmatched.length };
+}
+
+// Task D เติม logic จริง: วาด cell จาก Actual MD รายวัน (มีค่า → เลขเสมอ + แรเงาตามค่า,
+// ไม่มีค่า → ว่าง, เสาร์-อาทิตย์/วันหยุด → เทาเหมือนเดิม, วันลาทับ → ยังระบายสีลา + ตัวเลข Actual
+// ทับบน, tooltip จาก App|Project_Code, ไม่มี onclick) — ดู §4.3
+//
+// หมายเหตุการตัดสินใจ (2026-09-11): view v_actual_md_daily_person รวมยอด actual_md ต่อ
+// (work_date, name_key, app_code, approver_choice) แล้ว — ไม่มี project_code ให้ใช้ต่อ (ถูก
+// group ทิ้งไปตอนสร้าง view) จึง tooltip เป็น "App [MD:x]" ต่อบรรทัด (ไม่ใช่ "App | Project_Code")
+// ตามที่ spec เสนอทางเลือกไว้ — เลือกใช้ view ตามเดิมแทนการขยาย query อ่านตารางดิบ เพราะ (1) คง
+// ข้อดีของ view ที่ลดจำนวนแถวไว้ตามที่ spec §2.2 ตั้งใจ (2) project_code เป็น free text ไม่ผูก FK
+// อยู่แล้ว ไม่ใช่ข้อมูลที่ธุรกิจต้องอิงเป๊ะเหมือน App — สูญเสียแค่รายละเอียดใน tooltip เท่านั้น
+//
+// rowFilter ถูกละเว้นโดยตั้งใจ — ใช้เฉพาะ Group by Project/App/UAT Lead ของ Booked mode
+// (กรอง booking object ตาม project_key/attrKeyOf) ซึ่ง Actual data ไม่มีมิติ project ให้กรอง
+// แบบเดียวกัน (Group by Project ถูก disable ไปแล้วในโหมด Actual ตาม §4.6) และ Group by App/
+// UAT Lead ที่ยังเปิดใช้ได้ก็จัดกลุ่มจาก Booking-project attribute อยู่ดี (ไม่ใช่จาก Actual data)
+// — cell ของ Actual จึงแสดงผลรวมทั้งหมดของวันนั้นเสมอไม่ว่าจะอยู่ใน section ไหน
+function buildActualDayCell(p, ds, rowFilter) {
+  const d = new Date(ds + 'T00:00:00');
+  const wknd = isWknd(d, S.holidays);
+  const leave = p.resourceId != null
+    ? (S.leavesByResource[p.resourceId] || []).find(l => ds >= l.start_date && ds <= l.end_date)
+    : null;
+
+  const rows = (S.actual.byKeyDate || {})[actualCellKey(p) + '|' + ds] || [];
+  const total = rows.reduce((s, r) => s + (Number(r.actual_md) || 0), 0);
+  const hasVal = rows.length > 0;
+
+  let cls = 'td-day act-cell';
+  let content = '';
+
+  if (wknd) {
+    cls += ' wknd';
+  } else if (leave) {
+    // วันลายังระบายสีเหมือนเดิม — ถ้าวันนั้นมี Actual ด้วย ตัวเลขทับบนพื้นสีลา (เห็นทั้งคู่, §4.3)
+    cls += ' leave';
+    if (hasVal) content = fmtMD(total);
+  } else if (hasVal) {
+    cls += total >= 1 ? ' act-hi' : (total >= 0.5 ? ' act-mid' : ' act-lo');
+    content = fmtMD(total);
+  }
+
+  const titleLines = rows.map(r => {
+    const app = S.apps.find(a => a.app_code === r.app_code);
+    const label = app && app.app_name ? `${r.app_code} ${app.app_name}` : (r.app_code || '');
+    return `${label} [MD:${fmtMD(r.actual_md)}]`;
+  });
+  const titleAttr = titleLines.length ? ` title="${esc(titleLines.join('\n'))}"` : '';
+
+  // ไม่มี onclick โดยตั้งใจ — เปิด Manage Booking ไม่ได้ในโหมด Actual (§4.3)
+  return `<td class="${cls}"${titleAttr}>${content}</td>`;
+}
+
 function buildRow(p, days, conflictMap, rowFilter) {
   const conflictDates = conflictMap[p.resourceId] || [];
   const isConflict = conflictDates.length > 0;
@@ -1169,7 +1508,9 @@ function buildRow(p, days, conflictMap, rowFilter) {
     ? ` title="มีวันที่ Book เกิน MD: ${esc(conflictDates.map(dDispShort).join(', '))}"`
     : '';
   const nameCls = isConflict ? 'os-name conflict' : 'os-name';
-  const dayCells = days.map(ds => buildDayCell(p, ds, rowFilter)).join('');
+  // โหมด Actual ใช้ cell builder คนละตัว (buildActualDayCell) — โหมด Booked เดิมไม่ถูกแตะ (buildDayCell)
+  const cellFn = isActualMode() ? buildActualDayCell : buildDayCell;
+  const dayCells = days.map(ds => cellFn(p, ds, rowFilter)).join('');
 
   return `<tr>
     <td class="col-name sticky-l0">
@@ -1394,9 +1735,16 @@ document.addEventListener('click', closeAllMsPanels);
 
 function renderTbody(days) {
   const conflictMap = computeConflictMap(days);
-  let list = S.osStaff.filter(matchesFilters);
+  const actualMode = isActualMode();
+  // ตัวกรอง App/UAT Lead อาจเปลี่ยนไปตั้งแต่ครั้งก่อนที่ ensureActualData() fetch ข้อมูลมา —
+  // rebuild index ทุกครั้งที่ render โหมด Actual (ในหน่วยความจำล้วน ไม่ query ซ้ำ, §4.4)
+  if (actualMode) refreshActualIndex();
+  let list = actualMode ? S.osStaff.filter(matchesActualFilters) : S.osStaff.filter(matchesFilters);
 
-  const chkConflict = $('chkConflict').checked;
+  // Show only conflict ไม่มีผลกับ Actual MD (conflict มาจาก booking ชนกัน ไม่เกี่ยวกับ
+  // Actual — §4.6) — checkbox ถูก disabled แล้วแต่ค่า .checked ที่ค้างมาจากก่อนสลับโหมด
+  // ต้องไม่มีผลต่อการกรองด้วย
+  const chkConflict = !actualMode && $('chkConflict').checked;
   if (chkConflict) list = list.filter(p => (conflictMap[p.resourceId] || []).length > 0);
 
   const withMeta = list.map(toMeta);
@@ -1428,6 +1776,16 @@ function renderTbody(days) {
     html = withMeta.sort(sortFn).map(x => buildRow(x.p, days, conflictMap)).join('');
   }
 
+  // โหมด Actual: คนที่มี Actual MD แต่จับคู่ชื่อกับ OS master ไม่ได้เลย → กองเป็นกลุ่มท้ายสุด
+  // เสมอ ไม่ว่าจะเลือก Group by แบบไหนอยู่ก็ตาม (ไม่ทิ้ง — §4.5, แพทเทิร์นเดียวกับ "ยังไม่มี
+  // Project" §5.47) — นับรวมเข้า shownCount ด้วย ไม่งั้นตัวเลขหัวตาราง (osCount) จะไม่ตรงกับ
+  // จำนวนแถวที่ render จริง
+  if (actualMode) {
+    const built = renderUnmatchedActualGroup(days, conflictMap, colspan);
+    html += built.html;
+    shownCount += built.count;
+  }
+
   if (!html) {
     html = chkConflict
       ? `<tr><td colspan="${colspan}" class="loading">ไม่พบ Booking Conflict</td></tr>`
@@ -1441,8 +1799,25 @@ function renderTbody(days) {
 /* ============ TOOLBAR EVENTS ============ */
 $('fName').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
 $('fSkills').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
-$('selGroupBy').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
+$('selGroupBy').addEventListener('change', () => {
+  // ผู้ใช้เลือก Group by เองระหว่างอยู่โหมด Actual (เช่นเปลี่ยนเป็น App/UAT Lead/None) —
+  // ถือเป็นการเลือกใหม่ที่ตั้งใจ ไม่ต้อง auto-restore 'project' อีกตอนสลับกลับ Booked แล้ว
+  // (ค่าที่เลือกใหม่นี้ถูกเซฟลง prefs ปกติผ่าน saveFilterPrefs() ด้านล่างอยู่แล้ว)
+  if (isActualMode()) S.groupByBeforeActual = null;
+  renderGrid(); saveFilterPrefs();
+});
 $('chkConflict').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
+$('osModeSelect').addEventListener('change', async () => {
+  S.osMode = OS_MODES.includes($('osModeSelect').value) ? $('osModeSelect').value : 'booked';
+  $('osModeSelect').value = S.osMode;
+  applyOsModeGating();
+  if (isActualMode()) {
+    await ensureActualData();     // โหลด/cache ตามช่วงวันที่ปัจจุบัน (lazy, §4.4)
+    showActualRangeInfo();        // ไม่ await ตั้งใจ — ไม่บล็อก renderGrid()/ผู้ใช้งานต่อ
+  }
+  renderGrid();
+  saveFilterPrefs();
+});
 
 async function onRangeChange() {
   const s = parseInputDate($('fStart').value);
@@ -1452,6 +1827,7 @@ async function onRangeChange() {
   S.range = { s, e };
   $('osTbody').innerHTML = '<tr><td class="loading">กำลังโหลด...</td></tr>';
   await reloadRangeData();
+  if (isActualMode()) await ensureActualData();   // ช่วงวันที่เปลี่ยน → cache key เปลี่ยน → โหลด Actual ใหม่
   renderGrid();
   saveFilterPrefs();   // ครอบคลุมทั้ง applyBtn และตอนแก้ fStart/fEnd ตรงๆ (ทั้งคู่มาลง onRangeChange)
   return true;
@@ -1478,6 +1854,10 @@ $('clearFilterBtn').addEventListener('click', async () => {
   const today = new Date();
   $('fStart').value = d2s(addDaysToDate(today, -10));
   $('fEnd').value = defaultFilterEndStr();
+  // ตั้ง Group by = 'project' ตรงๆ ข้างบน — ถ้ากำลังอยู่โหมด Actual ต้อง apply gating ซ้ำ
+  // เพื่อ fallback DOM เป็น 'none' อีกครั้ง (ไม่งั้น browser จะปฏิเสธ select ตัวเลือกที่ disabled
+  // อยู่เงียบๆ และ groupByBeforeActual จะไม่ถูกตั้งค่าให้ตรงกับที่ผู้ใช้เห็นจริง)
+  applyOsModeGating();
   const ok = await onRangeChange();   // ตั้ง S.range จากค่า default ด้านบน + reload + render + save
   if (!ok) { renderGrid(); saveFilterPrefs(); }
 });

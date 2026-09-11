@@ -616,6 +616,7 @@
         <div class="toolbar">
           <select id="bfTemplateType">
             <option value="actual_md">Actual MD</option>
+            <option value="actual_md_daily">Actual MD (รายวัน)</option>
           </select>
           <button class="btn" id="bfDownloadTemplateBtn">⬇ Download Template</button>
         </div>
@@ -625,6 +626,7 @@
         <div class="toolbar">
           <select id="bfUploadType">
             <option value="actual_md">Actual MD</option>
+            <option value="actual_md_daily">Actual MD (รายวัน)</option>
           </select>
           <input type="file" id="bfUploadFile" accept=".xlsx,.xls" class="hidden">
           <button class="btn" id="bfUploadBtn">⬆ Upload</button>
@@ -759,6 +761,26 @@
       <div class="form-err" id="actualImportErr"></div>
       <button class="btn" onclick="closeActualImportModal()">ยกเลิก</button>
       <button class="btn accent" id="actualImportConfirmBtn" onclick="confirmActualImport()">ยืนยันนำเข้า</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ IMPORT ACTUAL MD (รายวัน) PREVIEW MODAL (2026-09-11 §5.67-B) ============
+     ชนิดไฟล์ที่ 2 ของ Browse File — แยก overlay/element ของตัวเองจาก #actualImportOverlay เดิม
+     (คนละตาราง คนละ RPC คนละความหมาย "full replace") ไม่แตะ modal เดิมข้างบนเลยสักบรรทัด
+     Confirm button (#actualDailyImportConfirmBtn) disabled ตราบใดที่ parseActualDailyFile()
+     มี error (แพทเทิร์นเดียวกับ modal เดิม). -->
+<div id="actualDailyImportOverlay" class="overlay hidden">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3>นำเข้า Actual MD (รายวัน)</h3>
+      <button class="x" onclick="closeActualDailyImportModal()">×</button>
+    </div>
+    <div class="modal-body" id="actualDailyImportBody"></div>
+    <div class="modal-foot">
+      <div class="form-err" id="actualDailyImportErr"></div>
+      <button class="btn" onclick="closeActualDailyImportModal()">ยกเลิก</button>
+      <button class="btn accent" id="actualDailyImportConfirmBtn" onclick="confirmActualDailyImport()">ยืนยันนำเข้า</button>
     </div>
   </div>
 </div>
@@ -2645,16 +2667,234 @@ window.confirmActualImport = async function(){
   }
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Actual MD (รายวัน) — Browse File ชนิดไฟล์ที่ 2 (2026-09-11 §5.67-B)
+ * spec: docs/superpowers/specs/2026-09-11-outsource-actual-md-daily-design.md §3
+ * แยกตัวเองจากชุด parseActualFile()/ACTUAL_MD_HEADERS/fn_import_actual_md เดิมทั้งหมด —
+ * เดิมนั้นไม่ถูกแก้แม้แต่บรรทัดเดียว (ดู test regression guard ใน §5.67-B ของ run_tests.mjs)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const ACTUAL_MD_DAILY_HEADERS = ['Work_Date', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
+
+/** Template download ของ Actual MD รายวัน — mirror downloadActualTemplate() ทุกประการ
+ *  ต่างแค่ header/ตัวอย่างแถว/ชื่อไฟล์ (Work_Date แทน YYYYMM). */
+async function downloadActualDailyTemplate(){
+  const btn = $('bfDownloadTemplateBtn');
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabase.from('app').select('app_code,app_name')
+      .eq('is_active', true).order('sort_order', { nullsFirst: false });
+    if (error) throw error;
+    const apps = data || [];
+    const exampleAppCode = (apps[0] && apps[0].app_code) || '';
+
+    const dataAoa = [
+      ACTUAL_MD_DAILY_HEADERS,
+      ['2026-02-15', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
+    ];
+    const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataAoa), 'Data');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(appIdAoa), 'App_ID');
+
+    const filename = `actual_md_daily_template_${fileTimeStamp(new Date())}.xlsx`;
+    writeWorkbookAndDownload(wb, filename);
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Template ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** true ถ้า s เป็น 'yyyy-mm-dd' ที่ตรงกับวันที่จริง (กัน 2026-02-30 ที่ format ผ่านแต่ไม่มีวันนี้จริง —
+ *  new Date('2026-02-30') ของ JS จะ roll-over เป็น 2026-03-02 เงียบๆ ต้อง round-trip เช็คเอง). */
+function isValidDateStr(s){
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/** Parse the "Data" sheet ของไฟล์ Actual MD รายวัน — แยกจาก parseActualFile() เดิมโดยตั้งใจ
+ *  (คนละตาราง คนละคีย์วันที่ — work_date แทน ym) แต่ reuse actualCellText()/รูปแบบ dedupe/
+ *  errors-warnings เดิมทั้งหมด เป็น pure function รับ aoa/appCodeSet/leadEmailSet ตรงๆ เทสได้
+ *  ผ่าน vm โดยไม่ต้องพึ่ง state ของหน้า (ดู parseActualFile() ข้างบนเป็นต้นแบบ).
+ *
+ *  Returns { rows, errors, warnings, minDate, maxDate } — `rows` ส่งตรงเป็น `p_rows` ให้
+ *  `supabase.rpc('fn_import_actual_md_daily', { p_rows })`. `minDate`/`maxDate` (yyyy-mm-dd,
+ *  null ถ้าไม่มีแถวที่ผ่าน validate เลย) ใช้โชว์ช่วงวันที่ในข้อความ full-replace ของ preview modal. */
+function parseActualDailyFile(aoa, appCodeSet, leadEmailSet){
+  const errors = [];
+  const warnings = [];
+
+  if (!Array.isArray(aoa) || !aoa.length) {
+    errors.push({ row: 1, msg: 'ไฟล์ว่างเปล่า หรืออ่านไฟล์ไม่ได้' });
+    return { rows: [], errors, warnings, minDate: null, maxDate: null };
+  }
+
+  const header = (aoa[0] || []).map(h => String(h == null ? '' : h).trim());
+  const headerOk = ACTUAL_MD_DAILY_HEADERS.every((h, i) => header[i] === h);
+  if (!headerOk) {
+    errors.push({ row: 1, msg: `ไฟล์ไม่ตรง template — หัวคอลัมน์ต้องเป็น ${ACTUAL_MD_DAILY_HEADERS.join(', ')}` });
+    return { rows: [], errors, warnings, minDate: null, maxDate: null };
+  }
+
+  const dataLines = aoa.slice(1);
+  const isBlankLine = line => !line || line.every(c => c === undefined || c === null || String(c).trim() === '');
+  if (!dataLines.some(line => !isBlankLine(line))) {
+    errors.push({ row: 2, msg: 'ไม่มีแถวข้อมูลเลย' });
+    return { rows: [], errors, warnings, minDate: null, maxDate: null };
+  }
+
+  const seen = new Map(); // dedupe key -> merged row object (ยังพก `row` ไว้ทำข้อความ warning)
+  const merged = [];
+  dataLines.forEach((line, idx) => {
+    const excelRow = idx + 2; // header = row 1, แถวข้อมูลแรก = row 2
+    if (isBlankLine(line)) return; // ข้ามแถวว่างเปล่าทั้งแถวเงียบๆ (ไม่ใช่ error)
+
+    const [dateRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
+    const work_date = actualCellText(dateRaw);
+    const appCode = actualCellText(appRaw);
+    const nickname_name = actualCellText(nickRaw);
+    const en_fullname = actualCellText(fullRaw);
+    const project_code = actualCellText(pcRaw);
+    const approver_choice = actualCellText(approverRaw).toLowerCase();
+
+    if (!isValidDateStr(work_date)) {
+      errors.push({ row: excelRow, msg: `Work_Date ไม่ถูกต้อง: "${dateRaw == null ? '' : dateRaw}" (ต้องเป็นวันที่จริงรูปแบบ yyyy-mm-dd เช่น 2026-02-15)` });
+    }
+    if (appCodeSet && !appCodeSet.has(appCode)) {
+      errors.push({ row: excelRow, msg: `App_ID ไม่มีใน master: "${appCode}"` });
+    }
+    if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
+      warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
+    }
+    const md = Number(mdRaw);
+    const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
+    if (mdBlank || isNaN(md) || md < 0) {
+      errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
+    }
+
+    const key = [work_date, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
+    if (seen.has(key)) {
+      const target = seen.get(key);
+      warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (วันที่/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
+      target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
+    } else {
+      const rowObj = { work_date, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      seen.set(key, rowObj);
+      merged.push(rowObj);
+    }
+  });
+
+  const validDates = merged.map(r => r.work_date).filter(isValidDateStr).sort();
+  const minDate = validDates.length ? validDates[0] : null;
+  const maxDate = validDates.length ? validDates[validDates.length - 1] : null;
+
+  const rows = merged.map(({ row, ...rest }) => rest); // ตัด `row` (แค่ใช้ทำ error/warning message) ออกก่อนส่งเข้า RPC
+  return { rows, errors, warnings, minDate, maxDate };
+}
+
+/** จำนวนแถว Actual MD รายวัน "เดิม" (ที่จะถูกลบทั้งหมดถ้ากดยืนยัน) — อ่านจาก view
+ *  `pqa.v_actual_md_daily_range` (แถวเดียว, row_count) แถวเดียวไม่ต้องห่อ fetchAllRows()
+ *  ไม่ fatal ถ้า query พลาด (เช่น patch sql/patch_2026-09-11_actual_md_daily.sql ยังไม่ได้รัน
+ *  บน Supabase จริง) — คืน null แล้วให้ผู้เรียกโชว์ "ไม่ทราบ" แทน ไม่ throw ให้ modal พัง. */
+async function fetchActualDailyRowCount(){
+  try {
+    const { data, error } = await supabase.from('v_actual_md_daily_range').select('row_count').maybeSingle();
+    if (error) throw error;
+    return data ? Number(data.row_count) || 0 : 0;
+  } catch (err) {
+    console.warn('fetchActualDailyRowCount failed (patch อาจยังไม่ได้รันบน Supabase จริง):', err);
+    return null;
+  }
+}
+
+/** Build #actualDailyImportBody — เตือนชัดว่าเป็น full replace ทั้งตาราง (ต่างจาก modal
+ *  เดือนเดิมที่ลบเฉพาะเดือนที่มีในไฟล์) ตาม spec §3. */
+function buildActualDailyImportModalBody(parsed, existingRowCount){
+  const nText = existingRowCount == null ? 'ไม่ทราบ' : String(existingRowCount);
+  const rangeText = (parsed.minDate && parsed.maxDate)
+    ? `(ช่วง ${dDisp(parsed.minDate)} – ${dDisp(parsed.maxDate)})`
+    : '';
+
+  const errBlock = parsed.errors.length ? `
+    <div class="actual-import-err-title">พบข้อผิดพลาด ${parsed.errors.length} รายการ (ต้องแก้ไฟล์แล้วอัปโหลดใหม่)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.errors.slice(0, 50).map(e => `<tr><td>${e.row}</td><td>${esc(e.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.errors.length > 50 ? `<div class="muted">และอีก ${parsed.errors.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  const warnBlock = parsed.warnings.length ? `
+    <div class="actual-import-warn-title">คำเตือน ${parsed.warnings.length} รายการ (ไม่บล็อกการนำเข้า)</div>
+    <table class="actual-import-table">
+      <thead><tr><th>แถว</th><th>ข้อความ</th></tr></thead>
+      <tbody>${parsed.warnings.slice(0, 50).map(w => `<tr><td>${w.row}</td><td>${esc(w.msg)}</td></tr>`).join('')}</tbody>
+    </table>
+    ${parsed.warnings.length > 50 ? `<div class="muted">และอีก ${parsed.warnings.length - 50} รายการ</div>` : ''}
+  ` : '';
+
+  return `
+    <p class="actual-import-err-title">⚠️ จะลบข้อมูล Actual MD รายวันเดิมทั้งหมด <b>${nText}</b> แถว
+    แล้วแทนที่ด้วย <b>${parsed.rows.length}</b> แถว ${esc(rangeText)}</p>
+    ${errBlock}
+    ${warnBlock}
+  `;
+}
+
+let _actualDailyImportParsed = null; // parseActualDailyFile()'s result สำหรับไฟล์ที่เปิด preview modal อยู่
+
+/** เปิด modal พรีวิว — เรียกหลังอ่านไฟล์+parseActualDailyFile() เสร็จเสมอ. ปุ่มยืนยัน disabled
+ *  ตราบใดที่ parsed.errors.length > 0 (แพทเทิร์นเดียวกับ openActualImportModal() เดิม). */
+async function openActualDailyImportModal(parsed){
+  _actualDailyImportParsed = parsed;
+  const existingRowCount = await fetchActualDailyRowCount();
+  $('actualDailyImportBody').innerHTML = buildActualDailyImportModalBody(parsed, existingRowCount);
+  $('actualDailyImportErr').textContent = '';
+  $('actualDailyImportConfirmBtn').disabled = parsed.errors.length > 0;
+  $('actualDailyImportOverlay').classList.remove('hidden');
+}
+window.closeActualDailyImportModal = function(){
+  $('actualDailyImportOverlay').classList.add('hidden');
+  _actualDailyImportParsed = null;
+};
+/** ยืนยันนำเข้าจริง — เขียนผ่าน RPC เดียว `fn_import_actual_md_daily` เท่านั้น (ห้าม insert ตรง
+ *  ตามกติกา §3 ของโปรเจกต์) — full replace ทั้งตาราง ไม่ใช่แค่เดือนที่อยู่ในไฟล์เหมือน
+ *  fn_import_actual_md เดิม. สำเร็จ → toast จำนวนแถวที่ลบ/เพิ่ม → ปิด modal — ล้มเหลว → โชว์
+ *  error ใน modal ไม่ปิด modal. */
+window.confirmActualDailyImport = async function(){
+  if (!_actualDailyImportParsed || _actualDailyImportParsed.errors.length) return;
+  const btn = $('actualDailyImportConfirmBtn');
+  btn.disabled = true;
+  $('actualDailyImportErr').textContent = '';
+  try {
+    const { data, error } = await supabase.rpc('fn_import_actual_md_daily', { p_rows: _actualDailyImportParsed.rows });
+    if (error) throw error;
+    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
+    closeActualDailyImportModal();
+  } catch (err) {
+    console.error(err);
+    $('actualDailyImportErr').textContent = 'นำเข้าไม่สำเร็จ: ' + (err.message || String(err));
+    btn.disabled = false;
+  }
+};
+
 /* dispatch ตาม dropdown เลือกชนิดไฟล์ — เพิ่มไฟล์ชนิดที่ 2 ในอนาคต = เพิ่ม <option> ใน
    #bfTemplateType/#bfUploadType + เพิ่ม case ที่นี่ ไม่ต้องรื้อโครงสร้างเลย (ตามที่พี่กิ๊บขอ) */
 $('bfDownloadTemplateBtn').addEventListener('click', () => {
   const type = $('bfTemplateType').value;
   if (type === 'actual_md') downloadActualTemplate();
+  else if (type === 'actual_md_daily') downloadActualDailyTemplate();
   else toast('ยังไม่รองรับไฟล์ชนิดนี้', true);
 });
 $('bfUploadBtn').addEventListener('click', () => {
   const type = $('bfUploadType').value;
-  if (type === 'actual_md') $('bfUploadFile').click();
+  if (type === 'actual_md' || type === 'actual_md_daily') $('bfUploadFile').click();
   else toast('ยังไม่รองรับไฟล์ชนิดนี้', true);
 });
 $('bfUploadFile').addEventListener('change', async e => {
@@ -2662,7 +2902,7 @@ $('bfUploadFile').addEventListener('change', async e => {
   const file = e.target.files && e.target.files[0];
   e.target.value = ''; // เคลียร์ทันที กันเลือกไฟล์เดิมซ้ำแล้ว change event ไม่ยิง
   if (!file) return;
-  if (type !== 'actual_md') { toast('ยังไม่รองรับไฟล์ชนิดนี้', true); return; }
+  if (type !== 'actual_md' && type !== 'actual_md_daily') { toast('ยังไม่รองรับไฟล์ชนิดนี้', true); return; }
   try {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
@@ -2671,8 +2911,13 @@ $('bfUploadFile').addEventListener('change', async e => {
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
     const appCodeSet = new Set(projectAppList.map(a => a.app_code));
     const leadEmailSet = new Set((STATE.pqaLeads || []).map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
-    const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
-    await openActualImportModal(parsed);
+    if (type === 'actual_md_daily') {
+      const parsed = parseActualDailyFile(aoa, appCodeSet, leadEmailSet);
+      await openActualDailyImportModal(parsed);
+    } else {
+      const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
+      await openActualImportModal(parsed);
+    }
   } catch (err) {
     console.error(err);
     toast('อ่านไฟล์ไม่สำเร็จ: ' + (err.message || String(err)), true);
