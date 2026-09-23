@@ -792,7 +792,8 @@ import { supabase, $, toast, esc, dDisp, d2s, parseInputDate, statusPill, fmtDat
          leadOptionsHTML, loadProjectLeads, saveProjectLeads, leadPickerHasDuplicates,
          initLeadSearch, getLeadSearchValue, leadSearchHasUnresolvedText,
          loadProjectStatuses, statusOptionsHTML, isWknd, loadHolidays, signIn,
-         initNotificationBell, fetchAllRows, monthLabel } from './common.js';
+         initNotificationBell, fetchAllRows, monthLabel,
+         phaseCodesLosingDates, findBookingsForPhases, deleteBookingsByIds } from './common.js';
 // SheetJS — ใช้กับ Browse File tab (Download Template/Upload Actual MD, moved here from
 // dashboard.html's By App toolbar, 2026-09-10 §5.64) เดียวกับที่ dashboard.html เคย import
 // (เวอร์ชันเดียวกันเป๊ะ — ห้ามเปลี่ยนเวอร์ชันโดยไม่ตั้งใจ)
@@ -1013,6 +1014,26 @@ function calcWD(startStr, endStr) {
   if (isNaN(s) || isNaN(e) || s > e) return 0;
   return eachDayStr(startStr, endStr).filter(ds => !isWknd(new Date(ds + 'T00:00:00'), projectHolidayMap)).length;
 }
+/* ---- req 2026-09-23: กติกาวันที่ของแถวเฟสในโมดัล Project (mirror กับ gantt.html) ----
+ * 1) กรอก Start หรือ End มาแค่ช่องเดียว = ถือว่าเฟสนั้นยาววันเดียว → เติมอีกช่องให้เท่ากัน
+ *    "force ใส่ในหน้าจอ" ตั้งแต่ตอน change (ผู้ใช้เห็นค่าที่จะถูกบันทึกจริงก่อนกดบันทึก)
+ *    + เรียกซ้ำอีกรอบตอนเซฟ กันเคสค่าถูกเซ็ตด้วยโค้ด/autofill ที่ไม่ยิง event change
+ * 2) End < Start = บล็อกไม่ให้เซฟ (ไม่ auto-แก้ให้ เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจแก้ช่องไหน) */
+function syncPhaseDatePair(row) {
+  const s = row.querySelector('.ph-start'), e = row.querySelector('.ph-end');
+  if (!s || !e) return;
+  if (s.value && !e.value) e.value = s.value;
+  else if (e.value && !s.value) s.value = e.value;
+}
+function autofillPhaseDates(sel) {
+  document.querySelectorAll(sel + ' .phase-row').forEach(syncPhaseDatePair);
+}
+function findPhaseDateOrderError(sel) {
+  return [...document.querySelectorAll(sel + ' .phase-row')].find(r => {
+    const s = r.querySelector('.ph-start').value, e = r.querySelector('.ph-end').value;
+    return s && e && e < s;
+  });
+}
 function buildProjectPhaseRows(data) {
   $('pfPhaseRows').innerHTML = PROJECT_PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
@@ -1058,8 +1079,10 @@ function buildProjectPhaseRows(data) {
       const resNum = resVal === '' ? 0 : Number(resVal);
       row.querySelector('.ph-totalwd').textContent = (wd && resNum) ? wd * resNum : '';
     };
-    row.querySelector('.ph-start').addEventListener('change', recalc);
-    row.querySelector('.ph-end').addEventListener('change', recalc);
+    // req 2026-09-23: กรอกมาช่องเดียว → เติมอีกช่องให้เท่ากันทันทีในหน้าจอ แล้วค่อยคำนวณ WD
+    const onDateChange = () => { syncPhaseDatePair(row); recalc(); };
+    row.querySelector('.ph-start').addEventListener('change', onDateChange);
+    row.querySelector('.ph-end').addEventListener('change', onDateChange);
     // SIT ไม่มีช่อง Required OS (.ph-res) ใน DOM แล้ว — ผูก listener เฉพาะแถวที่มีจริง
     const resEl = row.querySelector('.ph-res');
     if (resEl) resEl.addEventListener('input', recalc);
@@ -1383,6 +1406,15 @@ window.saveProject = async function() {
     err.textContent = 'Main Lead, Sub Lead, Internal Executor ต้องไม่ใช่คนเดียวกัน';
     return;
   }
+  // req 2026-09-23: เฟสที่กรอกวันที่มาช่องเดียว → บังคับ start = end ลงหน้าจอจริงก่อนตรวจอย่างอื่น
+  autofillPhaseDates('#pfPhaseRows');
+  // req 2026-09-23: End ต้องไม่อยู่ก่อน Start
+  const badOrderRow = findPhaseDateOrderError('#pfPhaseRows');
+  if (badOrderRow) {
+    const badName = (PROJECT_PHASES.find(p => p.code === badOrderRow.dataset.phase) || {}).name || badOrderRow.dataset.phase;
+    err.textContent = `เฟส ${badName} : End ต้องไม่อยู่ก่อน Start`;
+    return;
+  }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
   const uatStartRow = document.querySelector('#pfPhaseRows .phase-row[data-phase="UAT"] .ph-start');
   if (!uatStartRow || !uatStartRow.value) {
@@ -1401,6 +1433,30 @@ window.saveProject = async function() {
     return;
   }
 
+  // req 2026-09-23: เคลียร์วันที่ Start/End ของเฟสไหนออก → booking ที่เคยจองไว้บนเฟสนั้นต้องถูกลบ
+  // ตามไปด้วย ไม่ให้เหลือ booking ลอยค้างแบบไม่มีเฟส (mirror กับ saveProj() ใน gantt.html)
+  // ⚠️ ลบออกจาก DB จริง กู้คืนไม่ได้ → confirm พร้อมบอกจำนวนก่อน กด Cancel = ไม่เซฟอะไรเลย
+  let bookingIdsToDelete = [];
+  if (editingProjectKey) {
+    const losing = phaseCodesLosingDates(readProjectPhases());
+    if (losing.length) {
+      const { rows, error: findErr } = await findBookingsForPhases(editingProjectKey, losing);
+      if (findErr) { err.textContent = 'ตรวจสอบ booking ของเฟสไม่สำเร็จ: ' + findErr.message; return; }
+      if (rows.length) {
+        const byPhase = {};
+        rows.forEach(r => { byPhase[r.phase_code] = (byPhase[r.phase_code] || 0) + 1; });
+        const lines = Object.keys(byPhase).map(c => {
+          const nm = (PROJECT_PHASES.find(x => x.code === c) || {}).name || c;
+          return `• ${nm} : ${byPhase[c]} รายการ`;
+        }).join('\n');
+        const ok = confirm(
+          `เฟสต่อไปนี้ไม่มีวันที่ Start/End แล้ว — booking ที่เคยจองไว้จะถูกลบออกจากฐานข้อมูลถาวร (กู้คืนไม่ได้)\n\n`
+          + lines + `\n\nรวม ${rows.length} รายการ\n\nกด OK เพื่อบันทึกและลบ / Cancel เพื่อยกเลิกการบันทึก`);
+        if (!ok) return;
+        bookingIdsToDelete = rows.map(r => r.booking_id);
+      }
+    }
+  }
   const btn = $('pfSaveBtn');
   btn.disabled = true;
   btn.textContent = 'กำลังบันทึก...';
@@ -1473,6 +1529,17 @@ window.saveProject = async function() {
     } else if (existingId) {
       // เคลียร์ข้อมูลออก → ลบเฟสนั้น
       await supabase.from('project_phase').delete().eq('project_phase_id', existingId);
+    }
+  }
+  // ลบ booking ของเฟสที่ถูกเคลียร์วันที่ (ผู้ใช้ยืนยันจำนวนไปแล้วด้านบน)
+  if (bookingIdsToDelete.length) {
+    const delRes = await deleteBookingsByIds(bookingIdsToDelete);
+    if (delRes.error || delRes.deleted !== bookingIdsToDelete.length) {
+      btn.disabled = false;
+      btn.textContent = 'บันทึก';
+      err.textContent = 'บันทึก Project แล้ว แต่ลบ booking ของเฟสที่ไม่มีวันที่ไม่สำเร็จ: '
+        + (delRes.error ? delRes.error.message : 'ไม่มีสิทธิ์ลบ (RLS) หรือ booking ถูกแก้ไขไปแล้ว');
+      return;
     }
   }
 

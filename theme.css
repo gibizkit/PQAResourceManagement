@@ -907,3 +907,20 @@ input.lead-search.invalid {
   position: absolute; left: 0; top: 0; width: 100%; height: 100%;
   opacity: 0; pointer-events: none; border: 0; padding: 0; margin: 0;
 }
+
+/* ============ COLUMN RESIZER (ลากขยายความกว้างคอลัมน์) ============
+   ที่จับลากที่ขอบขวาของ <th> — สร้างโดย initColResizer() ใน common.js
+   th ที่ผูกต้องเป็น position:sticky/relative อยู่แล้ว (ทั้ง gantt .c0 และ #projectTable
+   th.proj-name เป็น sticky อยู่แล้ว) ที่จับจึงเกาะขอบขวาของ th ได้ตรง */
+.col-resizer {
+  position:absolute; top:0; right:0; width:8px; height:100%;
+  cursor:col-resize; user-select:none; z-index:30;
+}
+.col-resizer::after {
+  content:''; position:absolute; top:18%; right:2px; width:2px; height:64%;
+  background:var(--dk-text3); border-radius:1px; opacity:0; transition:opacity .12s;
+}
+.col-resizer:hover::after { opacity:.75; }
+/* ระหว่างลาก: cursor ค้างเป็น col-resize ทั้งหน้า + ห้ามเลือกข้อความไปด้วย */
+body.col-resizing { cursor:col-resize; user-select:none; }
+body.col-resizing .col-resizer::after { opacity:1; }

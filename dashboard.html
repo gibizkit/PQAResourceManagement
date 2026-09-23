@@ -250,7 +250,12 @@
      — it just gets the wider max-width from the shared rule above. */
   #projectTable { border-collapse:separate; border-spacing:0; }
   #projectTable th.col-app,   #projectTable td.col-app   { width:160px; min-width:160px; max-width:160px; }
-  #projectTable th.proj-name, #projectTable td.proj-name { width:255px; min-width:255px; max-width:255px; }
+  /* --pname-w = ความกว้างคอลัมน์ Project Name — ลากขยายได้ (initColResizer + applyProjNameWidth()
+     ในสคริปต์ด้านล่างตั้งค่าตัวแปรนี้ที่ :root) ค่า default 255px ต้องตรงกับ PNAME_W_DEFAULT เสมอ
+     คอลัมน์นี้เป็นคอลัมน์ freeze ตัวสุดท้าย จึงไม่มี left ของคอลัมน์อื่นที่ต้องเลื่อนตาม */
+  #projectTable th.proj-name, #projectTable td.proj-name {
+    width:var(--pname-w, 255px); min-width:var(--pname-w, 255px); max-width:var(--pname-w, 255px);
+  }
   #projectTable th.col-lead,  #projectTable td.col-lead  { width:110px; min-width:110px; max-width:110px; }
 
   /* Lead cell = Main Lead (normal) + Sub Lead(s) on their own grey lines below.
@@ -532,7 +537,7 @@
       </div>
 
       <!-- 2026-09-02 (ตามคำขอพี่กิ๊บ): By Project tab เท่านั้น — สลับว่า Total MD/แต่ละคอลัมน์
-           Phase ในตาราง By Project เป็น "All MD" (ค่าเดิม, เต็มช่วง Phase ตรงกับ Gantt's Booked
+           Phase ในตาราง By Project เป็น "Booked MD" (ค่าเดิม, เต็มช่วง Phase ตรงกับ Gantt's Booked
            MD, ไม่ตัดตามเดือนที่เลือกใน "เดือน" picker — §5.37/§5.39) หรือ "Selected Month" (ตัด
            MD เฉพาะวันที่ (work_date) ที่อยู่ในเดือนที่เลือกเท่านั้น — สูตร dateRange เดียวกับที่ By
            OS ใช้อยู่แล้ว §5.48) — เริ่มต้นซ่อนเพราะ default dashView คือ 'project' เท่านั้น (ไม่ใช่
@@ -541,7 +546,7 @@
       <div class="fld" id="projectViewFld">
         <label>View</label>
         <select id="projectViewSelect">
-          <option value="all">All MD</option>
+          <option value="all">Booked MD</option>
           <option value="month">Selected Month</option>
         </select>
       </div>
@@ -660,7 +665,8 @@
 import {
   supabase, $, toast, esc, d2s, dDisp, loadHolidays, resName, loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
   getCachedRole, setCachedRole, paintNavAdmin,
-  initNotificationBell, fetchAllRows, monthLabel, MONTH_ABBR
+  initNotificationBell, fetchAllRows, monthLabel, MONTH_ABBR,
+  initColResizer, colResizeJustHappened
 } from './common.js';
 // SheetJS — ใช้กับปุ่ม "Download Excel" ทุกแท็บ (เดิม 2026-08-14 เฉพาะ By Lead tab, 2026-08-25 ขยาย
 // ไปทุกแท็บ) ดู downloadDashboardExcel()
@@ -704,6 +710,10 @@ function truncName(s, max=100){
 /* =====================================================================
    STATE
    ===================================================================== */
+// ความกว้างคอลัมน์ Project Name — PNAME_W_DEFAULT ต้องตรงกับ default ของ CSS var --pname-w
+// ใน <style> ด้านบนเสมอ
+const PNAME_W_DEFAULT = 255, PNAME_W_MIN = 140, PNAME_W_MAX = 700;
+
 const S = {
   user: null,
   holidays: {},                 // 'yyyy-MM-dd' -> desc (loaded once)
@@ -775,7 +785,17 @@ const S = {
   // default เป็น unsort เพื่อคงลำดับตั้งต้นเดิมไว้เป๊ะ (By OS = role → ชื่อ, By Lead = ลำดับของ S.leadsAll)
   osSort: { key:'', dir:'' },
   leadSort: { key:'', dir:'' },
+
+  // ความกว้างคอลัมน์ Project Name (แท็บ By Project) — ลากขยายได้, จำใน prefs (projNameWidth)
+  projNameWidth: PNAME_W_DEFAULT,
 };
+
+/** ตั้งความกว้างคอลัมน์ Project Name ให้ตรงกันทั้ง state และ CSS var ที่ตาราง #projectTable ใช้
+ *  (คอลัมน์นี้เป็น freeze ตัวสุดท้าย ไม่มี left ของคอลัมน์อื่นที่ต้องเลื่อนตาม) */
+function applyProjNameWidth(w = PNAME_W_DEFAULT){
+  S.projNameWidth = w;
+  document.documentElement.style.setProperty('--pname-w', w + 'px');
+}
 
 let dashPickerYear = null; // ปีที่กำลังเลือกอยู่ใน month picker panel (#dashMonthPanel, §5.50)
 
@@ -857,7 +877,7 @@ function restoreDashPrefs(){
   // Type/Domain — By Lead tab เท่านั้น (2026-08-14 round 4, ตามคำขอพี่กิ๊บ)
   $('leadRoleFld').classList.toggle('hidden', S.dashView !== 'lead');
   $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
-  // View (All MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
+  // View (Booked MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
   $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
   updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
@@ -887,6 +907,13 @@ function restoreDashPrefs(){
 
   // ปุ่มตัวกรอง (2026-08-14) — เหมือน gantt.html/outsource.html: จำว่า panel เปิดค้างไว้ไหม
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
+
+  // ความกว้างคอลัมน์ Project Name ที่ผู้ใช้ลากไว้ — ค่าจาก storage ไม่น่าไว้ใจเสมอ (§5.21)
+  // ต้องเป็นตัวเลขในช่วงที่ลากได้จริงเท่านั้น ไม่งั้นปล่อยให้ default 255px ทำงานต่อ
+  if (typeof p.projNameWidth === 'number' && isFinite(p.projNameWidth)
+      && p.projNameWidth >= PNAME_W_MIN && p.projNameWidth <= PNAME_W_MAX) {
+    applyProjNameWidth(Math.round(p.projNameWidth));
+  }
 
   // §5.59: รับสถานะ unsort ({ key:'', dir:'' }) ด้วย — ค่าจาก storage ไม่น่าไว้ใจเสมอ (§5.21)
   if (p.projectSort && typeof p.projectSort === 'object') {
@@ -1531,6 +1558,9 @@ function nextSortState(sortState, key){
 }
 function wireSortHeader(theadEl, sortState, onChange){
   theadEl.addEventListener('click', e => {
+    // เพิ่งลากขยายความกว้างคอลัมน์เสร็จ (mouseup อาจหลุดออกนอกที่จับจน click ไปตกที่ th)
+    // — ไม่ถือเป็นการสั่งเรียงคอลัมน์
+    if (e.target.closest('.col-resizer') || colResizeJustHappened()) return;
     const th = e.target.closest('th.sortable');
     if (!th) return;
     nextSortState(sortState, th.dataset.sortKey);
@@ -1803,6 +1833,15 @@ function renderProjectView(container){
     savePrefs(PAGE, { projectSort: S.projectSort });
     renderProjectView(container);
   });
+
+  // ที่จับลากขยายคอลัมน์ Project Name — ตารางถูก render ใหม่ทั้งก้อนทุกครั้ง จึงผูกใหม่ทุกรอบ
+  const pnameTh = container.querySelector('#projectTable thead th.proj-name');
+  if (pnameTh) initColResizer(pnameTh, {
+    min: PNAME_W_MIN, max: PNAME_W_MAX,
+    getWidth: () => S.projNameWidth,
+    onResize: applyProjNameWidth,
+    onEnd: w => savePrefs(PAGE, { projNameWidth: w }),
+  });
 }
 
 /* ---- By App (task 4, §5.60): App × month pivot, Booked MD vs imported Actual MD ----
@@ -1954,7 +1993,7 @@ function renderAppView(container){
     theadRow2 = `<tr>
       ${thSort('Booked','bookedTotal',S.appSort,'right')}
       ${thSort('Actual','actualTotal',S.appSort,'right')}
-      ${thSort('Booked − Actual','diff',S.appSort,'right')}
+      ${thSort('B − A','diff',S.appSort,'right')}
       ${months.map(mm => thSort(monthLabel(mm), 'b:' + mm, S.appSort, 'right')).join('')}
       ${months.map(mm => thSort(monthLabel(mm), 'a:' + mm, S.appSort, 'right')).join('')}
     </tr>`;
@@ -2876,10 +2915,10 @@ function buildDownloadFilterAoa(includeLeadFields){
   // picker บนจอ — ค่าเป็น monthLabel() (Mmm-yyyy, §4.5) ไม่ใช่ dDisp() ของวันแรก/วันสุดท้ายอีก
   // ต่อไป (S.overallRange.s ยังมีอยู่ใช้แปลงกลับเป็น 'yyyy-MM' ให้ monthLabel() พอ)
   rows.push(['เดือน', (S.months || []).map(mm => monthLabel(mm)).join(', ')]);
-  // 2026-09-02: View (All MD / Selected Month) — By Project tab เท่านั้น (มีผลแค่แท็บนั้น
+  // 2026-09-02: View (Booked MD / Selected Month) — By Project tab เท่านั้น (มีผลแค่แท็บนั้น
   // เหมือน Type/Domain ที่มีผลแค่ By Lead — ดู #projectViewFld/switchDashView())
   if (S.dashView === 'project') {
-    rows.push(['View', S.projectViewMode === 'month' ? 'Selected Month' : 'All MD']);
+    rows.push(['View', S.projectViewMode === 'month' ? 'Selected Month' : 'Booked MD']);
   }
   return rows;
 }
@@ -3089,7 +3128,7 @@ async function downloadAppExcel(){
     let totalRow;
 
     if (mode === 'compare') {
-      const header = ['App', 'Booked MD', 'Actual MD', 'Booked − Actual'];
+      const header = ['App', 'Booked MD', 'Actual MD', 'B − A'];
       months.forEach(mm => header.push(`Booked ${monthLabel(mm)}`));
       months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
       appAoa.push(header);
@@ -3758,7 +3797,7 @@ function wireToolbar(){
     savePrefs(PAGE, { leadDomainFilter: S.leadDomainFilter });
     if (S.dashView === 'lead') renderLeadView($('viewContainer')); // เหตุผลเดียวกับด้านบน
   });
-  // 2026-09-02 (ตามคำขอพี่กิ๊บ): dropdown View (All MD / Selected Month) — By Project tab
+  // 2026-09-02 (ตามคำขอพี่กิ๊บ): dropdown View (Booked MD / Selected Month) — By Project tab
   // เท่านั้น มีผลทันที (ไม่ต้องกดรอ) เหมือน Project/UAT Lead/App multiselect — ต้อง
   // recomputeAggregates() ใหม่เพราะ S.periodAggProjectView (ที่ buildProjectRows() ใช้) ขึ้นกับ
   // S.projectViewMode โดยตรง

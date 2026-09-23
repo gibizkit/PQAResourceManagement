@@ -1518,3 +1518,115 @@ export function initDateTextPicker(inputEl) {
     inputEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
+
+/* =====================================================================
+   ORPHAN BOOKING CLEANUP — เฟสที่ถูกเคลียร์วันที่ Start/End ออก
+   ---------------------------------------------------------------------
+   เดิมเซฟ Project แล้วเคลียร์วันที่ของเฟสออก (หรือเคลียร์จนแถว project_phase
+   ถูกลบทิ้งไปเลย) booking ที่เคยจองไว้บนเฟสนั้นยังค้างอยู่ใน DB โดยไม่มีช่วง
+   เวลาของเฟสให้อ้างอิงอีกต่อไป = "booking ลอย" (ยังถูกนับใน Booked MD /
+   Dashboard / Outsource ทั้งที่เฟสไม่มีอยู่จริงแล้ว)
+
+   ⚠️ ที่นี่ลบแถวออกจาก DB จริง (hard delete ตามที่เจ้าของระบบยืนยัน
+   2026-09-23) ไม่ใช่ soft delete แบบ mbDeleteBooking/fn_inactivate_project —
+   กู้คืนไม่ได้ ฟอร์มจึงต้อง confirm พร้อมบอกจำนวนก่อนเสมอ
+   ===================================================================== */
+
+// เฟสที่ "ไม่มีช่วงวันที่ใช้ได้" หลังเซฟ = ไม่มี start หรือไม่มี end (ต้องครบคู่ถึงจะนับว่ามีช่วง)
+// ⚠️ ตัด phase_code ที่ยังมีอีกแถวหนึ่งในฟอร์มที่วันที่ครบออกเสมอ — ข้อมูลเก่าเก็บ Other 1/2 เป็น
+// phase_code='SUPPORT' (§5.7) และ booking ไม่เก็บ phase_label แยก ถ้าไม่กันไว้จะลบ booking ของ
+// เฟสที่ยังมีวันที่อยู่ไปด้วย
+export function phaseCodesLosingDates(phases) {
+  const withDates = new Set();
+  const without = new Set();
+  for (const ph of phases || []) {
+    if (!ph || !ph.phase_code) continue;
+    if (ph.start_date && ph.end_date) withDates.add(ph.phase_code);
+    else without.add(ph.phase_code);
+  }
+  return [...without].filter(code => !withDates.has(code));
+}
+
+// booking ที่จะถูกลบ — เฉพาะ is_active=true (แถวที่ปิดไปแล้วไม่ถือว่า "ลอย" เพราะไม่ถูกแสดง/นับที่ไหน)
+export async function findBookingsForPhases(projectKey, phaseCodes) {
+  if (!projectKey || !phaseCodes || !phaseCodes.length) return { rows: [], error: null };
+  const { data, error } = await supabase.from('booking')
+    .select('booking_id,phase_code')
+    .eq('project_key', projectKey)
+    .eq('is_active', true)
+    .in('phase_code', phaseCodes);
+  return { rows: data || [], error: error || null };
+}
+
+// ลบด้วยรายการ booking_id ที่ผู้ใช้เห็นตัวเลขตอน confirm แล้วเท่านั้น (ไม่ลบแบบเหวี่ยงตาม
+// project+phase ซ้ำอีกรอบ) — กันลบ booking ที่คนอื่นเพิ่งเพิ่มเข้ามาระหว่างที่ modal เปิดค้างอยู่
+// .select() เพื่อเช็คจำนวนแถวที่ลบจริง — RLS บล็อกจะคืน 0 แถวโดย error = null (แพทเทิร์นเดิมของระบบ)
+export async function deleteBookingsByIds(bookingIds) {
+  if (!bookingIds || !bookingIds.length) return { deleted: 0, error: null };
+  const { data, error } = await supabase.from('booking')
+    .delete()
+    .in('booking_id', bookingIds)
+    .select('booking_id');
+  return { deleted: (data || []).length, error: error || null };
+}
+
+/* ============ COLUMN RESIZER (ลากขยายความกว้างคอลัมน์) ============ */
+/*
+ * ใช้ร่วม gantt.html (คอลัมน์ Project ของตาราง Gantt) + dashboard.html (คอลัมน์ Project Name
+ * ของตาราง By Project) — ที่นี่ดูแลแค่ "กลไกลาก" อย่างเดียว ส่วนการเอาความกว้างไปใช้จริง
+ * (CSS var / <colgroup> / left offset ของคอลัมน์ sticky ถัดไป) เป็นหน้าที่ของ onResize ฝั่งหน้าเว็บ
+ * เพราะแต่ละหน้าผูกความกว้างไว้คนละแบบ
+ *
+ * - สร้าง <span class="col-resizer"> ต่อท้าย th ให้เอง (CSS อยู่ใน theme.css)
+ * - ลากอยู่: เรียก onResize(px) ทุก mousemove (clamp ด้วย min/max แล้ว)
+ * - ปล่อยเมาส์: เรียก onEnd(px) อีกครั้งเดียว — ไว้บันทึก prefs (ไม่เขียน storage ทุก frame)
+ * - idempotent: th เดิมเรียกซ้ำไม่สร้างที่จับซ้อน (หน้า re-render แล้วผูกใหม่ได้ปลอดภัย)
+ */
+let _lastColResizeEnd = 0;
+
+export function initColResizer(th, { min = 100, max = 1000, getWidth, onResize, onEnd } = {}) {
+  if (!th || th._colResizerInited) return;
+  th._colResizerInited = true;
+
+  const grip = document.createElement('span');
+  grip.className = 'col-resizer';
+  th.appendChild(grip);
+
+  const clamp = w => Math.max(min, Math.min(max, Math.round(w)));
+  let startX = 0, startW = 0, dragging = false;
+
+  const onMove = e => {
+    if (!dragging) return;
+    if (onResize) onResize(clamp(startW + (e.clientX - startX)));
+  };
+  const stop = e => {
+    if (!dragging) return;
+    dragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', stop);
+    document.body.classList.remove('col-resizing');
+    const w = clamp(startW + (e.clientX - startX));
+    if (onResize) onResize(w);
+    if (onEnd) onEnd(w);
+    _lastColResizeEnd = Date.now();   // กัน click ของ th (sort header) ทำงานต่อทันทีหลังลาก
+  };
+
+  grip.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    startX = e.clientX;
+    startW = Number(getWidth && getWidth()) || th.offsetWidth;
+    document.body.classList.add('col-resizing');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', stop);
+  });
+  // ที่จับอยู่บน th ที่เป็น sort header ด้วย — กันไม่ให้คลิกที่จับกลายเป็นการสั่งเรียงคอลัมน์
+  grip.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+}
+
+/** เพิ่งลากขยายคอลัมน์เสร็จหรือไม่ — ให้ handler อื่นบน th เดียวกัน (เช่น sort) ข้ามไป
+ *  (mouseup ปล่อยนอกตัวที่จับได้ → click อาจไปตกที่ th แทนที่จะเป็น .col-resizer) */
+export function colResizeJustHappened() {
+  return Date.now() - _lastColResizeEnd < 250;
+}

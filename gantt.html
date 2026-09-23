@@ -122,9 +122,12 @@
   /* sticky columns — widths mirrored by buildColgroup() / COL_W in the script below
      (c0 widened 330→400 to fit the Start–End date range + WD chip; c1 widened 105→150
      to fit the Booked/Plan MD number now prefixed before the phase dot+name) */
-  .c0  { min-width:400px; width:400px; left:0; }
-  .c1  { min-width:150px; width:150px; left:400px; }
-  .c2  { min-width:72px;  width:72px;  left:550px; }
+  /* --c0-w = ความกว้างคอลัมน์ Project — ลากขยายได้ (initColResizer + applyC0Width() ใน script
+     ด้านล่างตั้งค่าตัวแปรนี้ที่ :root) ค่า default 400px ต้องตรงกับ C0_W_DEFAULT/COL_W.c0 เสมอ
+     left ของ .c1/.c2 อ้างตัวแปรเดียวกัน จะได้เลื่อนตามอัตโนมัติเวลาลากขยาย */
+  .c0  { min-width:var(--c0-w, 400px); width:var(--c0-w, 400px); left:0; }
+  .c1  { min-width:150px; width:150px; left:var(--c0-w, 400px); }
+  .c2  { min-width:72px;  width:72px;  left:calc(var(--c0-w, 400px) + 150px); }
   .c2 { box-shadow: 4px 0 8px -2px rgba(34,28,21,.10); }
 
   /* header ของคอลัมน์ Project — ป้าย "Project" + icon-only Collapse All/Expand All
@@ -623,7 +626,9 @@ import { supabase, $, toast, esc, dDisp, d2s, statusDot, resName as fmtResName, 
          loadProjectStatuses, statusOptionsHTML,
          loadPrefs, savePrefs, prefSet, setPrefsOwner, signIn,
          getCachedRole, setCachedRole, paintNavAdmin,
-         initNotificationBell, fetchAllRows } from './common.js';
+         initNotificationBell, fetchAllRows,
+         phaseCodesLosingDates, findBookingsForPhases, deleteBookingsByIds,
+         initColResizer } from './common.js';
 
 /* ============ CONSTANTS ============ */
 const PHASE_META = {
@@ -689,6 +694,21 @@ const PHASE_STATUS_ITEMS = [
 const RELEASE_COLORS = ['#c07f56','#6183a6','#74996a','#9d84bd','#cba25e','#7f9b93','#a9805f'];
 
 const COL_W = { c0:400, c1:150, c2:72, day:28 };
+// ความกว้างคอลัมน์ Project (.c0) ลากขยายได้ — ค่าที่ลากจำใน sessionStorage (prefs 'gantt'.c0Width)
+// C0_W_DEFAULT ต้องตรงกับ default ของ CSS var --c0-w ใน <style> ด้านบนเสมอ
+const C0_W_DEFAULT = 400, C0_W_MIN = 220, C0_W_MAX = 900;
+/** ตั้งความกว้างคอลัมน์ Project ทุกชั้นให้ตรงกัน: CSS var (width + left ของ .c1/.c2),
+ *  COL_W.c0 (ให้ buildColgroup() ครั้งถัดไปใช้ค่าใหม่) และ <col> ตัวแรกของตารางที่ render อยู่
+ *  (ลากแล้วเห็นผลทันทีโดยไม่ต้อง re-render ทั้งตาราง) */
+function applyC0Width(w = C0_W_DEFAULT){
+  COL_W.c0 = w;
+  document.documentElement.style.setProperty('--c0-w', w + 'px');
+  const col = document.querySelector('#ganttScroll table.gantt colgroup col:first-child');
+  if (col) col.style.width = w + 'px';
+  // แถบเลื่อนแนวนอนที่วาดเอง (#ganttHsb) ไม่รู้ตัวเวลาความกว้างตารางเปลี่ยน — MutationObserver
+  // ของมันดูแค่ childList/subtree ไม่ใช่ attribute ของ <col> จึงต้องสั่ง sync เองตรงนี้
+  if (window.syncGanttHsb) window.syncGanttHsb();
+}
 function buildColgroup(dayCount){
   return '<colgroup>' +
     `<col style="width:${COL_W.c0}px">` +
@@ -825,6 +845,13 @@ function restoreFilterPrefs(){
   if (p.panelOpen === true) $('filterPanel').classList.remove('hidden');
   updateToggleFilterBtnLabel();
 
+  // ความกว้างคอลัมน์ Project ที่ผู้ใช้ลากไว้ — ค่าจาก storage ไม่น่าไว้ใจเสมอ (§5.21)
+  // ต้องเป็นตัวเลขในช่วงที่ลากได้จริงเท่านั้น ไม่งั้นปล่อยให้ default 400px ทำงานต่อ
+  if (typeof p.c0Width === 'number' && isFinite(p.c0Width)
+      && p.c0Width >= C0_W_MIN && p.c0Width <= C0_W_MAX) {
+    applyC0Width(Math.round(p.c0Width));
+  }
+
   return true;
 }
 
@@ -847,6 +874,7 @@ function saveFilterPrefs(){
     order: S.filter.order,
     panelOpen: !$('filterPanel').classList.contains('hidden'),
     releaseApps: [...S.releaseRows],
+    c0Width: COL_W.c0,
   });
 }
 
@@ -1506,6 +1534,16 @@ function renderGantt(){
   // ปักหมุดแถว Release Schedule (.rs-row) ต่อจากแถว day — จำนวนแถว/เลนไม่คงที่ เลยตั้ง top
   // เป็น inline style ทีละแถวจากความสูงจริงสะสม (inline ชนะทุก class อยู่แล้ว ไม่ต้องพึ่ง CSS var
   // เหมือน --th-month-h ข้างบน ซึ่งใช้ไม่ได้กับจำนวนแถวที่เปลี่ยนไปเรื่อยๆ)
+  // ที่จับลากขยายคอลัมน์ Project — thead ถูกเขียนทับทุกครั้งที่ render จึงต้องผูกใหม่ทุกรอบ
+  // (initColResizer idempotent อยู่แล้ว เรียกซ้ำบน th เดิมไม่สร้างที่จับซ้อน)
+  const c0Th = $('ganttScroll').querySelector('thead th.c0');
+  if (c0Th) initColResizer(c0Th, {
+    min: C0_W_MIN, max: C0_W_MAX,
+    getWidth: () => COL_W.c0,
+    onResize: applyC0Width,
+    onEnd: () => saveFilterPrefs(),
+  });
+
   const theadEl = $('ganttScroll').querySelector('thead');
   if (theadEl){
     const dayRow = theadEl.querySelector('tr:nth-child(2)');
@@ -1781,6 +1819,26 @@ function calcWD(startStr, endStr){
   if (isNaN(s) || isNaN(e) || s > e) return 0;
   return eachDay(startStr, endStr).filter(ds => !isWkndStr(ds)).length;
 }
+/* ---- req 2026-09-23: กติกาวันที่ของแถวเฟสในโมดัล Project (mirror กับ admin.html) ----
+ * 1) กรอก Start หรือ End มาแค่ช่องเดียว = ถือว่าเฟสนั้นยาววันเดียว → เติมอีกช่องให้เท่ากัน
+ *    "force ใส่ในหน้าจอ" ตั้งแต่ตอน change (ผู้ใช้เห็นค่าที่จะถูกบันทึกจริงก่อนกดบันทึก)
+ *    + เรียกซ้ำอีกรอบตอนเซฟ กันเคสค่าถูกเซ็ตด้วยโค้ด/autofill ที่ไม่ยิง event change
+ * 2) End < Start = บล็อกไม่ให้เซฟ (ไม่ auto-แก้ให้ เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจแก้ช่องไหน) */
+function syncPhaseDatePair(row){
+  const s = row.querySelector(".ph-start"), e = row.querySelector(".ph-end");
+  if (!s || !e) return;
+  if (s.value && !e.value) e.value = s.value;
+  else if (e.value && !s.value) s.value = e.value;
+}
+function autofillPhaseDates(sel){
+  document.querySelectorAll(sel + " .phase-row").forEach(syncPhaseDatePair);
+}
+function findPhaseDateOrderError(sel){
+  return [...document.querySelectorAll(sel + " .phase-row")].find(r => {
+    const s = r.querySelector(".ph-start").value, e = r.querySelector(".ph-end").value;
+    return s && e && e < s;
+  });
+}
 function buildPhaseRows(data){
   $('phaseRows').innerHTML = PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
@@ -1829,8 +1887,10 @@ function buildPhaseRows(data){
       const resNum = resVal === '' ? 0 : Number(resVal);
       row.querySelector('.ph-totalwd').textContent = (wd && resNum) ? wd * resNum : '';
     };
-    row.querySelector('.ph-start').addEventListener('change', recalc);
-    row.querySelector('.ph-end').addEventListener('change', recalc);
+    // req 2026-09-23: กรอกมาช่องเดียว → เติมอีกช่องให้เท่ากันทันทีในหน้าจอ แล้วค่อยคำนวณ WD
+    const onDateChange = () => { syncPhaseDatePair(row); recalc(); };
+    row.querySelector('.ph-start').addEventListener('change', onDateChange);
+    row.querySelector('.ph-end').addEventListener('change', onDateChange);
     // SIT ไม่มีช่อง Required OS (.ph-res) ใน DOM แล้ว — ผูก listener เฉพาะแถวที่มีจริง
     const resEl = row.querySelector('.ph-res');
     if (resEl) resEl.addEventListener('input', recalc);
@@ -2010,6 +2070,11 @@ window.saveProj = async function(){
   if (!getLeadSearchValue($('fMainLead'))){ err.textContent='กรุณาเลือก Main Lead'; return; }
   // req 2026-08-13: Main Lead / Sub Lead / Internal Executor ห้ามเป็นคนเดียวกัน
   if (leadPickerHasDuplicates(readLeadPicker())){ err.textContent='Main Lead, Sub Lead, Internal Executor ต้องไม่ใช่คนเดียวกัน'; return; }
+  // req 2026-09-23: เฟสที่กรอกวันที่มาช่องเดียว → บังคับ start = end ลงหน้าจอจริงก่อนตรวจอย่างอื่น
+  autofillPhaseDates('#phaseRows');
+  // req 2026-09-23: End ต้องไม่อยู่ก่อน Start
+  const badOrderRow = findPhaseDateOrderError('#phaseRows');
+  if (badOrderRow){ err.textContent = `เฟส ${phaseName(badOrderRow.dataset.phase)} : End ต้องไม่อยู่ก่อน Start`; return; }
   // req: ห้ามเซฟ Project ที่ไม่มีวันที่ใดๆ เลย — บังคับ UAT Start เป็นข้อมูลขั้นต่ำอย่างน้อย 1 ค่า
   const uatStartRow = document.querySelector('#phaseRows .phase-row[data-phase="UAT"] .ph-start');
   if (!uatStartRow || !uatStartRow.value){ err.textContent='กรุณาระบุ UAT Start — เป็นข้อมูลขั้นต่ำที่ต้องมีก่อนบันทึก Project'; return; }
@@ -2021,6 +2086,28 @@ window.saveProj = async function(){
   });
   if (missingDatesRow){ err.textContent = `กรุณาระบุ Start และ End ของเฟส ${phaseName(missingDatesRow.dataset.phase)} — มีการกรอก Required OS ไว้แล้ว`; return; }
 
+  // req 2026-09-23: เคลียร์วันที่ Start/End ของเฟสไหนออก → booking ที่เคยจองไว้บนเฟสนั้นต้องถูกลบ
+  // ตามไปด้วย ไม่ให้เหลือ booking ลอยค้างแบบไม่มีเฟส (ยังถูกนับใน Booked MD/Dashboard/Outsource)
+  // ⚠️ ลบออกจาก DB จริง กู้คืนไม่ได้ → ต้อง confirm พร้อมบอกจำนวนก่อน และกด Cancel = ไม่เซฟอะไรเลย
+  // (จึงต้องอยู่ก่อนบรรทัด btn.disabled ด้านล่าง — ยังไม่มีการเขียน DB ใดๆ เกิดขึ้น ณ จุดนี้)
+  let bookingIdsToDelete = [];
+  if (editingKey){
+    const losing = phaseCodesLosingDates(readPhaseInputs());
+    if (losing.length){
+      const { rows, error: findErr } = await findBookingsForPhases(editingKey, losing);
+      if (findErr){ err.textContent = 'ตรวจสอบ booking ของเฟสไม่สำเร็จ: ' + findErr.message; return; }
+      if (rows.length){
+        const byPhase = {};
+        rows.forEach(r => { byPhase[r.phase_code] = (byPhase[r.phase_code] || 0) + 1; });
+        const lines = Object.keys(byPhase).map(c => `• ${phaseName(c)} : ${byPhase[c]} รายการ`).join('\n');
+        const ok = confirm(
+          `เฟสต่อไปนี้ไม่มีวันที่ Start/End แล้ว — booking ที่เคยจองไว้จะถูกลบออกจากฐานข้อมูลถาวร (กู้คืนไม่ได้)\n\n`
+          + lines + `\n\nรวม ${rows.length} รายการ\n\nกด OK เพื่อบันทึกและลบ / Cancel เพื่อยกเลิกการบันทึก`);
+        if (!ok) return;
+        bookingIdsToDelete = rows.map(r => r.booking_id);
+      }
+    }
+  }
   const btn=$('projSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
 
   const payload = {
@@ -2081,6 +2168,18 @@ window.saveProj = async function(){
       else await supabase.from('project_phase').insert(phPayload);
     } else if (existingId){
       await supabase.from('project_phase').delete().eq('project_phase_id', existingId);
+    }
+  }
+
+  // ลบ booking ของเฟสที่ถูกเคลียร์วันที่ (ผู้ใช้ยืนยันจำนวนไปแล้วด้านบน)
+  if (bookingIdsToDelete.length){
+    const delRes = await deleteBookingsByIds(bookingIdsToDelete);
+    if (delRes.error || delRes.deleted !== bookingIdsToDelete.length){
+      btn.disabled=false; btn.textContent='บันทึก';
+      err.textContent = 'บันทึก Project แล้ว แต่ลบ booking ของเฟสที่ไม่มีวันที่ไม่สำเร็จ: '
+        + (delRes.error ? delRes.error.message : 'ไม่มีสิทธิ์ลบ (RLS) หรือ booking ถูกแก้ไขไปแล้ว');
+      await loadAll();
+      return;
     }
   }
 
