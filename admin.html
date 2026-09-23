@@ -1018,15 +1018,21 @@ function calcWD(startStr, endStr) {
  * 1) กรอก Start หรือ End มาแค่ช่องเดียว = ถือว่าเฟสนั้นยาววันเดียว → เติมอีกช่องให้เท่ากัน
  *    "force ใส่ในหน้าจอ" ตั้งแต่ตอน change (ผู้ใช้เห็นค่าที่จะถูกบันทึกจริงก่อนกดบันทึก)
  *    + เรียกซ้ำอีกรอบตอนเซฟ กันเคสค่าถูกเซ็ตด้วยโค้ด/autofill ที่ไม่ยิง event change
+ * 1b) ล้างช่องไหนก็ตาม = ล้างวันที่ของเฟสนั้นทั้งคู่ (ไม่เติมกลับ) — ดู syncPhaseDatePair(row, changed)
  * 2) End < Start = บล็อกไม่ให้เซฟ (ไม่ auto-แก้ให้ เพราะเดาไม่ได้ว่าผู้ใช้ตั้งใจแก้ช่องไหน) */
-function syncPhaseDatePair(row) {
+function syncPhaseDatePair(row, changed) {
   const s = row.querySelector('.ph-start'), e = row.querySelector('.ph-end');
   if (!s || !e) return;
+  // 2026-09-23 (fix): ผู้ใช้เพิ่งล้างช่องไหน = ตั้งใจล้างวันที่ของเฟสนั้น → ล้างอีกช่องตาม
+  // ห้าม fall through ไปบล็อก "เติมให้เท่ากัน" ข้างล่าง ไม่งั้นค่าที่เพิ่งลบจะถูกเติมกลับทันที
+  // (เคยเป็นบั๊ก §5.70: เคลียร์วันที่เฟสไม่ได้เลย เพราะลบช่องไหนก็ถูกเติมคืนจากอีกช่อง)
+  if (changed === 'start' && !s.value) { e.value = ''; return; }
+  if (changed === 'end' && !e.value) { s.value = ''; return; }
   if (s.value && !e.value) e.value = s.value;
   else if (e.value && !s.value) s.value = e.value;
 }
 function autofillPhaseDates(sel) {
-  document.querySelectorAll(sel + ' .phase-row').forEach(syncPhaseDatePair);
+  document.querySelectorAll(sel + ' .phase-row').forEach(row => syncPhaseDatePair(row));
 }
 function findPhaseDateOrderError(sel) {
   return [...document.querySelectorAll(sel + ' .phase-row')].find(r => {
@@ -1080,9 +1086,9 @@ function buildProjectPhaseRows(data) {
       row.querySelector('.ph-totalwd').textContent = (wd && resNum) ? wd * resNum : '';
     };
     // req 2026-09-23: กรอกมาช่องเดียว → เติมอีกช่องให้เท่ากันทันทีในหน้าจอ แล้วค่อยคำนวณ WD
-    const onDateChange = () => { syncPhaseDatePair(row); recalc(); };
-    row.querySelector('.ph-start').addEventListener('change', onDateChange);
-    row.querySelector('.ph-end').addEventListener('change', onDateChange);
+    const onDateChange = (which) => { syncPhaseDatePair(row, which); recalc(); };
+    row.querySelector('.ph-start').addEventListener('change', () => onDateChange('start'));
+    row.querySelector('.ph-end').addEventListener('change', () => onDateChange('end'));
     // SIT ไม่มีช่อง Required OS (.ph-res) ใน DOM แล้ว — ผูก listener เฉพาะแถวที่มีจริง
     const resEl = row.querySelector('.ph-res');
     if (resEl) resEl.addEventListener('input', recalc);
