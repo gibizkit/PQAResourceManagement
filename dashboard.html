@@ -97,6 +97,15 @@
      was selected before, untouched. */
   .ms.is-disabled { opacity:.5; pointer-events:none; }
 
+  /* 2026-09-24 (§5.72) — checkbox "All Active Project" (By Project tab เท่านั้น) — label แบบ
+     inline mirror .chk ของ outsource.html (ไม่มี .chk ตัวจริงในไฟล์นี้ จึงตั้งชื่อแยกกันชัดเจน) */
+  .chk-inline { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dk-text2);
+    cursor:pointer; user-select:none; white-space:nowrap; padding:9px 0; }
+  .chk-inline input { width:auto; margin:0; cursor:pointer; }
+  /* ติ๊ก All Active Project แล้ว month picker ไม่มีความหมาย (ถูก disable ด้วย JS แล้ว —
+     updateAllActiveGating()) ชั้นนี้เป็นแค่ signal ทางสายตา mirror .ms.is-disabled ข้างบน */
+  .dash-month-picker.is-disabled { opacity:.5; pointer-events:none; }
+
   /* ---- narrow single-line cells: clip with ellipsis, full text shown via title tooltip ----
      widened (was 80px/100px) so App + Project Name are readable without opening the tooltip —
      used by both the By Project table (App/Project Name) and the Signoff table (App/Project Name) */
@@ -634,6 +643,16 @@
           <div class="dash-month-panel hidden" id="dashMonthPanel"></div>
         </div>
       </div>
+      <!-- 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ): "All Active Project" — By Project tab เท่านั้น —
+           ติ๊กแล้วเลือก project ที่ testing period (TCPREP/UAT/REG/SUPPORT/Other ๆ — ไม่นับ SIT,
+           ไม่นับ project.signoff_date/deploy_date) คาบเกี่ยว "วันนี้" แทนเดือนที่เลือกใน month
+           picker (ดู matchProjectTabDiscovery()/projectTestingSpansToday()) — ปิดใช้งานตัวเลือก
+           เดือน + #projectViewSelect ทันที (updateAllActiveGating()) เพราะไม่มีความหมายอีกต่อไป
+           เมื่อเดือนถูก disable — ตัวกรอง Project/UAT Lead/App บน panel ยังมีผล AND กันเหมือนเดิม -->
+      <div class="fld" id="allActiveFld">
+        <label>&nbsp;</label>
+        <label class="chk-inline"><input type="checkbox" id="allActiveChk"> All Active Project</label>
+      </div>
       <button class="btn" id="clearFilterBtn">ล้าง</button>
     </div>
 
@@ -777,6 +796,10 @@ const S = {
   // periodAggActiveOnly/By OS, §5.48) ดู recomputeAggregates()/buildProjectRows()
   projectViewMode: 'all',         // 'all' | 'month' — dropdown #projectViewSelect
   periodAggProjectView: null,     // agg ที่ buildProjectRows() ใช้จริง (= periodAgg เมื่อ 'all', clipped เมื่อ 'month')
+  // 2026-09-24 (§5.72) — checkbox "All Active Project" ตัวกรองของแท็บ By Project เท่านั้น —
+  // ติ๊กแล้ว By Project สลับจากกฎเดือน (matchProjectDiscovery()) เป็นกฎ "testing period คาบวันนี้"
+  // (matchProjectTabDiscovery()/projectTestingSpansToday()) — ไม่กระทบ By OS/By Lead/By App/Signoff เลย
+  allActiveProject: false,
 
   // sort state for the sortable subview tables ({ key:'', dir:'' } = unsort, §5.59)
   projectSort: { key:'totalMD', dir:'desc' },
@@ -879,6 +902,8 @@ function restoreDashPrefs(){
   $('leadDomainFld').classList.toggle('hidden', S.dashView !== 'lead');
   // View (Booked MD / Selected Month) — By Project tab เท่านั้น (2026-09-02)
   $('projectViewFld').classList.toggle('hidden', S.dashView !== 'project');
+  // "All Active Project" checkbox — By Project tab เท่านั้น (2026-09-24, §5.72)
+  $('allActiveFld').classList.toggle('hidden', S.dashView !== 'project');
   updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
   updateProjectFilterEnabled(); // 2026-09-11 (Change A) — เผื่อ dashView/appMode/osMode ที่ restore มาทำให้ต้องปิด #msProject ตั้งแต่บูต
@@ -887,6 +912,12 @@ function restoreDashPrefs(){
     S.projectViewMode = p.projectViewMode;
   }
   $('projectViewSelect').value = S.projectViewMode;
+
+  // "All Active Project" (2026-09-24, §5.72) — ค่าจาก storage ไม่น่าไว้ใจเสมอ (§5.21) ต้องเป็น
+  // boolean แท้เท่านั้น ผิดรูปแบบ = ปล่อยให้ default false ทำงานต่อ
+  if (typeof p.allActiveProject === 'boolean') S.allActiveProject = p.allActiveProject;
+  $('allActiveChk').checked = S.allActiveProject;
+  updateAllActiveGating();
 
   // 2026-08-14: Project/UAT Lead/App multiselect (ตัวกรอง panel) — restore the selected Sets;
   // the actual .ms widgets are (re)built afterward in buildFilterMultiSelects() (called once
@@ -982,6 +1013,25 @@ function updateProjectFilterEnabled(){
   const disabled = (S.dashView === 'app' && S.appMode !== 'booked')
     || (S.dashView === 'os' && S.osMode !== 'booked');
   $('msProject').classList.toggle('is-disabled', disabled);
+}
+
+/** 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ) — checkbox "All Active Project" (By Project tab เท่านั้น)
+ *  ติ๊กแล้ว: เดือน (month picker) ไม่มีความหมายอีกต่อไป (By Project สลับไปใช้ testing period คาบ
+ *  "วันนี้" แทน matchProjectDiscovery()'s month-based rule) → ปิดปุ่มเดือน + ปิด dropdown View
+ *  (#projectViewSelect, "Selected Month" ตัด MD ตามเดือนที่ตอนนี้ disable ไปแล้ว = ไม่มีความหมาย)
+ *  ปิดด้วยทั้ง `disabled`/`is-disabled` (ชั้นที่สองกัน pointer-events ถูก override — แพตเทิร์น
+ *  เดียวกับ updateProjectFilterEnabled() ข้างบน) — ⚠️ ไม่ล้าง S.projectViewMode/S.months เลย
+ *  (mirror §5.66 ที่ไม่ล้าง S.filter.projects ตอน disable) ปลดติ๊กแล้วต้องได้ค่าเดิมคืนเป๊ะ
+ *  เรียกจาก: restoreDashPrefs()/switchDashView() (เผื่อ dashView ที่ restore มาไม่ใช่ 'project'
+ *  อยู่แล้วตั้งแต่บูต) และ change handler ของ #allActiveChk เอง */
+function updateAllActiveGating(){
+  const on = S.allActiveProject;
+  $('dashMonthPicker').classList.toggle('is-disabled', on);
+  $('dashPrevBtn').disabled = on;
+  $('dashNextBtn').disabled = on;
+  $('dashMonthBtn').disabled = on;
+  if (on) $('dashMonthPanel').classList.add('hidden');
+  $('projectViewSelect').disabled = on;
 }
 
 async function showApp(session){
@@ -1317,9 +1367,26 @@ function recomputeAggregates(){
   // matchedActiveOs — ต่างจาก By OS ตรงที่ By Project ยังยึด
   // เกณฑ์ discovery เดิมของ §5.37 อยู่ แค่ MD ที่แสดงถูกตัดตามเดือนเพิ่มอีกชั้นเท่านั้น ไม่กระทบ
   // S.periodAgg เอง (By Lead/Signoff ยังอ่าน S.periodAgg ตรงๆ เหมือนเดิมทุกประการ)
-  S.periodAggProjectView = S.projectViewMode === 'month'
-    ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, monthSet })
-    : S.periodAgg;
+  //
+  // 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ): "All Active Project" checkbox ติ๊กแล้ว — By Project
+  // สลับ project set ที่ป้อนเข้า computeAgg() เป็นชุดที่ผ่าน matchProjectTabDiscovery() (testing
+  // period คาบวันนี้ ไม่นับ SIT/signoff_date/deploy_date) แทน matchedAll (ซึ่งยังเป็นกฎเดือนเดิม)
+  // — **ห้ามส่ง monthSet** เพราะ MD ต้องเป็นค่าเต็มช่วงเสมอเมื่อ All Active (เดือนถูก disable ไปแล้ว
+  // ทั้งที่ #dashMonthPicker และ #projectViewSelect, ดู updateAllActiveGating()) 🔴 ต้องเป็น
+  // if/else ก่อน 'month' branch ข้างล่าง — S.projectViewMode ไม่ถูกล้างตอนติ๊ก (ดู
+  // updateAllActiveGating() comment) จึงอาจยังเป็น 'month' ค้างอยู่จากตอนก่อนติ๊กก็ได้
+  if (S.allActiveProject) {
+    const todayStr = d2s(new Date());
+    const matchedProjectTab = {};
+    Object.keys(S.allProjMap).forEach(pk => {
+      if (matchProjectTabDiscovery(pk, months, todayStr)) matchedProjectTab[pk] = S.allProjMap[pk];
+    });
+    S.periodAggProjectView = computeAgg(S.bookingDaily, S.leaveDaily, matchedProjectTab, { restrict: true });
+  } else {
+    S.periodAggProjectView = S.projectViewMode === 'month'
+      ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, monthSet })
+      : S.periodAgg;
+  }
 }
 
 /**
@@ -1676,6 +1743,51 @@ function matchProjectDiscovery(pk, months){
   return projectMatchesRange(pk, months) && projectPassesExtraFilters(pk);
 }
 
+/** 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ) — testing period ของ project `pk` = ช่วงของเฟส
+ *  **ที่ไม่ใช่ SIT** ทั้งหมด (min start_date .. max end_date) — ตั้งใจไม่นับ:
+ *    - SIT (เป็นงานทีมพัฒนา ไม่ใช่ทีม UAT — เหตุผลเดียวกับที่ SIT ไม่มี Required OS/WD, §5.22/§5.41)
+ *    - project.signoff_date (= "Milestone" date, แถว Milestones บน Gantt)
+ *    - project.deploy_date
+ *  ทั้ง signoff_date และ deploy_date ตัดออกโดยตั้งใจ (mirror การตัดสินใจของ §5.61 ที่เอา
+ *  signoff_date ออกจาก projectMatchesRange() แล้ว — testing period ของ checkbox นี้เข้มกว่านั้นอีก
+ *  ขั้น คือไม่นับ SIT ด้วย) คนละนิยามกับคอลัมน์แสดงผล "Project Period" ในตาราง By Project
+ *  (buildProjectRows()/projectPeriodDisp() — ยังรวม SIT เหมือนเดิมทุกประการ ไม่ถูกแตะในงานนี้)
+ *  — จงใจให้ 2 นิยามต่างกัน: คอลัมน์แสดงผลบอก "ช่วงทั้งโปรเจกต์" ส่วน testing period ใช้กรอง
+ *  "ตอนนี้กำลังทดสอบอยู่จริงไหม" เท่านั้น
+ *  คืน { start: null, end: null } เมื่อไม่มีเฟส non-SIT ที่มี start_date เลย
+ *  (fallback end = start เมื่อไม่มี end_date เลย — mirror periodEnd ของ projectMatchesRange()) */
+function projectTestingSpan(pk){
+  const phases = (S.phasesByProject[pk] || []).filter(ph => ph.phase_code !== 'SIT');
+  const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+  const start = starts[0] || null;
+  if (!start) return { start: null, end: null };
+  let maxEnd = null;
+  phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+  return { start, end: maxEnd || start };
+}
+
+/** project `pk`'s testing period (ข้างบน) คาบเกี่ยว `todayStr` ('yyyy-mm-dd') หรือไม่ — string
+ *  compare ตามมาตรฐาน §4.1 เดิม (start ≤ today && end ≥ today) ไม่มี testing period (ไม่มีเฟส
+ *  non-SIT ที่มี start_date) = ไม่ถือว่ากำลังทดสอบ → false เสมอ `todayStr` รับเป็น argument
+ *  (ไม่เรียก `new Date()` เองข้างใน) เพื่อให้ test ตรึงวันได้ */
+function projectTestingSpansToday(pk, todayStr){
+  const { start, end } = projectTestingSpan(pk);
+  if (!start) return false;
+  return start <= todayStr && end >= todayStr;
+}
+
+/** 2026-09-24 (§5.72) — discovery ของแท็บ By Project เท่านั้น — สลับกฎตาม checkbox
+ *  "All Active Project" (S.allActiveProject): ติ๊กแล้วใช้ testing period คาบวันนี้
+ *  (projectTestingSpansToday(), ไม่นับ SIT/signoff_date/deploy_date) แทนกฎเดือนเดิม
+ *  (matchProjectDiscovery()) — ตัวกรอง Project/UAT Lead/App บน panel ยังมีผล AND กันเหมือนเดิม
+ *  ทั้ง 2 โหมด ไม่กระทบ By OS/By Lead/By App/Signoff เลย (ยังใช้ matchProjectDiscovery() ตรงๆ
+ *  ผ่าน S.periodAgg/S.periodAggActiveOnly เหมือนเดิมทุกประการ) */
+function matchProjectTabDiscovery(pk, months, todayStr){
+  return S.allActiveProject
+    ? (projectTestingSpansToday(pk, todayStr) && projectPassesExtraFilters(pk))
+    : matchProjectDiscovery(pk, months);
+}
+
 /** Change C (2026-09-11): whether ANY of the Project/UAT Lead/App multiselect filters is
  *  currently set — used to decide whether zero-result rows should be hidden from By OS/By App
  *  (see osRowVisible()'s 3rd arg / appRowHasResult()). Empty on all 3 = "no restriction", same
@@ -1713,6 +1825,7 @@ function buildProjectRows(){
   // §6: By Project shows ONLY active projects (is_active = true) — activeProjects is
   // already server-filtered via .eq('is_active', true) in loadMasterData().
   const months = S.months;
+  const todayStr = d2s(new Date()); // 2026-09-24 (§5.72) — เฉพาะ matchProjectTabDiscovery() ใช้ตอน S.allActiveProject
   return S.activeProjects.map(p => {
     const pk = p.project_key;
     const phases = S.phasesByProject[pk] || [];
@@ -1751,8 +1864,11 @@ function buildProjectRows(){
        ก่อนเข้า computeAgg) ⇒ โปรเจกต์ที่ไม่ผ่านการค้นหาจะมี MD เป็นศูนย์เสมอโดยธรรมชาติ —
        เก็บ exception เดิมไว้จะทำให้ตัวกรองค้นหาไม่กรองอะไรเลย จึงตัดทิ้งไปตรงๆ
        🔴 2026-09-09 (§5.61): signoff_date (Milestone date) เคยถูกนับเป็นอีกหนึ่งเงื่อนไข "ตรงกับ
-       คำค้นหา" ด้วย — ตัดออกแล้ว ดูรายละเอียดที่ doc comment ของ projectMatchesRange() เอง */
-    if (!matchProjectDiscovery(pk, months)) return null;
+       คำค้นหา" ด้วย — ตัดออกแล้ว ดูรายละเอียดที่ doc comment ของ projectMatchesRange() เอง
+       2026-09-24 (§5.72): matchProjectDiscovery() ตรงๆ → matchProjectTabDiscovery() — ติ๊ก
+       "All Active Project" แล้วสลับไปใช้ testing period คาบวันนี้แทน (ไม่นับ SIT/signoff_date/
+       deploy_date) ดู doc comment ของ matchProjectTabDiscovery() เอง — ไม่ติ๊กพฤติกรรมเดิมทุกประการ */
+    if (!matchProjectTabDiscovery(pk, months, todayStr)) return null;
 
     return {
       app: p.app || p.other_app || '— ไม่มี App —',
@@ -2914,11 +3030,20 @@ function buildDownloadFilterAoa(includeLeadFields){
   // 2026-09-01 (§5.50): Start Date/End Date (2 แถว) → เดือน (1 แถว) ให้ตรงกับตัวกรอง month
   // picker บนจอ — ค่าเป็น monthLabel() (Mmm-yyyy, §4.5) ไม่ใช่ dDisp() ของวันแรก/วันสุดท้ายอีก
   // ต่อไป (S.overallRange.s ยังมีอยู่ใช้แปลงกลับเป็น 'yyyy-MM' ให้ monthLabel() พอ)
-  rows.push(['เดือน', (S.months || []).map(mm => monthLabel(mm)).join(', ')]);
+  // 2026-09-24 (§5.72): ติ๊ก "All Active Project" แล้วเดือนไม่มีความหมาย (ถูก disable บนจอด้วย) —
+  // แถวนี้แสดง '— (All Active Project)' แทนรายการเดือน เฉพาะแท็บ By Project เท่านั้น (แท็บอื่น
+  // ไม่มี checkbox นี้ ค่าเดิม monthLabel() join ยังเหมือนเดิมทุกประการ)
+  rows.push(['เดือน', (S.dashView === 'project' && S.allActiveProject)
+    ? '— (All Active Project)'
+    : (S.months || []).map(mm => monthLabel(mm)).join(', ')]);
   // 2026-09-02: View (Booked MD / Selected Month) — By Project tab เท่านั้น (มีผลแค่แท็บนั้น
   // เหมือน Type/Domain ที่มีผลแค่ By Lead — ดู #projectViewFld/switchDashView())
+  // 2026-09-24 (§5.72): ติ๊ก "All Active Project" แล้ว View เป็น 'Booked MD' เสมอ (ค่าเต็มช่วง
+  // ไม่ clip — dropdown #projectViewSelect ถูก disable ไปแล้วด้วย) ไม่อ่าน S.projectViewMode ตรงๆ
+  // เพราะอาจยังค้างเป็น 'month' จากก่อนติ๊ก (ไม่ถูกล้าง — ดู updateAllActiveGating())
   if (S.dashView === 'project') {
-    rows.push(['View', S.projectViewMode === 'month' ? 'Selected Month' : 'Booked MD']);
+    rows.push(['All Active Project', S.allActiveProject ? `ใช่ (ณ ${dDisp(d2s(new Date()))})` : 'ไม่ใช่']);
+    rows.push(['View', S.allActiveProject ? 'Booked MD' : (S.projectViewMode === 'month' ? 'Selected Month' : 'Booked MD')]);
   }
   return rows;
 }
@@ -3809,6 +3934,15 @@ function wireToolbar(){
     renderAll();
     hideDashLoading();
   });
+  // 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ) — checkbox "All Active Project" (By Project tab เท่านั้น)
+  // มีผลทันที (ไม่ต้องกดรอ) เหมือน dropdown View ข้างบน — loadPeriod(false) แค่ recompute+render
+  // จาก S.bookingDaily/S.leaveDaily ที่โหลดไว้แล้ว ไม่ยิง network ซ้ำ (แพตเทิร์นเดียวกับ applyMonths())
+  $('allActiveChk').addEventListener('change', () => {
+    S.allActiveProject = $('allActiveChk').checked;
+    savePrefs(PAGE, { allActiveProject: S.allActiveProject });
+    updateAllActiveGating();
+    loadPeriod(false);
+  });
   $('downloadExcelBtn').addEventListener('click', downloadDashboardExcel);
   // 2026-09-02: ปุ่ม Refresh ใหม่ (ดู comment ที่ markup ของปุ่ม) — โหลด master data
   // (project/phase/lead/app ฯลฯ) + booking/leave ใหม่จาก Supabase สดๆ แล้ว recompute+render
@@ -3861,6 +3995,14 @@ function wireToolbar(){
     $('projectViewSelect').value = S.projectViewMode;
     savePrefs(PAGE, { projectViewMode: S.projectViewMode });
 
+    // 2026-09-24 (§5.72) — "All Active Project" กลับเป็นปลดติ๊กด้วย ก่อน applyMonths() ข้างล่าง
+    // (ต้องมาก่อน เพราะ applyMonths() → loadPeriod(false) → recompute จาก S.allActiveProject
+    // ตัวใหม่นี้เลย ไม่งั้นเดือนที่กลับมาเป็นเดือนปัจจุบันจะยังไม่มีผลถ้า checkbox ยังติ๊กอยู่)
+    S.allActiveProject = false;
+    $('allActiveChk').checked = false;
+    savePrefs(PAGE, { allActiveProject: false });
+    updateAllActiveGating();
+
     // เดือนกลับเป็นเดือนปัจจุบัน — applyMonths() ครอบทั้ง state/label/prefs/recompute+render ให้
     // (force=false ภายใน ให้ loadPeriod แค่ recompute+render จาก cache เหมือนเดิม)
     const now = new Date();
@@ -3876,9 +4018,11 @@ function switchDashView(view){
   $('leadRoleFld').classList.toggle('hidden', view !== 'lead');   // By Lead tab เท่านั้น (round 4)
   $('leadDomainFld').classList.toggle('hidden', view !== 'lead');
   $('projectViewFld').classList.toggle('hidden', view !== 'project'); // 2026-09-02, By Project tab เท่านั้น
+  $('allActiveFld').classList.toggle('hidden', view !== 'project'); // 2026-09-24 (§5.72), By Project tab เท่านั้น
   updateAppModeVisibility(); // 2026-09-10 (§5.64) — Mode dropdown, By App tab เท่านั้น
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
   updateProjectFilterEnabled(); // 2026-09-11 (Change A) — สลับแท็บอาจเปลี่ยนว่า #msProject ควรถูกปิดใช้งานไหม
+  updateAllActiveGating(); // 2026-09-24 (§5.72) — เผื่อ dashView เปลี่ยนจาก/มาที่ 'project'
   // Download Excel — ทุกแท็บแล้ว (2026-08-25 ตามคำขอพี่กิ๊บ, เดิม By Lead tab เท่านั้น) ไม่ต้อง
   // toggle hidden อีกต่อไป — ปุ่มโชว์ตลอด downloadDashboardExcel() เลือก export ที่ถูกต้องเองจาก
   // S.dashView ตอนกดคลิก
