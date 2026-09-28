@@ -3203,20 +3203,13 @@ async function downloadProjectExcel(){
 
     const filterAoa = buildDownloadFilterAoa(false);
     const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
-    let gTotal=0, gTcprep=0, gUat=0, gReg=0, gOther1=0, gOther2=0, gSupport=0;
     rows.forEach(r => {
-      gTotal+=r.totalMD; gTcprep+=r.tcprep; gUat+=r.uat; gReg+=r.reg; gOther1+=r.other1; gOther2+=r.other2; gSupport+=r.support;
       projectAoa.push([
         r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp,
         Number(fmtMD(r.totalMD)), Number(fmtMD(r.tcprep)), Number(fmtMD(r.uat)), Number(fmtMD(r.reg)),
         Number(fmtMD(r.other1)), Number(fmtMD(r.other2)), Number(fmtMD(r.support)),
       ]);
     });
-    projectAoa.push([
-      `รวมทั้งหมด (${rows.length} projects)`, '', '', '', '', '',
-      Number(fmtMD(gTotal)), Number(fmtMD(gTcprep)), Number(fmtMD(gUat)), Number(fmtMD(gReg)),
-      Number(fmtMD(gOther1)), Number(fmtMD(gOther2)), Number(fmtMD(gSupport)),
-    ]);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
@@ -3257,7 +3250,6 @@ async function downloadAppExcel(){
     filterAoa.push(['โหมด', { booked: 'Booked MD', actual: 'Actual MD', compare: 'Compare' }[mode] || 'Booked MD']);
 
     const appAoa = [];
-    let totalRow;
 
     if (mode === 'compare') {
       const header = ['App', 'Booked MD', 'Actual MD', 'B − A'];
@@ -3265,21 +3257,12 @@ async function downloadAppExcel(){
       months.forEach(mm => header.push(`Actual ${monthLabel(mm)}`));
       appAoa.push(header);
 
-      let gBookedTotal = 0, gActualTotal = 0, gDiff = 0;
-      const gBookedByMonth = {}, gActualByMonth = {};
-      months.forEach(mm => { gBookedByMonth[mm] = 0; gActualByMonth[mm] = 0; });
-
       sorted.forEach(r => {
-        gBookedTotal += r.bookedTotal; gActualTotal += r.actualTotal; gDiff += r.diff;
         const row = [r.app, Number(fmtMD(r.bookedTotal)), Number(fmtMD(r.actualTotal)), Number(fmtMD(r.diff))];
-        months.forEach(mm => { gBookedByMonth[mm] += r.bookedByMonth[mm]; row.push(Number(fmtMD(r.bookedByMonth[mm]))); });
-        months.forEach(mm => { gActualByMonth[mm] += r.actualByMonth[mm]; row.push(Number(fmtMD(r.actualByMonth[mm]))); });
+        months.forEach(mm => row.push(Number(fmtMD(r.bookedByMonth[mm]))));
+        months.forEach(mm => row.push(Number(fmtMD(r.actualByMonth[mm]))));
         appAoa.push(row);
       });
-
-      totalRow = [`รวมทั้งหมด (${visibleRows.length} apps)`, Number(fmtMD(gBookedTotal)), Number(fmtMD(gActualTotal)), Number(fmtMD(gDiff))];
-      months.forEach(mm => totalRow.push(Number(fmtMD(gBookedByMonth[mm]))));
-      months.forEach(mm => totalRow.push(Number(fmtMD(gActualByMonth[mm]))));
     } else {
       // mode === 'booked' | 'actual' — โครงเดียวกันเป๊ะ สลับแค่ว่าอ่านฟิลด์ booked* หรือ actual*
       const totalKey = mode === 'actual' ? 'actualTotal' : 'bookedTotal';
@@ -3291,21 +3274,12 @@ async function downloadAppExcel(){
       months.forEach(mm => header.push(`${monthColPrefix} ${monthLabel(mm)}`));
       appAoa.push(header);
 
-      let gTotal = 0;
-      const gByMonth = {};
-      months.forEach(mm => { gByMonth[mm] = 0; });
-
       sorted.forEach(r => {
-        gTotal += r[totalKey];
         const row = [r.app, Number(fmtMD(r[totalKey]))];
-        months.forEach(mm => { gByMonth[mm] += r[byMonthKey][mm]; row.push(Number(fmtMD(r[byMonthKey][mm]))); });
+        months.forEach(mm => row.push(Number(fmtMD(r[byMonthKey][mm]))));
         appAoa.push(row);
       });
-
-      totalRow = [`รวมทั้งหมด (${visibleRows.length} apps)`, Number(fmtMD(gTotal))];
-      months.forEach(mm => totalRow.push(Number(fmtMD(gByMonth[mm]))));
     }
-    appAoa.push(totalRow);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
@@ -3381,9 +3355,6 @@ async function downloadOsExcel(){
         });
       });
 
-      const grandCells = sumCompareCells(finalRows.map(r => r.cells), months);
-      compareAoa.push(cellsToRow(`รวมทั้งหมด (${finalRows.length} คน)`, '', '', grandCells));
-
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(compareAoa), 'OS');
@@ -3422,34 +3393,26 @@ async function downloadOsExcel(){
       if (!apps.length && !aAgg.unmatched.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
 
       const osAoa = [['OS', 'Role', 'Total MD', ...apps]];
-      const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
-      let grandTotal = 0;
       osRows.forEach(r => {
-        grandTotal += r.total;
         const cells = apps.map(a => {
           const v = (shaped.byOsApp[r.resource_id] || {})[a] || 0;
-          colTotals[a] += v;
           return v ? Number(fmtMD(v)) : 0;
         });
         osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
       });
 
-      // กลุ่ม "ไม่พบใน OS master" — ยอดรวมท้ายตาราง (colTotals/grandTotal ตัวเดียวกับข้างบน)
-      // ต้องนับรวมด้วยเสมอ เหมือน renderOsView() (visibleUnmatched — Change C)
+      // กลุ่ม "ไม่พบใน OS master" ต่อท้ายเหมือน renderOsView() (visibleUnmatched — Change C)
       if (visibleUnmatched.length) {
         osAoa.push([`ไม่พบใน OS master (${visibleUnmatched.length} คน)`, '', '', ...apps.map(() => '')]);
         visibleUnmatched.forEach(u => {
           const cells = apps.map(a => {
             const v = Object.values(u.byAppMonth[a] || {}).reduce((s, v2) => s + v2, 0);
-            colTotals[a] += v;
             return v ? Number(fmtMD(v)) : 0;
           });
-          grandTotal += u.total;
           osAoa.push([u.name, '', Number(fmtMD(u.total)), ...cells]);
         });
       }
 
-      osAoa.push(['รวมทั้งหมด', '', Number(fmtMD(grandTotal)), ...apps.map(a => Number(fmtMD(colTotals[a])))]);
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
@@ -3484,18 +3447,13 @@ async function downloadOsExcel(){
     if (!apps.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
 
     const osAoa = [['OS', 'Role', 'Total MD', ...apps]];
-    const colTotals = {}; apps.forEach(a => colTotals[a] = 0);
-    let grandTotal = 0;
     osRows.forEach(r => {
-      grandTotal += r.total;
       const cells = apps.map(a => {
         const v = (agg.byOsApp[r.resource_id] || {})[a] || 0;
-        colTotals[a] += v;
         return v ? Number(fmtMD(v)) : 0;
       });
       osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
     });
-    osAoa.push(['รวมทั้งหมด', '', Number(fmtMD(grandTotal)), ...apps.map(a => Number(fmtMD(colTotals[a])))]);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
