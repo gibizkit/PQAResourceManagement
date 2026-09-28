@@ -2168,11 +2168,11 @@ function renderForm(table, data) {
       </div>
       <div class="grid2">
         <div class="field">
-          <label>Regression Start</label>
+          <label>Start</label>
           <input type="date" id="f-regression_start" value="${STATE.editingMode && data ? (data.regression_start || '') : ''}">
         </div>
         <div class="field">
-          <label>Regression End</label>
+          <label>End</label>
           <input type="date" id="f-regression_end" value="${STATE.editingMode && data ? (data.regression_end || '') : ''}">
         </div>
       </div>
@@ -2418,7 +2418,7 @@ function validateRecord(table, payload) {
   } else if (table === 'app_release_schedule') {
     if (!payload.app_code) return { ok: false, err: 'กรุณาเลือก App' };
     if (payload.regression_start && payload.regression_end && payload.regression_end < payload.regression_start) {
-      return { ok: false, err: 'Regression End ต้องไม่มาก่อน Regression Start' };
+      return { ok: false, err: 'End ต้องไม่มาก่อน Start' };
     }
   } else if (table === 'phase') {
     if (!payload.phase_code) return { ok: false, err: 'กรุณาระบุ Phase Code' };

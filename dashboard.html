@@ -643,10 +643,11 @@
           <div class="dash-month-panel hidden" id="dashMonthPanel"></div>
         </div>
       </div>
-      <!-- 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ): "All Active Project" — By Project tab เท่านั้น —
-           ติ๊กแล้วเลือก project ที่ testing period (TCPREP/UAT/REG/SUPPORT/Other ๆ — ไม่นับ SIT,
-           ไม่นับ project.signoff_date/deploy_date) คาบเกี่ยว "วันนี้" แทนเดือนที่เลือกใน month
-           picker (ดู matchProjectTabDiscovery()/projectTestingSpansToday()) — ปิดใช้งานตัวเลือก
+      <!-- 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ) ปรับ 2026-09-25: "All Active Project" — By Project
+           tab เท่านั้น — ติ๊กแล้วเลือก project ที่ testing period (TCPREP/UAT/REG/SUPPORT/Other ๆ
+           — ไม่นับ SIT, ไม่นับ project.signoff_date/deploy_date) ยังไม่จบ (End >= วันนี้ —
+           ไม่เช็ค Start อีกต่อไป โปรเจกต์ที่ยังไม่เริ่มก็ติดมาด้วย) แทนเดือนที่เลือกใน month
+           picker (ดู matchProjectTabDiscovery()/projectTestingNotEnded()) — ปิดใช้งานตัวเลือก
            เดือน + #projectViewSelect ทันที (updateAllActiveGating()) เพราะไม่มีความหมายอีกต่อไป
            เมื่อเดือนถูก disable — ตัวกรอง Project/UAT Lead/App บน panel ยังมีผล AND กันเหมือนเดิม -->
       <div class="fld" id="allActiveFld">
@@ -796,9 +797,10 @@ const S = {
   // periodAggActiveOnly/By OS, §5.48) ดู recomputeAggregates()/buildProjectRows()
   projectViewMode: 'all',         // 'all' | 'month' — dropdown #projectViewSelect
   periodAggProjectView: null,     // agg ที่ buildProjectRows() ใช้จริง (= periodAgg เมื่อ 'all', clipped เมื่อ 'month')
-  // 2026-09-24 (§5.72) — checkbox "All Active Project" ตัวกรองของแท็บ By Project เท่านั้น —
-  // ติ๊กแล้ว By Project สลับจากกฎเดือน (matchProjectDiscovery()) เป็นกฎ "testing period คาบวันนี้"
-  // (matchProjectTabDiscovery()/projectTestingSpansToday()) — ไม่กระทบ By OS/By Lead/By App/Signoff เลย
+  // 2026-09-24 (§5.72) ปรับ 2026-09-25 — checkbox "All Active Project" ตัวกรองของแท็บ By Project
+  // เท่านั้น — ติ๊กแล้ว By Project สลับจากกฎเดือน (matchProjectDiscovery()) เป็นกฎ
+  // "testing period ยังไม่จบ (End >= วันนี้)" (matchProjectTabDiscovery()/projectTestingNotEnded())
+  // — ไม่กระทบ By OS/By Lead/By App/Signoff เลย
   allActiveProject: false,
 
   // sort state for the sortable subview tables ({ key:'', dir:'' } = unsort, §5.59)
@@ -1754,37 +1756,42 @@ function matchProjectDiscovery(pk, months){
  *  (buildProjectRows()/projectPeriodDisp() — ยังรวม SIT เหมือนเดิมทุกประการ ไม่ถูกแตะในงานนี้)
  *  — จงใจให้ 2 นิยามต่างกัน: คอลัมน์แสดงผลบอก "ช่วงทั้งโปรเจกต์" ส่วน testing period ใช้กรอง
  *  "ตอนนี้กำลังทดสอบอยู่จริงไหม" เท่านั้น
- *  คืน { start: null, end: null } เมื่อไม่มีเฟส non-SIT ที่มี start_date เลย
- *  (fallback end = start เมื่อไม่มี end_date เลย — mirror periodEnd ของ projectMatchesRange()) */
+ *  คืน { start: null, end: null } เมื่อไม่มีเฟส non-SIT ที่มี start_date หรือ end_date เลย
+ *  (fallback: end = maxEnd ถ้ามี, ไม่งั้นใช้ start เป็น single-day — mirror periodEnd ของ
+ *  projectMatchesRange() — 2026-09-25: เผื่อเคสมี end_date แต่ไม่มี start_date ด้วย เพราะตอนนี้
+ *  การตัดสิน match ใช้ end อย่างเดียว ดู projectTestingNotEnded()) */
 function projectTestingSpan(pk){
   const phases = (S.phasesByProject[pk] || []).filter(ph => ph.phase_code !== 'SIT');
   const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
   const start = starts[0] || null;
-  if (!start) return { start: null, end: null };
   let maxEnd = null;
   phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
-  return { start, end: maxEnd || start };
+  if (!start && !maxEnd) return { start: null, end: null };
+  return { start, end: maxEnd || start || null };
 }
 
-/** project `pk`'s testing period (ข้างบน) คาบเกี่ยว `todayStr` ('yyyy-mm-dd') หรือไม่ — string
- *  compare ตามมาตรฐาน §4.1 เดิม (start ≤ today && end ≥ today) ไม่มี testing period (ไม่มีเฟส
- *  non-SIT ที่มี start_date) = ไม่ถือว่ากำลังทดสอบ → false เสมอ `todayStr` รับเป็น argument
- *  (ไม่เรียก `new Date()` เองข้างใน) เพื่อให้ test ตรึงวันได้ */
-function projectTestingSpansToday(pk, todayStr){
-  const { start, end } = projectTestingSpan(pk);
-  if (!start) return false;
-  return start <= todayStr && end >= todayStr;
+/** 2026-09-25 (ปรับตามคำขอพี่กิ๊บ — เดิมชื่อ projectTestingSpansToday() ต้องคาบวันนี้ทั้ง 2 ฝั่ง):
+ *  "ปรับ condition active project เหลือแค่ project ที่มี testing period ที่
+ *  End testing period >= today" — ตัดเงื่อนไข start ≤ today ออก เหลือเงื่อนไขเดียว
+ *  end ≥ today ⇒ โปรเจกต์ที่ testing period **ยังไม่เริ่ม** (start อยู่ในอนาคต) ก็ต้อง match
+ *  ด้วย ตัดออกแค่โปรเจกต์ที่ testing period **จบไปแล้ว** (end < today) เท่านั้น ไม่มี testing
+ *  period เลย (ไม่มีเฟส non-SIT ที่มี start_date/end_date) = ไม่ถือว่ากำลัง/จะทดสอบ → false เสมอ
+ *  `todayStr` รับเป็น argument (ไม่เรียก `new Date()` เองข้างใน) เพื่อให้ test ตรึงวันได้ */
+function projectTestingNotEnded(pk, todayStr){
+  const { end } = projectTestingSpan(pk);
+  if (!end) return false;
+  return end >= todayStr;
 }
 
 /** 2026-09-24 (§5.72) — discovery ของแท็บ By Project เท่านั้น — สลับกฎตาม checkbox
- *  "All Active Project" (S.allActiveProject): ติ๊กแล้วใช้ testing period คาบวันนี้
- *  (projectTestingSpansToday(), ไม่นับ SIT/signoff_date/deploy_date) แทนกฎเดือนเดิม
+ *  "All Active Project" (S.allActiveProject): ติ๊กแล้วใช้ testing period ที่ยังไม่จบ
+ *  (projectTestingNotEnded(), ไม่นับ SIT/signoff_date/deploy_date) แทนกฎเดือนเดิม
  *  (matchProjectDiscovery()) — ตัวกรอง Project/UAT Lead/App บน panel ยังมีผล AND กันเหมือนเดิม
  *  ทั้ง 2 โหมด ไม่กระทบ By OS/By Lead/By App/Signoff เลย (ยังใช้ matchProjectDiscovery() ตรงๆ
  *  ผ่าน S.periodAgg/S.periodAggActiveOnly เหมือนเดิมทุกประการ) */
 function matchProjectTabDiscovery(pk, months, todayStr){
   return S.allActiveProject
-    ? (projectTestingSpansToday(pk, todayStr) && projectPassesExtraFilters(pk))
+    ? (projectTestingNotEnded(pk, todayStr) && projectPassesExtraFilters(pk))
     : matchProjectDiscovery(pk, months);
 }
 
