@@ -178,14 +178,15 @@
   #tab-project .table-wrap table td:nth-child(2) {
     position: sticky;
     left: 130px;
-    width: 110px;
-    min-width: 110px;
-    max-width: 110px;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
+    white-space: nowrap;   /* 2026-09-29: dd/mm/yyyy HH:mm (BKK) ต้องอยู่บรรทัดเดียว */
   }
   #tab-project .table-wrap table th:nth-child(3),
   #tab-project .table-wrap table td:nth-child(3) {
     position: sticky;
-    left: 240px;
+    left: 270px;   /* = 130 + 140 */
     width: 220px;
     min-width: 220px;
     max-width: 220px;
@@ -1168,6 +1169,7 @@ function renderProjectRows() {
       .some(v => (v || '').toLowerCase().includes(q));
   });
   rows = applySortGeneric('project', rows);
+  updateSortHeaderUI('project');   // ให้ลูกศร ▼ ที่ Created Date โผล่ตั้งแต่เปิดหน้า (default sort)
   $('projCount').textContent = rows.length;
   if (!rows.length) {
     $('rows-project').innerHTML = '<tr><td colspan="11" class="loading">ไม่พบข้อมูล</td></tr>';
@@ -1191,16 +1193,20 @@ function renderProjectRows() {
     </tr>`).join('');
 }
 
-// created_at เป็น timestamptz (ไม่ใช่ 'yyyy-MM-dd' เหมือนคอลัมน์วันที่อื่น) — ใช้ Date object
-// แปลงเป็น dd/mm/yyyy ตาม timezone เครื่อง user (Asia/Bangkok) ให้ format เดียวกับ fmtDate อื่นๆ
+// created_at เป็น timestamptz (ไม่ใช่ 'yyyy-MM-dd' เหมือนคอลัมน์วันที่อื่น)
+// 2026-09-29: แสดงวันที่ + เวลา (dd/mm/yyyy HH:mm) โดยบังคับ timezone Asia/Bangkok เสมอ
+// (ไม่พึ่ง timezone เครื่อง user) — ใช้ Intl formatToParts ประกอบเองให้ได้รูปแบบ §4.5 เป๊ะ
+const _BKK_TS_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+});
 function fmtCreatedAt(ts) {
   if (!ts) return '<span class="muted">—</span>';
   const dt = new Date(ts);
   if (isNaN(dt.getTime())) return '<span class="muted">—</span>';
-  const dd = String(dt.getDate()).padStart(2, '0');
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  const yyyy = dt.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  const p = {};
+  _BKK_TS_FMT.formatToParts(dt).forEach(x => { p[x.type] = x.value; });
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
 }
 
 const _projectSearchEl = document.getElementById('projectSearch');
@@ -1729,7 +1735,9 @@ window.filterReleaseScheduleByYear = function(year) {
 
 /* ============ SORTABLE HEADER: ทุกแท็บใน Admin (ยกเว้น App Release Schedule ที่มีระบบของตัวเองอยู่แล้ว
    จาก §5.31 — คลิกหัวคอลัมน์เรียงฝั่ง client จาก cache ที่โหลดมาแล้วทั้งก้อน ไม่ยิง query ใหม่) ============ */
-window.SORT_STATE = {};   // table -> { key, dir } — ไม่มี entry = ใช้ลำดับ default จาก query เดิม
+// table -> { key, dir } — ไม่มี entry = ใช้ลำดับ default จาก query เดิม
+// 2026-09-29: Projects default เรียง Created Date ใหม่สุดก่อน (Z-A) ตามที่ขอ
+window.SORT_STATE = { project: { key: 'created_at', dir: 'desc' } };
 
 const SORT_KEYFNS = {
   project: {
