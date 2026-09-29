@@ -110,6 +110,12 @@
     flex: none;
   }
 
+  /* §5.75: checkbox "All Active Project" ใน toolbar แท็บ Projects (mirror .chk-inline ของ dashboard.html) */
+  .chk-inline { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dk-text2);
+    cursor:pointer; user-select:none; white-space:nowrap; }
+  .chk-inline input { width:auto; margin:0; cursor:pointer; }
+  #projectYearFilter:disabled { opacity:.5; cursor:not-allowed; }
+
   .tab-content .table-wrap {
     flex: 1;
     min-height: 0;
@@ -391,6 +397,8 @@
         <button class="btn accent" id="addProjectBtn" onclick="openAddProject()">+ เพิ่ม Project</button>
         <input class="search" id="projectSearch" placeholder="ค้นหา ชื่อ / key / app / lead...">
         <select id="projectYearFilter" title="กรองตามปีของ Signoff Date"><option value="all">ทุกปี</option></select>
+        <label class="chk-inline" title="เฉพาะ Project ที่ active และ testing period (ไม่นับ SIT/Signoff/Deploy) ยังไม่จบ — End ≥ วันนี้"><input type="checkbox" id="projectAllActiveChk"> All Active Project</label>
+        <button class="btn" id="projectDownloadBtn" title="ดาวน์โหลดรายการที่แสดงอยู่ — template เดียวกับ Dashboard > By Project">⬇ Download Excel</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -1141,8 +1149,192 @@ async function loadProjects() {
     return;
   }
   allProjects = data || [];
+  // §5.75: project_phase ของทุกโปรเจกต์ — ใช้ทั้งกรอง "All Active Project" (testing period) และ
+  // คอลัมน์ Project Period ตอน Download Excel — ห่อ fetchAllRows() กัน Max Rows cap (§5.49)
+  // โหลดไม่สำเร็จ = ไม่ fatal (ตารางยังแสดงได้ แค่ All Active จะไม่เจออะไรเลย)
+  const phRes = await fetchAllRows((from, to) => supabase.from('project_phase')
+    .select('project_key,phase_code,phase_label,start_date,end_date,sort_order')
+    .order('project_key', { ascending: true })
+    .order('phase_code', { ascending: true })
+    .order('phase_label', { ascending: true })
+    .range(from, to));
+  if (phRes.error) console.warn('load project_phase', phRes.error);
+  projPhasesByProject = {};
+  (phRes.data || []).forEach(ph => { (projPhasesByProject[ph.project_key] = projPhasesByProject[ph.project_key] || []).push(ph); });
   renderProjectYearFilter();
   renderProjectRows();
+}
+
+/* ============ §5.75 All Active Project + Download Excel (mirror Dashboard > By Project §5.72) ============ */
+let projPhasesByProject = {};   // project_key -> project_phase rows (โหลดใน loadProjects())
+
+/** testing period = ช่วงของเฟสที่ไม่ใช่ SIT (ไม่นับ signoff_date/deploy_date) — ก๊อปตรรกะจาก
+ *  dashboard.html projectTestingSpan() (page-local helper ทั้ง 2 ไฟล์ — แก้ที่หนึ่งต้องแก้อีกที่ด้วย) */
+function projectTestingSpan(pk){
+  const phases = (projPhasesByProject[pk] || []).filter(ph => ph.phase_code !== 'SIT');
+  const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+  const start = starts[0] || null;
+  let maxEnd = null;
+  phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+  if (!start && !maxEnd) return { start: null, end: null };
+  return { start, end: maxEnd || start || null };
+}
+/** เกณฑ์เดียวกับ dashboard.html projectTestingNotEnded() (§5.72 ปรับ 2026-09-25): End ≥ วันนี้ */
+function projectTestingNotEnded(pk, todayStr){
+  const { end } = projectTestingSpan(pk);
+  if (!end) return false;
+  return end >= todayStr;
+}
+/** All Active Project = is_active และ testing period ยังไม่จบ (dashboard ใช้ S.activeProjects
+ *  ที่กรอง is_active=true อยู่แล้ว — ที่นี่ allProjects รวม inactive จึงต้องเช็คเอง) */
+function projectIsAllActive(p, todayStr){
+  return !!p.is_active && projectTestingNotEnded(p.project_key, todayStr);
+}
+function projectAllActiveOn(){
+  const el = $('projectAllActiveChk');
+  return !!(el && el.checked);
+}
+
+/** แถวที่ตาราง Projects แสดงอยู่จริง (ค้นหา + ปี/All Active + sort) — ใช้ร่วม render และ Download
+ *  เพื่อให้ไฟล์ได้แถวชุดเดียวกับบนจอเสมอ */
+function filteredProjectRows(){
+  const searchEl = $('projectSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const allActive = projectAllActiveOn();
+  const yearEl = $('projectYearFilter');
+  // ติ๊ก All Active แล้วปีไม่มีผล (dropdown ถูก disable — mirror dashboard ที่ disable month picker)
+  const yearFilter = (!allActive && yearEl) ? yearEl.value : 'all';
+  const todayStr = d2s(new Date());
+  const rows = allProjects.filter(p => {
+    if (allActive && !projectIsAllActive(p, todayStr)) return false;
+    if (yearFilter !== 'all' && (p.signoff_date || '').slice(0, 4) !== yearFilter) return false;
+    if (!q) return true;
+    return [p.project_key, p.project_name, p.app, p.other_app, p.uat_lead, p.status]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+  return applySortGeneric('project', rows);
+}
+
+/** Effective MD ต่อ project -> phase — นิยามเดียวกับ dashboard.html computeAgg() (§5.20/§5.39):
+ *  factor หักวันลาคิดจาก booking ทั้งระบบต่อ resource+วัน แล้วคูณ md_per_day ทุกแถว (เต็มช่วง
+ *  ไม่ตัดเดือน = ตรงกับ Dashboard By Project โหมด All Active / Booked MD) */
+function computeProjectPhaseMD(bookingRows, leaveRows){
+  const booked = {};
+  bookingRows.forEach(r => { const k = r.resource_id + '|' + r.work_date; booked[k] = (booked[k] || 0) + (Number(r.md_per_day) || 0); });
+  const leave = {};
+  leaveRows.forEach(l => { leave[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
+  const factor = {};
+  Object.keys(booked).forEach(k => { const b = booked[k]; factor[k] = b > 0 ? Math.max(0, b - (leave[k] || 0)) / b : 0; });
+  const byProject = {}, byProjectPhase = {};
+  bookingRows.forEach(r => {
+    const f = factor[r.resource_id + '|' + r.work_date];
+    const md = (Number(r.md_per_day) || 0) * (f === undefined ? 1 : f);
+    byProject[r.project_key] = (byProject[r.project_key] || 0) + md;
+    const pp = (byProjectPhase[r.project_key] = byProjectPhase[r.project_key] || {});
+    pp[r.phase_code] = (pp[r.phase_code] || 0) + md;
+  });
+  return { byProject, byProjectPhase };
+}
+
+const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
+
+/** 1 แถว Excel ต่อ project — คอลัมน์/สูตรเดียวกับ dashboard.html buildProjectRows() +
+ *  downloadProjectExcel() (Project Period = TC Prep start → max end ทุกเฟสรวม SIT, Other1/Other2 =
+ *  เฟสนอก 4 เฟสมาตรฐานเรียงตาม sort_order) */
+function buildProjectExportRow(p, agg, subLeads, executors){
+  const pk = p.project_key;
+  const phases = projPhasesByProject[pk] || [];
+  const pAgg = agg.byProjectPhase[pk] || {};
+  const otherCodes = new Set();
+  phases.forEach(ph => { if (!PROJECT_STD_PHASES.includes(ph.phase_code)) otherCodes.add(ph.phase_code); });
+  Object.keys(pAgg).forEach(c => { if (!PROJECT_STD_PHASES.includes(c)) otherCodes.add(c); });
+  const otherSorted = [...otherCodes].sort((a, b) => {
+    const pa = phases.find(x => x.phase_code === a), pb = phases.find(x => x.phase_code === b);
+    return (pa && pa.sort_order != null ? pa.sort_order : 999) - (pb && pb.sort_order != null ? pb.sort_order : 999);
+  });
+  let other1 = 0, other2 = 0;
+  otherSorted.forEach((c, i) => { const v = pAgg[c] || 0; if (i === 0) other1 += v; else other2 += v; });
+
+  const tcprepPhase = phases.find(ph => ph.phase_code === 'TCPREP');
+  let maxEnd = null;
+  phases.forEach(ph => { if (ph.end_date && (!maxEnd || ph.end_date > maxEnd)) maxEnd = ph.end_date; });
+  const starts = phases.map(ph => ph.start_date).filter(Boolean).sort();
+  const periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
+  const periodDisp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
+    : periodStart ? dDisp(periodStart) : '—';
+
+  const n = v => Number(fmtMD(v));
+  return [
+    p.app || p.other_app || '— ไม่มี App —', p.project_name || '', p.uat_lead || '',
+    (subLeads[pk] || []).join(', '), (executors[pk] || []).join(', '), periodDisp,
+    n(agg.byProject[pk] || 0), n(pAgg.TCPREP || 0), n(pAgg.UAT || 0), n(pAgg.REG || 0),
+    n(other1), n(other2), n(pAgg.SUPPORT || 0),
+  ];
+}
+
+async function downloadAdminProjectExcel(){
+  const btn = $('projectDownloadBtn');
+  const rows = filteredProjectRows();
+  if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+  btn.disabled = true;
+  try {
+    // โหลดตอนกดเท่านั้น (ข้อมูลรายวันใหญ่ — ไม่โหลดตอนเปิดแท็บ) ห่อ fetchAllRows() ตาม §5.49
+    const [bkRes, lvRes, plRes] = await Promise.all([
+      fetchAllRows((from, to) => supabase.from('v_booking_daily')
+        .select('booking_id,project_key,resource_id,phase_code,work_date,md_per_day')
+        .order('booking_id', { ascending: true })
+        .order('work_date', { ascending: true })
+        .range(from, to)),
+      fetchAllRows((from, to) => supabase.from('v_leave_daily')
+        .select('leave_id,resource_id,leave_date,leave_md')
+        .order('leave_id', { ascending: true })
+        .order('leave_date', { ascending: true })
+        .range(from, to)),
+      fetchAllRows((from, to) => supabase.from('project_lead')
+        .select('project_key,pqa_emp_id,is_main,is_executor')
+        .order('project_key', { ascending: true })
+        .order('pqa_emp_id', { ascending: true })
+        .range(from, to)),
+    ]);
+    if (bkRes.error) throw bkRes.error;
+    if (lvRes.error) throw lvRes.error;
+    if (plRes.error) throw plRes.error;
+
+    const agg = computeProjectPhaseMD(bkRes.data || [], lvRes.data || []);
+    const nameOf = {};
+    (STATE.pqaLeads || []).forEach(l => { nameOf[l.emp_id] = l.short_name || l.nickname || l.emp_id; });
+    const subLeads = {}, executors = {};
+    (plRes.data || []).forEach(pl => {
+      if (pl.is_main) return;
+      const map = pl.is_executor ? executors : subLeads;
+      (map[pl.project_key] = map[pl.project_key] || []).push(nameOf[pl.pqa_emp_id] || pl.pqa_emp_id);
+    });
+    [subLeads, executors].forEach(m => Object.values(m).forEach(a => a.sort((x, y) => String(x).localeCompare(String(y)))));
+
+    const allActive = projectAllActiveOn();
+    const q = ($('projectSearch') && $('projectSearch').value.trim()) || '';
+    const yearVal = $('projectYearFilter') ? $('projectYearFilter').value : 'all';
+    const filterAoa = [
+      ['ค้นหา', q || 'All'],
+      ['ปี (Signoff Date)', allActive ? '— (All Active Project)' : (yearVal === 'all' ? 'ทุกปี' : yearVal)],
+      ['All Active Project', allActive ? `ใช่ (ณ ${dDisp(d2s(new Date()))})` : 'ไม่ใช่'],
+      ['View', 'Booked MD'],
+    ];
+    const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
+    rows.forEach(p => projectAoa.push(buildProjectExportRow(p, agg, subLeads, executors)));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projectAoa), 'Project');
+    const filename = `pqaResourceManagement_AdminProjects_${STATE.myEmpId || 'NA'}_${fileTimeStamp(new Date())}.xlsx`;
+    writeWorkbookAndDownload(wb, filename);
+    toast(`ดาวน์โหลด ${filename} สำเร็จ`);
+  } catch (err) {
+    console.error(err);
+    toast('ดาวน์โหลด Excel ไม่สำเร็จ: ' + (err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ตัวเลือกปีมาจาก signoff_date ของโปรเจกต์ (ยืนยันโดยเจ้าของระบบ 2026-08-11) — เรียงปีใหม่สุดก่อน
@@ -1158,17 +1350,9 @@ function renderProjectYearFilter() {
 }
 
 function renderProjectRows() {
-  const searchEl = $('projectSearch');
-  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
   const yearEl = $('projectYearFilter');
-  const yearFilter = yearEl ? yearEl.value : 'all';
-  let rows = allProjects.filter(p => {
-    if (yearFilter !== 'all' && (p.signoff_date || '').slice(0, 4) !== yearFilter) return false;
-    if (!q) return true;
-    return [p.project_key, p.project_name, p.app, p.other_app, p.uat_lead, p.status]
-      .some(v => (v || '').toLowerCase().includes(q));
-  });
-  rows = applySortGeneric('project', rows);
+  if (yearEl) yearEl.disabled = projectAllActiveOn();   // §5.75 — ค่าปีไม่ถูกล้าง ปลดติ๊กแล้วได้คืน
+  const rows = filteredProjectRows();
   updateSortHeaderUI('project');   // ให้ลูกศร ▼ ที่ Created Date โผล่ตั้งแต่เปิดหน้า (default sort)
   $('projCount').textContent = rows.length;
   if (!rows.length) {
@@ -1214,6 +1398,12 @@ if (_projectSearchEl) _projectSearchEl.addEventListener('input', renderProjectRo
 
 const _projectYearEl = document.getElementById('projectYearFilter');
 if (_projectYearEl) _projectYearEl.addEventListener('change', renderProjectRows);
+
+const _projectAllActiveEl = document.getElementById('projectAllActiveChk');
+if (_projectAllActiveEl) _projectAllActiveEl.addEventListener('change', renderProjectRows);
+
+const _projectDownloadEl = document.getElementById('projectDownloadBtn');
+if (_projectDownloadEl) _projectDownloadEl.addEventListener('click', downloadAdminProjectExcel);
 
 // ตัวเลือกปีมาจาก holiday_date ที่มีจริงใน STATE.holidays — refresh ทุกครั้งที่ renderRows('holiday', ...)
 // (ดู renderHolidayYearFilter ที่เรียกจากใน renderRows) เพื่อไม่ให้ dropdown ยุบเหลือปีเดียวหลังกรอง
