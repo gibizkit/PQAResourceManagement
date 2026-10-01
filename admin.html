@@ -397,7 +397,7 @@
         <button class="btn accent" id="addProjectBtn" onclick="openAddProject()">+ เพิ่ม Project</button>
         <input class="search" id="projectSearch" placeholder="ค้นหา ชื่อ / key / app / lead...">
         <select id="projectYearFilter" title="กรองตามปีของ Signoff Date"><option value="all">ทุกปี</option></select>
-        <label class="chk-inline" title="เฉพาะ Project ที่ active และ testing period (ไม่นับ SIT/Signoff/Deploy) ยังไม่จบ — End ≥ วันนี้"><input type="checkbox" id="projectAllActiveChk"> All Active Project</label>
+        <label class="chk-inline" title="เฉพาะ Project ที่ active และ testing period (ไม่นับ SIT/Signoff/Deploy) ยังไม่จบ — End ≥ วันที่ 1 ของเดือนนี้ (timesheet ตัดรายเดือน)"><input type="checkbox" id="projectAllActiveChk"> All Active Project</label>
         <button class="btn" id="projectDownloadBtn" title="ดาวน์โหลดรายการที่แสดงอยู่ — template เดียวกับ Dashboard > By Project">⬇ Download Excel</button>
       </div>
       <div class="table-wrap">
@@ -1183,7 +1183,13 @@ function projectTestingSpan(pk){
 function projectTestingNotEnded(pk, todayStr){
   const { end } = projectTestingSpan(pk);
   if (!end) return false;
-  return end >= todayStr;
+  // 2026-10-01: เทียบกับ "วันต้นเดือนของวันนี้" ไม่ใช่วันนี้ — timesheet ตัดเดือนต่อเดือน
+  // โปรเจกต์ที่จบไปแล้วกลางเดือนนี้ยังต้องลง timesheet ได้จนจบเดือน (ตรงกับ pqa.fn_all_active_project)
+  return end >= activeMonthStart(todayStr);
+}
+/** วันที่ 1 ของเดือนเดียวกับ todayStr (yyyy-mm-dd) — เกณฑ์ All Active Project (2026-10-01) */
+function activeMonthStart(todayStr){
+  return String(todayStr).slice(0, 7) + '-01';
 }
 /** All Active Project = is_active และ testing period ยังไม่จบ (dashboard ใช้ S.activeProjects
  *  ที่กรอง is_active=true อยู่แล้ว — ที่นี่ allProjects รวม inactive จึงต้องเช็คเอง) */
@@ -1317,7 +1323,7 @@ async function downloadAdminProjectExcel(){
     const filterAoa = [
       ['ค้นหา', q || 'All'],
       ['ปี (Signoff Date)', allActive ? '— (All Active Project)' : (yearVal === 'all' ? 'ทุกปี' : yearVal)],
-      ['All Active Project', allActive ? `ใช่ (ณ ${dDisp(d2s(new Date()))})` : 'ไม่ใช่'],
+      ['All Active Project', allActive ? `ใช่ (End testing ≥ ${dDisp(activeMonthStart(d2s(new Date())))})` : 'ไม่ใช่'],
       ['View', 'Booked MD'],
     ];
     const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
@@ -2732,7 +2738,7 @@ async function downloadActualTemplate(){
 
     const dataAoa = [
       ACTUAL_MD_HEADERS,
-      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
+      ['202602', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 'ชื่อโปรเจกต์ตัวอย่าง', 1],
     ];
     const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
 
@@ -2751,13 +2757,39 @@ async function downloadActualTemplate(){
   }
 }
 
-const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
+const ACTUAL_MD_HEADERS = ['YYYYMM', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Project_Name', 'Actual_MD'];
 
 /* pivot ของ Excel เขียนคำว่า "(blank)" ลงมาเป็นข้อความจริงในช่องที่ไม่มีค่า — ต้องแปลงเป็น
    ค่าว่างทุกช่องข้อความ ไม่งั้น approver จะกลายเป็นอีเมลชื่อ (blank) */
 function actualCellText(v){
   const s = String(v == null ? '' : v).trim();
   return s.toLowerCase() === '(blank)' ? '' : s;
+}
+
+/* normalize ชื่อโปรเจกต์ = trim + lowercase + ยุบช่องว่างซ้ำ (เท่ากับ SQL
+   lower(btrim(regexp_replace(x,'\s+',' ','g')))) — ใช้จับคู่ Project_Name กับ project_name ทุกโปรเจกต์ (รวม inactive) */
+function normProjectNameKey(s){
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+/** Map normalizedName -> จำนวนโปรเจกต์ที่ชื่อนี้ (ทุกโปรเจกต์รวม inactive) */
+function buildProjectNameMap(projects){
+  const m = new Map();
+  (projects || []).forEach(p => {
+    const k = normProjectNameKey(p.project_name);
+    if (!k) return;
+    m.set(k, (m.get(k) || 0) + 1);
+  });
+  return m;
+}
+/** คืนข้อความ warning ถ้า Project_Name จับคู่ไม่ได้ (ว่าง/ไม่พบ/ซ้ำหลายโปรเจกต์) — ไม่ส่งแผนที่ = ไม่เช็ค */
+function projectNameWarning(project_name, projectNameMap){
+  if (!projectNameMap) return '';
+  const k = normProjectNameKey(project_name);
+  if (!k) return 'Project_Name ว่าง (import ได้ แต่แถวนี้จะไม่ผูกกับโปรเจกต์)';
+  const n = projectNameMap.get(k) || 0;
+  if (n === 0) return `Project_Name ไม่ตรงโปรเจกต์ไหน: "${project_name}" (import ได้ แต่แถวนี้จะไม่ผูกกับโปรเจกต์)`;
+  if (n > 1) return `Project_Name ตรงหลายโปรเจกต์ (${n}): "${project_name}" (import ได้ แต่แถวนี้จะไม่ผูกกับโปรเจกต์)`;
+  return '';
 }
 
 /** Parse the "Data" sheet of an Actual MD import file — takes a plain AOA (array-of-arrays)
@@ -2767,7 +2799,7 @@ function actualCellText(v){
  *
  *  Returns { rows, errors, warnings, byMonth } — `rows` ready to pass straight through as
  *  `p_rows` to `supabase.rpc('fn_import_actual_md', { p_rows })`. */
-function parseActualFile(aoa, appCodeSet, leadEmailSet){
+function parseActualFile(aoa, appCodeSet, leadEmailSet, projectNameMap){
   const errors = [];
   const warnings = [];
 
@@ -2796,13 +2828,14 @@ function parseActualFile(aoa, appCodeSet, leadEmailSet){
     const excelRow = idx + 2; // header = row 1, first data row = row 2
     if (isBlankLine(line)) return; // skip fully-blank rows silently (not an error)
 
-    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
+    const [ymRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, projNameRaw, mdRaw] = line;
     const ym = actualCellText(ymRaw);
     const appCode = actualCellText(appRaw);
     const nickname_name = actualCellText(nickRaw);
     const en_fullname = actualCellText(fullRaw);
     const project_code = actualCellText(pcRaw);
     const approver_choice = actualCellText(approverRaw).toLowerCase();
+    const project_name = actualCellText(projNameRaw);
 
     if (!/^\d{6}$/.test(ym)) {
       errors.push({ row: excelRow, msg: `YYYYMM ไม่ถูกต้อง: "${ymRaw == null ? '' : ymRaw}" (ต้องเป็นตัวเลข 6 หลัก เช่น 202602)` });
@@ -2813,19 +2846,21 @@ function parseActualFile(aoa, appCodeSet, leadEmailSet){
     if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
       warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
     }
+    const pnWarn = projectNameWarning(project_name, projectNameMap);
+    if (pnWarn) warnings.push({ row: excelRow, msg: pnWarn });
     const md = Number(mdRaw);
     const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
     if (mdBlank || isNaN(md) || md < 0) {
       errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
     }
 
-    const key = [ym, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
+    const key = [ym, appCode, project_code, nickname_name, en_fullname, approver_choice, normProjectNameKey(project_name)].join('|');
     if (seen.has(key)) {
       const target = seen.get(key);
       warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (เดือน/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
       target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
     } else {
-      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      const rowObj = { ym, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, project_name, actual_md: isNaN(md) ? 0 : md, row: excelRow };
       seen.set(key, rowObj);
       merged.push(rowObj);
     }
@@ -2930,7 +2965,7 @@ window.confirmActualImport = async function(){
   try {
     const { data, error } = await supabase.rpc('fn_import_actual_md', { p_rows: _actualImportParsed.rows });
     if (error) throw error;
-    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
+    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว` + (data.matched != null ? ` (จับคู่โปรเจกต์ได้ ${data.matched} / ไม่ได้ ${data.unmatched == null ? 0 : data.unmatched})` : ''));
     closeActualImportModal();
   } catch (err) {
     console.error(err);
@@ -2946,7 +2981,7 @@ window.confirmActualImport = async function(){
  * เดิมนั้นไม่ถูกแก้แม้แต่บรรทัดเดียว (ดู test regression guard ใน §5.67-B ของ run_tests.mjs)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-const ACTUAL_MD_DAILY_HEADERS = ['Work_Date', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Actual_MD'];
+const ACTUAL_MD_DAILY_HEADERS = ['Work_Date', 'Nickname_Name', 'EN_Fullname', 'Project_Code', 'App_ID', 'Approver_Choice', 'Project_Name', 'Actual_MD'];
 
 /** Template download ของ Actual MD รายวัน — mirror downloadActualTemplate() ทุกประการ
  *  ต่างแค่ header/ตัวอย่างแถว/ชื่อไฟล์ (Work_Date แทน YYYYMM). */
@@ -2962,7 +2997,7 @@ async function downloadActualDailyTemplate(){
 
     const dataAoa = [
       ACTUAL_MD_DAILY_HEADERS,
-      ['2026-02-15', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 1],
+      ['2026-02-15', 'ตัวอย่าง', 'Example Name', '565 - DG_BAAS mobile_Digital platform', exampleAppCode, 'lead@example.com', 'ชื่อโปรเจกต์ตัวอย่าง', 1],
     ];
     const appIdAoa = [['app_code', 'app_name'], ...apps.map(a => [a.app_code, a.app_name || ''])];
 
@@ -3035,7 +3070,7 @@ function toWorkDateStr(v){
  *  Returns { rows, errors, warnings, minDate, maxDate } — `rows` ส่งตรงเป็น `p_rows` ให้
  *  `supabase.rpc('fn_import_actual_md_daily', { p_rows })`. `minDate`/`maxDate` (yyyy-mm-dd,
  *  null ถ้าไม่มีแถวที่ผ่าน validate เลย) ใช้โชว์ช่วงวันที่ในข้อความ full-replace ของ preview modal. */
-function parseActualDailyFile(aoa, appCodeSet, leadEmailSet){
+function parseActualDailyFile(aoa, appCodeSet, leadEmailSet, projectNameMap){
   const errors = [];
   const warnings = [];
 
@@ -3064,13 +3099,14 @@ function parseActualDailyFile(aoa, appCodeSet, leadEmailSet){
     const excelRow = idx + 2; // header = row 1, แถวข้อมูลแรก = row 2
     if (isBlankLine(line)) return; // ข้ามแถวว่างเปล่าทั้งแถวเงียบๆ (ไม่ใช่ error)
 
-    const [dateRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, mdRaw] = line;
+    const [dateRaw, nickRaw, fullRaw, pcRaw, appRaw, approverRaw, projNameRaw, mdRaw] = line;
     const work_date = toWorkDateStr(dateRaw); // 2026-09-11: normalize Excel serial date ก่อน validate (ดู toWorkDateStr() ด้านบน)
     const appCode = actualCellText(appRaw);
     const nickname_name = actualCellText(nickRaw);
     const en_fullname = actualCellText(fullRaw);
     const project_code = actualCellText(pcRaw);
     const approver_choice = actualCellText(approverRaw).toLowerCase();
+    const project_name = actualCellText(projNameRaw);
 
     if (!isValidDateStr(work_date)) {
       errors.push({ row: excelRow, msg: `Work_Date ไม่ถูกต้อง: "${dateRaw == null ? '' : dateRaw}" (ต้องเป็นวันที่จริงรูปแบบ yyyy-mm-dd เช่น 2026-02-15)` });
@@ -3081,19 +3117,21 @@ function parseActualDailyFile(aoa, appCodeSet, leadEmailSet){
     if (approver_choice && leadEmailSet && !leadEmailSet.has(approver_choice)) {
       warnings.push({ row: excelRow, msg: `Approver_Choice ไม่ตรงกับ Lead คนไหน: "${approver_choice}" (import ได้ แต่กรอง UAT Lead จะไม่เจอแถวนี้)` });
     }
+    const pnWarn = projectNameWarning(project_name, projectNameMap);
+    if (pnWarn) warnings.push({ row: excelRow, msg: pnWarn });
     const md = Number(mdRaw);
     const mdBlank = mdRaw === '' || mdRaw === undefined || mdRaw === null;
     if (mdBlank || isNaN(md) || md < 0) {
       errors.push({ row: excelRow, msg: `Actual_MD ไม่ถูกต้อง: "${mdRaw == null ? '' : mdRaw}" (ต้องเป็นตัวเลข ≥ 0)` });
     }
 
-    const key = [work_date, appCode, project_code, nickname_name, en_fullname, approver_choice].join('|');
+    const key = [work_date, appCode, project_code, nickname_name, en_fullname, approver_choice, normProjectNameKey(project_name)].join('|');
     if (seen.has(key)) {
       const target = seen.get(key);
       warnings.push({ row: excelRow, msg: `แถวซ้ำกับแถวที่ ${target.row} (วันที่/App/Project/ชื่อ/Approver เดียวกัน) — รวมยอด MD เข้าด้วยกัน` });
       target.actual_md = (Number(target.actual_md) || 0) + (isNaN(md) ? 0 : md);
     } else {
-      const rowObj = { work_date, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, actual_md: isNaN(md) ? 0 : md, row: excelRow };
+      const rowObj = { work_date, app_code: appCode, project_code, nickname_name, en_fullname, approver_choice, project_name, actual_md: isNaN(md) ? 0 : md, row: excelRow };
       seen.set(key, rowObj);
       merged.push(rowObj);
     }
@@ -3184,7 +3222,7 @@ window.confirmActualDailyImport = async function(){
   try {
     const { data, error } = await supabase.rpc('fn_import_actual_md_daily', { p_rows: _actualDailyImportParsed.rows });
     if (error) throw error;
-    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว`);
+    toast(`นำเข้าสำเร็จ — ลบข้อมูลเดิม ${data.deleted} แถว / เพิ่มใหม่ ${data.inserted} แถว` + (data.matched != null ? ` (จับคู่โปรเจกต์ได้ ${data.matched} / ไม่ได้ ${data.unmatched == null ? 0 : data.unmatched})` : ''));
     closeActualDailyImportModal();
   } catch (err) {
     console.error(err);
@@ -3220,11 +3258,19 @@ $('bfUploadFile').addEventListener('change', async e => {
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 });
     const appCodeSet = new Set(projectAppList.map(a => a.app_code));
     const leadEmailSet = new Set((STATE.pqaLeads || []).map(l => String(l.email || '').trim().toLowerCase()).filter(Boolean));
+    // ทุกโปรเจกต์รวม inactive (v_project_wide ไม่กรอง) — allProjects ว่างถ้ายังไม่เคยเปิดแท็บ Projects → ดึงสดเอง
+    let nameSrc = allProjects;
+    if (!nameSrc.length) {
+      const pr = await fetchAllRows((from, to) => supabase.from('v_project_wide').select('project_key,project_name')
+        .order('project_key', { ascending: true }).range(from, to));
+      if (!pr.error) nameSrc = pr.data || [];
+    }
+    const projectNameMap = nameSrc.length ? buildProjectNameMap(nameSrc) : undefined; // ไม่มีข้อมูลโปรเจกต์เลย = ไม่เช็ค (กัน warning ผิดทั้งไฟล์)
     if (type === 'actual_md_daily') {
-      const parsed = parseActualDailyFile(aoa, appCodeSet, leadEmailSet);
+      const parsed = parseActualDailyFile(aoa, appCodeSet, leadEmailSet, projectNameMap);
       await openActualDailyImportModal(parsed);
     } else {
-      const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet);
+      const parsed = parseActualFile(aoa, appCodeSet, leadEmailSet, projectNameMap);
       await openActualImportModal(parsed);
     }
   } catch (err) {

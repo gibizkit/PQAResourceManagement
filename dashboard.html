@@ -55,6 +55,7 @@
      that couldn't be matched to any resource) — visually distinct (italic, muted) from the
      regular matched rows above it, §5.63 Task 5 ---- */
   .os-unmatched-row td { font-style:italic; color:var(--dk-text3); }
+  .proj-unmatched-row td { font-style:italic; color:var(--dk-text3); } /* §5.76 แถว "ไม่พบ Project" ของ By Project โหมด Actual/Compare */
   .os-unmatched-head { font-weight:700; background:var(--dk-hover); }
 
   /* ---- checkbox multiselect (Project/UAT Lead/App — matches Project Gantt/Outsource,
@@ -89,7 +90,7 @@
   .ms-tools button:hover { background:var(--dk-hover); }
 
   /* 2026-09-11 (Change A) — #msProject grayed out + non-interactive whenever the active tab's
-     Mode reads Actual data (Actual MD has no project_key — see updateProjectFilterEnabled()).
+     Mode reads Actual data (RETIRED 2026-09-30 §5.76: Actual now has project_key; filter stays enabled — see updateProjectFilterEnabled()).
      pointer-events:none blocks opening the panel from a click; makeMultiSelect()'s btn.onclick
      also guards on this class directly as a second layer (pointer-events doesn't cover every
      activation path, e.g. a synthetic click). S.filter.projects itself is NEVER cleared by this
@@ -557,6 +558,8 @@
         <select id="projectViewSelect">
           <option value="all">Booked MD</option>
           <option value="month">Selected Month</option>
+          <option value="actual">Actual MD</option>
+          <option value="compare">Compare</option>
         </select>
       </div>
 
@@ -652,7 +655,7 @@
            เมื่อเดือนถูก disable — ตัวกรอง Project/UAT Lead/App บน panel ยังมีผล AND กันเหมือนเดิม -->
       <div class="fld" id="allActiveFld">
         <label>&nbsp;</label>
-        <label class="chk-inline"><input type="checkbox" id="allActiveChk"> All Active Project</label>
+        <label class="chk-inline" title="Project ที่ testing period (ไม่นับ SIT/Signoff/Deploy) ยังไม่จบ — End ≥ วันที่ 1 ของเดือนนี้ (timesheet ตัดรายเดือน)"><input type="checkbox" id="allActiveChk"> All Active Project</label>
       </div>
       <button class="btn" id="clearFilterBtn">ล้าง</button>
     </div>
@@ -795,7 +798,7 @@ const S = {
   // 2026-09-02: By Project tab เท่านั้น — 'all' (default) = alias ของ S.periodAgg (เต็มช่วง
   // Phase, ตรงกับ Gantt), 'month' = clip ตาม S.overallRange ด้วย opts.dateRange (สูตรเดียวกับ
   // periodAggActiveOnly/By OS, §5.48) ดู recomputeAggregates()/buildProjectRows()
-  projectViewMode: 'all',         // 'all' | 'month' — dropdown #projectViewSelect
+  projectViewMode: 'all',         // 'all' | 'month' | 'actual' | 'compare' — dropdown #projectViewSelect (2026-09-30 §5.76: เพิ่ม actual/compare)
   periodAggProjectView: null,     // agg ที่ buildProjectRows() ใช้จริง (= periodAgg เมื่อ 'all', clipped เมื่อ 'month')
   // 2026-09-24 (§5.72) ปรับ 2026-09-25 — checkbox "All Active Project" ตัวกรองของแท็บ By Project
   // เท่านั้น — ติ๊กแล้ว By Project สลับจากกฎเดือน (matchProjectDiscovery()) เป็นกฎ
@@ -910,7 +913,7 @@ function restoreDashPrefs(){
   updateOsModeVisibility();  // §5.63/§5.64 — Mode dropdown, By OS tab เท่านั้น
   updateProjectFilterEnabled(); // 2026-09-11 (Change A) — เผื่อ dashView/appMode/osMode ที่ restore มาทำให้ต้องปิด #msProject ตั้งแต่บูต
 
-  if (['all', 'month'].includes(p.projectViewMode)) {
+  if (['all', 'month', 'actual', 'compare'].includes(p.projectViewMode)) {
     S.projectViewMode = p.projectViewMode;
   }
   $('projectViewSelect').value = S.projectViewMode;
@@ -1004,17 +1007,16 @@ function updateOsModeVisibility(){
   $('osModeFld').classList.toggle('hidden', S.dashView !== 'os');
 }
 /** Change A (2026-09-11): gray out + disable #msProject whenever the active tab's Mode reads
- *  Actual data — Actual MD has no project_key (buildActualOsAgg()/buildActualAppMonth() never
- *  see one), so the Project filter provably has no effect there. "Disabled" = non-interactive
+ *  Actual data — HISTORICAL (pre-§5.76: Actual had no project_key). RETIRED 2026-09-30, see body. "Disabled" = non-interactive
  *  (see .ms.is-disabled in <style> + the guard in makeMultiSelect()'s btn.onclick), NOT cleared
  *  — S.filter.projects is left untouched so flipping back to Booked mode restores it exactly.
  *  Call from everywhere S.dashView/S.appMode/S.osMode can change: both Mode <select> change
  *  handlers, switchDashView(), restoreDashPrefs(), and at boot (restoreDashPrefs() covers boot
  *  too, since showApp() calls it once on load). */
 function updateProjectFilterEnabled(){
-  const disabled = (S.dashView === 'app' && S.appMode !== 'booked')
-    || (S.dashView === 'os' && S.osMode !== 'booked');
-  $('msProject').classList.toggle('is-disabled', disabled);
+  // 2026-09-30 (§5.76): RETIRED — Actual MD มี project_name แล้ว (map เป็น project_key ตอนอ่านผ่าน
+  // project_key จาก view) ตัวกรอง Project จึงมีผลกับ Actual จริง ไม่ต้อง gray out อีก
+  $('msProject').classList.remove('is-disabled');
 }
 
 /** 2026-09-24 (§5.72, ตามคำขอพี่กิ๊บ) — checkbox "All Active Project" (By Project tab เท่านั้น)
@@ -1261,7 +1263,7 @@ async function loadPeriod(force){
       // ไม่ fatal เหมือนบล็อกด้านบน: patch (sql/patch_2026-09-10_actual_md_approver.sql) อาจยัง
       // ไม่ถูกรันบน Supabase จริง — By OS โหมด booked ยังใช้งานได้ปกติไม่ว่าจะพลาดหรือไม่
       const actualPersonRes = await fetchAllRows((from, to) => supabase.from('v_actual_md_person_month')
-        .select('ym,app_code,approver_emp_id,name_key,en_fullname,nickname_name,actual_md')
+        .select('ym,app_code,approver_emp_id,project_name,project_key,name_key,en_fullname,nickname_name,actual_md')
         .order('ym', { ascending: true })
         .order('app_code', { ascending: true })
         .order('name_key', { ascending: true })
@@ -1385,7 +1387,14 @@ function recomputeAggregates(){
     });
     S.periodAggProjectView = computeAgg(S.bookingDaily, S.leaveDaily, matchedProjectTab, { restrict: true });
   } else {
-    S.periodAggProjectView = S.projectViewMode === 'month'
+    // 2026-09-30 (§5.76): 'compare' ต้องใช้ Booked แบบ Selected Month (clip ด้วย monthSet) เดียวกับ 'month'
+    // 2026-09-30 (§5.76): 'compare' — แถวที่โผล่เพราะมี Actual แต่ไม่ผ่าน discovery ต้องได้ Booked
+    // (Selected Month) ของตัวเองด้วย → project set = active ทั้งหมด ∪ matchedAll (ค่าต่อโปรเจกต์ของ
+    // computeAgg ไม่ขึ้นกับโปรเจกต์อื่นใน projMap จึงไม่เปลี่ยนตัวเลขของโปรเจกต์ที่ผ่าน discovery)
+    // 'month' ไม่เปลี่ยน · S.periodAgg ไม่รับ monthSet
+    S.periodAggProjectView = S.projectViewMode === 'compare'
+      ? computeAgg(S.bookingDaily, S.leaveDaily, Object.assign({}, S.activeProjMap, matchedAll), { restrict: true, monthSet })
+      : S.projectViewMode === 'month'
       ? computeAgg(S.bookingDaily, S.leaveDaily, matchedAll, { restrict: true, monthSet })
       : S.periodAgg;
   }
@@ -1780,7 +1789,13 @@ function projectTestingSpan(pk){
 function projectTestingNotEnded(pk, todayStr){
   const { end } = projectTestingSpan(pk);
   if (!end) return false;
-  return end >= todayStr;
+  // 2026-10-01: เทียบกับ "วันต้นเดือนของวันนี้" ไม่ใช่วันนี้ — timesheet ตัดเดือนต่อเดือน
+  // โปรเจกต์ที่จบไปแล้วกลางเดือนนี้ยังต้องลง timesheet ได้จนจบเดือน (ตรงกับ pqa.fn_all_active_project)
+  return end >= activeMonthStart(todayStr);
+}
+/** วันที่ 1 ของเดือนเดียวกับ todayStr (yyyy-mm-dd) — เกณฑ์ All Active Project (2026-10-01) */
+function activeMonthStart(todayStr){
+  return String(todayStr).slice(0, 7) + '-01';
 }
 
 /** 2026-09-24 (§5.72) — discovery ของแท็บ By Project เท่านั้น — สลับกฎตาม checkbox
@@ -1878,6 +1893,7 @@ function buildProjectRows(){
     if (!matchProjectTabDiscovery(pk, months, todayStr)) return null;
 
     return {
+      pk,
       app: p.app || p.other_app || '— ไม่มี App —',
       projectName: p.project_name || '',
       lead: p.uat_lead || '',
@@ -1893,8 +1909,173 @@ const PROJECT_KEYFNS = {
   app: r => r.app, projectName: r => r.projectName, lead: r => r.lead, uatPeriod: r => r.uatPeriodSortKey,
   totalMD: r => r.totalMD, tcprep: r => r.tcprep, uat: r => r.uat, reg: r => r.reg,
   other1: r => r.other1, other2: r => r.other2, support: r => r.support,
+  actualMD: r => r.actualMD || 0, diff: r => r.diff || 0, // 2026-09-30 (§5.76) โหมด actual/compare
 };
+/* ---- Actual MD ระดับ Project (2026-09-30, §5.76) ----
+   DB resolve project_key ตอน import แล้ว (view v_actual_md_person_month มีคอลัมน์ project_key) —
+   หน้าเว็บใช้ row.project_key ตรงๆ ไม่จับคู่ชื่อเอง. "ไม่พบ Project" = project_key เป็น null หรือ key
+   ไม่อยู่ใน S.activeProjMap (โปรเจกต์ inactive) — MD ห้ามหายจากยอดรวม ไปกองที่แถว "ไม่พบ Project"
+   ⚠️ view group ด้วย project_name ดิบด้วย → project_key เดียวกันอาจอยู่หลายแถว ต้อง SUM ตาม key เสมอ */
+const PROJECT_UNMATCHED_LABEL = 'ไม่พบ Project';
+/** project_key ของแถว Actual หนึ่งแถว หรือ null เมื่อ key ว่าง/ไม่อยู่ในชุดโปรเจกต์ active (activeMap = S.activeProjMap) */
+function resolveActualProjectKey(row, activeMap){
+  const k = row && row.project_key;
+  return (k && activeMap && activeMap[k]) ? k : null;
+}
+/** Actual MD ต่อ project — pure function (เทสต์เรียกตรงผ่าน vm ได้). กรองเดือนด้วยเซ็ตเดือนที่ติ๊ก
+ *  จริง (ห้ามใช้ซอง S.overallRange §5.60) · App filter = app_code ของแถว · UAT Lead = approver_emp_id
+ *  exact match + approver ว่างไม่แสดง (กฎเดียวกับ buildActualAppMonth() §5.66) · Project filter =
+ *  project_key ต้องอยู่ในเซ็ต (แถวที่ไม่พบ Project ถูกตัดเมื่อมีตัวกรอง Project)
+ *  คืน { byProject: {pk: md}, unmatchedTotal, total } (total = byProject รวม + unmatchedTotal) */
+function buildActualProjectAgg(rows, activeMap, months, filter){
+  const monthSet = new Set(months || []);
+  const projSet = filter && filter.projects && filter.projects.size ? filter.projects : null;
+  const byProject = {};
+  let unmatchedTotal = 0, total = 0;
+  (rows || []).forEach(row => {
+    const ym = String(row.ym || '');
+    if (!/^\d{6}$/.test(ym)) return;
+    const mk = ym.slice(0, 4) + '-' + ym.slice(4, 6);
+    if (!monthSet.has(mk)) return;
+    const app = row.app_code || '';
+    if (filter && filter.apps && filter.apps.size && !filter.apps.has(app)) return;
+    if (filter && filter.leads && filter.leads.size
+        && !(row.approver_emp_id && filter.leads.has(row.approver_emp_id))) return;
+    const pk = resolveActualProjectKey(row, activeMap);
+    if (projSet && !(pk && projSet.has(pk))) return;
+    const md = Number(row.actual_md) || 0;
+    total += md;
+    if (pk) byProject[pk] = (byProject[pk] || 0) + md;
+    else unmatchedTotal += md;
+  });
+  return { byProject, unmatchedTotal, total };
+}
+/** แถวของ By Project โหมด actual/compare — โปรเจกต์ที่ผ่าน discovery เดิม (buildProjectRows()) หรือ
+ *  มี Actual > 0 ในเดือนที่เลือก + แถวท้าย "ไม่พบ Project" (unmatched:true) เมื่อมี MD > 0
+ *  ⇒ ผลรวม actualMD ของทุกแถว = Actual ทั้งหมดของเดือนที่เลือก (หลังตัวกรอง) เสมอ
+ *  Booked (totalMD/เฟส) มาจาก S.periodAggProjectView ซึ่งโหมด compare = Selected Month (clip ด้วย
+ *  monthSet) เหนือ active ทุกโปรเจกต์ → แถวที่เพิ่มเพราะมี Actual ก็ได้ Booked ของตัวเอง */
+function buildProjectActualRows(){
+  const aAgg = buildActualProjectAgg(S.actualPersonRows, S.activeProjMap, S.months, S.filter);
+  const rows = buildProjectRows();
+  const seen = new Set(rows.map(r => r.pk));
+  const bAgg = S.periodAggProjectView || { byProject: {}, byProjectPhase: {} };
+  const subLeads = subLeadMap();
+  const executors = executorMap();
+  S.activeProjects.forEach(p => {
+    const pk = p.project_key;
+    if (seen.has(pk) || !((aAgg.byProject[pk] || 0) > 0)) return;
+    const per = projectPeriodDisp(pk);
+    rows.push({
+      pk, app: p.app || p.other_app || '— ไม่มี App —', projectName: p.project_name || '',
+      lead: p.uat_lead || '', subLeads: subLeads[pk] || [], executors: executors[pk] || [],
+      uatPeriodDisp: per.disp, uatPeriodSortKey: per.periodStart || '',
+      totalMD: bAgg.byProject[pk] || 0,
+      tcprep: (bAgg.byProjectPhase[pk] || {}).TCPREP || 0, uat: (bAgg.byProjectPhase[pk] || {}).UAT || 0,
+      reg: (bAgg.byProjectPhase[pk] || {}).REG || 0, support: (bAgg.byProjectPhase[pk] || {}).SUPPORT || 0,
+      other1: 0, other2: 0,
+    });
+    Object.keys(bAgg.byProjectPhase[pk] || {}).filter(c => !PROJECT_STD_PHASES.includes(c)).sort().forEach((c, i) => {
+      rows[rows.length - 1][i === 0 ? 'other1' : 'other2'] += bAgg.byProjectPhase[pk][c];
+    });
+  });
+  rows.forEach(r => { r.actualMD = aAgg.byProject[r.pk] || 0; r.diff = r.totalMD - r.actualMD; });
+  const unmatched = aAgg.unmatchedTotal > 0 ? {
+    pk: null, unmatched: true, app: '—', projectName: PROJECT_UNMATCHED_LABEL, lead: '', subLeads: [], executors: [],
+    uatPeriodDisp: '—', uatPeriodSortKey: '', totalMD: 0, tcprep: 0, uat: 0, reg: 0, other1: 0, other2: 0, support: 0,
+    actualMD: aAgg.unmatchedTotal, diff: -aAgg.unmatchedTotal,
+  } : null;
+  return { rows, unmatched };
+}
+/** ตาราง By Project โหมด 'actual' | 'compare' (2026-09-30, §5.76) — Booked/เดือนที่เลือกเดียวกับ Actual
+ *  actual = App | Project Name | Lead | Project Period | Actual MD (ไม่มีคอลัมน์เฟส)
+ *  compare = … | Booked MD | Actual MD | B − A | คอลัมน์เฟส (Booked, Selected Month)
+ *  แถว "ไม่พบ Project" อยู่ท้ายเสมอไม่ผ่านการ sort · ยอดท้ายตาราง = ผลรวมแถวที่เห็นทั้งหมด */
+function renderProjectActualView(container, mode){
+  const built = buildProjectActualRows();
+  const matched = built.rows;
+  if (!matched.length && !built.unmatched) {
+    container.innerHTML = '<div class="empty-state">ไม่พบ Project</div>';
+    return;
+  }
+  const sorted = genericSort(matched, S.projectSort, PROJECT_KEYFNS);
+  const finalRows = built.unmatched ? [...sorted, built.unmatched] : sorted;
+  const cmp = mode === 'compare';
+  let gBooked = 0, gActual = 0, gDiff = 0, gTc = 0, gUat = 0, gReg = 0, gO1 = 0, gO2 = 0, gSup = 0;
+  const bodyRows = finalRows.map(r => {
+    gBooked += r.totalMD; gActual += r.actualMD; gDiff += r.diff;
+    gTc += r.tcprep; gUat += r.uat; gReg += r.reg; gO1 += r.other1; gO2 += r.other2; gSup += r.support;
+    const diffCls = r.diff > 0 ? 'md-over' : (r.diff < 0 ? 'md-under' : '');
+    return `<tr${r.unmatched ? ' class="proj-unmatched-row"' : ''}>
+      <td class="col-app" title="${esc(r.app)}">${esc(r.app)}</td>
+      <td class="proj-name" title="${esc(r.projectName)}">${esc(truncName(r.projectName))}</td>
+      <td class="col-lead" title="${esc([r.lead, ...r.subLeads, ...r.executors].filter(Boolean).join(' / '))}">${r.unmatched ? '' : leadCellHTML(r.lead, r.subLeads, r.executors)}</td>
+      <td>${esc(r.uatPeriodDisp)}</td>
+      ${cmp ? `<td class="right">${fmtMD(r.totalMD)}</td>` : ''}
+      <td class="right">${fmtMD(r.actualMD)}</td>
+      ${cmp ? `<td class="right ${diffCls}">${fmtMD(r.diff)}</td>
+      <td class="right">${fmtMD(r.tcprep)}</td>
+      <td class="right">${fmtMD(r.uat)}</td>
+      <td class="right">${fmtMD(r.reg)}</td>
+      <td class="right">${fmtMD(r.other1)}</td>
+      <td class="right">${fmtMD(r.other2)}</td>
+      <td class="right">${fmtMD(r.support)}</td>` : ''}
+    </tr>`;
+  }).join('');
+  const gDiffCls = gDiff > 0 ? 'md-over' : (gDiff < 0 ? 'md-under' : '');
+  container.innerHTML = `
+    <div class="dash-table-wrap">
+      <table class="dash-table" id="projectTable">
+        <thead><tr>
+          ${thSort('App','app',S.projectSort,'col-app')}
+          ${thSort('Project Name','projectName',S.projectSort,'proj-name')}
+          ${thSort('Lead','lead',S.projectSort,'col-lead')}
+          ${thSort('Project Period','uatPeriod',S.projectSort)}
+          ${cmp ? thSort('Booked MD','totalMD',S.projectSort,'right') : ''}
+          ${thSort('Actual MD','actualMD',S.projectSort,'right')}
+          ${cmp ? `${thSort('B − A','diff',S.projectSort,'right')}
+          ${thSort('TC Prep (MD)','tcprep',S.projectSort,'right')}
+          ${thSort('UAT (MD)','uat',S.projectSort,'right')}
+          ${thSort('Regression (MD)','reg',S.projectSort,'right')}
+          ${thSort('Other1 (MD)','other1',S.projectSort,'right')}
+          ${thSort('Other2 (MD)','other2',S.projectSort,'right')}
+          ${thSort('Support (MD)','support',S.projectSort,'right')}` : ''}
+        </tr></thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot class="dash-total"><tr>
+          <td class="total-label-frozen" colspan="2">รวมทั้งหมด (${matched.length} projects)</td>
+          <td></td>
+          <td></td>
+          ${cmp ? `<td class="right">${fmtMD(gBooked)}</td>` : ''}
+          <td class="right">${fmtMD(gActual)}</td>
+          ${cmp ? `<td class="right ${gDiffCls}">${fmtMD(gDiff)}</td>
+          <td class="right">${fmtMD(gTc)}</td>
+          <td class="right">${fmtMD(gUat)}</td>
+          <td class="right">${fmtMD(gReg)}</td>
+          <td class="right">${fmtMD(gO1)}</td>
+          <td class="right">${fmtMD(gO2)}</td>
+          <td class="right">${fmtMD(gSup)}</td>` : ''}
+        </tr></tfoot>
+      </table>
+    </div>`;
+
+  wireSortHeader(container.querySelector('#projectTable thead'), S.projectSort, () => {
+    savePrefs(PAGE, { projectSort: S.projectSort });
+    renderProjectView(container);
+  });
+  const pnameTh = container.querySelector('#projectTable thead th.proj-name');
+  if (pnameTh) initColResizer(pnameTh, {
+    min: PNAME_W_MIN, max: PNAME_W_MAX,
+    getWidth: () => S.projNameWidth,
+    onResize: applyProjNameWidth,
+    onEnd: w => savePrefs(PAGE, { projNameWidth: w }),
+  });
+}
 function renderProjectView(container){
+  // 2026-09-30 (§5.76): ติ๊ก All Active Project → dropdown View ถูก disable = Booked เต็มช่วงเสมอ
+  // (S.projectViewMode ไม่ถูกล้าง อาจค้างเป็น actual/compare จากก่อนติ๊ก — ห้ามรั่วเข้าตาราง)
+  const pvMode = S.allActiveProject ? 'all' : S.projectViewMode;
+  if (pvMode === 'actual' || pvMode === 'compare') return renderProjectActualView(container, pvMode);
   const rows = buildProjectRows();
   if (!rows.length) {
     container.innerHTML = '<div class="empty-state">ไม่พบ Project</div>';
@@ -2002,8 +2183,9 @@ function renderProjectView(container){
  *  filter is set, buildAppRows() keeps reading S.actualByAppMonth directly so By App's Actual
  *  totals stay byte-for-byte identical to before this fix (hard invariant — both sources sum
  *  the exact same actual_md rows, the person-level view just carries one extra column). */
-function buildActualAppMonth(rows, months, filter){
+function buildActualAppMonth(rows, months, filter, activeMap){
   const monthSet = new Set(months || []);
+  const projSet = filter && filter.projects && filter.projects.size ? filter.projects : null; // 2026-09-30 (§5.76)
   const out = {};
   (rows || []).forEach(row => {
     const ym = String(row.ym || '');
@@ -2016,6 +2198,12 @@ function buildActualAppMonth(rows, months, filter){
     // Lead filter (Gibb: "เลือกเฉพาะที่ตรงเท่านั้น กรณี Approver_choice = null ไม่ต้องแสดง")
     if (filter && filter.leads && filter.leads.size
         && !(row.approver_emp_id && filter.leads.has(row.approver_emp_id))) return;
+    // 2026-09-30 (§5.76): ตัวกรอง Project ใช้กับ Actual ได้แล้ว — project_name → project_key ผ่าน
+    // activeMap (S.activeProjMap) — ไม่พบ Project/inactive = ตัดทิ้งเมื่อมีตัวกรอง Project
+    if (projSet && activeMap) {
+      const pk = resolveActualProjectKey(row, activeMap);
+      if (!(pk && projSet.has(pk))) return;
+    }
     const md = Number(row.actual_md) || 0;
     out[app] = out[app] || {};
     out[app][mk] = (out[app][mk] || 0) + md;
@@ -2028,8 +2216,11 @@ function buildAppRows(){
   // Change B: switch to the per-row (Lead-aware) source ONLY when a Lead filter is active — see
   // buildActualAppMonth()'s doc comment for why this must stay conditional on S.filter.leads
   // specifically (not S.filter.apps too) to preserve today's exact totals when no Lead filter is set.
-  const actual = (S.filter.leads && S.filter.leads.size)
-    ? buildActualAppMonth(S.actualPersonRows, S.months, S.filter)
+  // 2026-09-30 (§5.76): เช่นเดียวกันเมื่อมีตัวกรอง Project — ต้องใช้แถวรายคน (มี project_name) แทน view
+  // ระดับ App ที่ไม่มีคอลัมน์ project — ไม่มีทั้ง Lead/Project filter = ตัวเลขเดิมเป๊ะ
+  const hasProjFilter = !!(S.filter.projects && S.filter.projects.size);
+  const actual = ((S.filter.leads && S.filter.leads.size) || hasProjFilter)
+    ? buildActualAppMonth(S.actualPersonRows, S.months, S.filter, hasProjFilter ? S.activeProjMap : undefined)
     : (S.actualByAppMonth || {});
   const apps = sortedApps([...new Set([...Object.keys(booked), ...Object.keys(actual)])]);
   return apps.map(app => {
@@ -2084,7 +2275,7 @@ function appRowHasResult(r, mode){
  *  bookedTotal/bookedByMonth) — โหมด 'compare' คือพฤติกรรมเดิมทุกประการตอน compareActual===true
  *  ไม่ได้แตะ, โหมด 'booked' คือพฤติกรรมเดิมทุกประการตอน compareActual===false ไม่ได้แตะ.
  *  โหมด Actual/Compare มี hint เดียวกับ By OS ("ตัวกรอง Project ไม่มีผลกับ Actual") เพราะข้อมูล
- *  Actual (import จาก Excel) ไม่มี Project ผูกอยู่เหมือนกัน — ใช้ projectFilterHintHTML() ร่วมกัน */
+ *  (2026-09-30 §5.76: ตัวกรอง Project มีผลกับ Actual แล้ว — ไม่มี hint เตือนอีก) */
 function renderAppView(container){
   const months = S.months || [];
   const mode = S.appMode; // 'booked' | 'actual' | 'compare'
@@ -2102,7 +2293,6 @@ function renderAppView(container){
   const appHeadActive = S.appSort.key === 'app' && !!S.appSort.dir;
   const appHeadCls = ['sortable', appHeadActive ? 'sort-active' : '', 'col-app-freeze'].join(' ').trim();
 
-  const hintHTML = (mode === 'actual' || mode === 'compare') ? projectFilterHintHTML() : '';
 
   let theadRow1, theadRow2, bodyRows, totalRow;
 
@@ -2188,7 +2378,7 @@ function renderAppView(container){
     </tr>`;
   }
 
-  container.innerHTML = hintHTML + `
+  container.innerHTML = `
     <div class="dash-app-scroll">
       <table class="dash-app-table" id="appTable">
         <thead>${theadRow1}${theadRow2}</thead>
@@ -2212,8 +2402,9 @@ function normNameKey(s){
 /* Actual MD ต่อ resource x app x เดือน — pure function (เทสต์เรียกตรงได้ ไม่อ่าน S.* เอง)
    `months` = S.months ('YYYY-MM'), `filter` = { apps:Set, leads:Set }
    ⚠️ กรองเดือนด้วยเซ็ตเดือนที่เลือกจริง ห้ามใช้ซองวันที่ (§5.60) — 2026-09-10, §5.63 Task 3 */
-function buildActualOsAgg(rows, resources, months, filter){
+function buildActualOsAgg(rows, resources, months, filter, activeMap){
   const monthSet = new Set(months || []);
+  const projSet = filter && filter.projects && filter.projects.size ? filter.projects : null; // 2026-09-30 (§5.76)
   const byName = new Map();
   (resources || []).forEach(r => {
     if (r.resource_type !== 'outsource') return;   // insource → ปล่อยให้ตกไป unmatched แทน (C1 fix, 2026-09-10)
@@ -2237,6 +2428,12 @@ function buildActualOsAgg(rows, resources, months, filter){
     if (filter && filter.apps && filter.apps.size && !filter.apps.has(app)) return;
     if (filter && filter.leads && filter.leads.size
         && !(row.approver_emp_id && filter.leads.has(row.approver_emp_id))) return;
+    // 2026-09-30 (§5.76): ตัวกรอง Project ใช้กับ Actual ได้แล้ว (ผ่าน project_name → project_key) —
+    // ไม่พบ Project = ตัดทิ้งเมื่อมีตัวกรอง Project · ไม่มีตัวกรอง = ตัวเลขเดิมเป๊ะ
+    if (projSet && activeMap) {
+      const pk = resolveActualProjectKey(row, activeMap);
+      if (!(pk && projSet.has(pk))) return;
+    }
     const md = Number(row.actual_md) || 0;
     appSet.add(app);
     const rid = byName.get(normNameKey(row.name_key || row.en_fullname));
@@ -2282,14 +2479,8 @@ function osRowVisible(r, rangeStart, filterApplied){
   if (r.is_active === false) return false;                                 // ปิดใช้งาน (ไม่ได้กรอก end_date)
   return true;
 }
-// ใช้ร่วมกันทั้งโหมด Actual (renderOsView) และ Compare (renderOsCompare) — spec §5 บังคับ
-// ว่า hint นี้ต้องขึ้นทั้ง 2 โหมด เพราะตัวเลข Actual (import จาก Excel) ไม่มี Project เลย
-// ตัวกรอง Project บน panel จึงไม่มีผลกับมันในทั้ง 2 โหมด (ทำเป็น helper กันโค้ดซ้ำ)
-function projectFilterHintHTML(){
-  return (S.filter && S.filter.projects && S.filter.projects.size)
-    ? '<div class="dash-hint">ตัวกรอง Project ไม่มีผลกับตัวเลข Actual (ข้อมูล Actual ไม่มี Project)</div>'
-    : '';
-}
+// 2026-09-30 (§5.76): projectFilterHintHTML() (hint "ตัวกรอง Project ไม่มีผลกับ Actual") ถูกลบทิ้ง —
+// Actual MD มี project_name แล้ว ตัวกรอง Project มีผลกับ Actual จริง (project_key จาก view)
 /** keyFns ของตาราง By OS — คอลัมน์ App สร้างดังค์ตามชุด app ที่มีจริงในรอบนั้น
  *  (key = `app:<ชื่อแอป>` ใช้ชื่อแอปตรงๆ เพื่อให้ prefs ที่จำไว้ยังชี้ถูกคอลัมน์เดิม
  *  แม้ชุด/ลำดับคอลัมน์จะเปลี่ยนไป — index-based จะเลื่อนไปคนละคอลัมน์) */
@@ -2309,7 +2500,7 @@ function osKeyFns(apps, agg){
  *  - 'actual': นับจาก buildActualOsAgg() (S.actualPersonRows, กรองเดือนด้วย S.months ไม่ใช่
  *    S.overallRange — ข้อมูล Actual import จาก Excel ไม่มี Project เลย จึงไม่ผูกกับ
  *    matchProjectDiscovery()/S.filter.projects เหมือนโหมด booked — ตัวกรอง Project บน panel
- *    จึงไม่มีผลกับตัวเลขนี้ มี .dash-hint เตือนไว้) ชื่อที่ import มาแต่จับคู่กับ resource
+ *    จึงไม่ผูกกับ matchProjectDiscovery(); ตัวกรอง Project มีผลผ่าน project_name §5.76) ชื่อที่ import มาแต่จับคู่กับ resource
  *    ไม่ได้เลย (buildActualOsAgg()'s unmatchedMap) โผล่เป็นกลุ่มท้ายตาราง "ไม่พบใน OS master"
  *    — ยอดรวมท้ายตารางนับรวมกลุ่มนี้ด้วยเสมอ (ไม่งั้น MD ของคนกลุ่มนี้หายไปเงียบๆ) */
 function renderOsView(container){
@@ -2321,7 +2512,7 @@ function renderOsView(container){
   const filterApplied = anyExtraFilterApplied();
 
   if (S.osMode === 'actual') {
-    const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
+    const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter, S.activeProjMap);
     const apps = sortedApps(aAgg.apps);
     // Change C: same rule applies to the "ไม่พบใน OS master" group — an unmatched person with
     // 0 MD under the current filter selection is dropped just like a matched OS row would be.
@@ -2345,8 +2536,6 @@ function renderOsView(container){
       .sort((a,b) => (roleRank(a.role_code)-roleRank(b.role_code)) || String(a.nickname||a.full_name_en||'').localeCompare(String(b.nickname||b.full_name_en||''))),
       S.osSort, osKeyFns(apps, shaped));
 
-    const hintHTML = projectFilterHintHTML();
-
     // Unchanged from before Change C (kept exactly as-is — deliberately NOT gated on
     // filterApplied/osRows/visibleUnmatched): "everything got filtered/hidden to 0 rows" is
     // already handled gracefully further down by the inline tbody fallback
@@ -2354,7 +2543,7 @@ function renderOsView(container){
     // is needed here — adding one would risk changing this branch's behavior even when
     // filterApplied is false, which must stay byte-identical to before this fix.
     if (!apps.length && !aAgg.unmatched.length) {
-      container.innerHTML = hintHTML + '<div class="empty-state">ไม่มีข้อมูล Actual MD ในเดือนที่เลือก</div>';
+      container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Actual MD ในเดือนที่เลือก</div>';
       return;
     }
 
@@ -2406,7 +2595,7 @@ function renderOsView(container){
       ${apps.map(a => `<td class="td-md-cell">${fmtMD(colTotals[a])}</td>`).join('')}
     </tr>`;
 
-    container.innerHTML = hintHTML + `
+    container.innerHTML = `
       <div class="dash-os-scroll">
         <table class="dash-os-table">
           <thead><tr>
@@ -2636,14 +2825,13 @@ function renderOsCompare(container){
   const rangeStart = S.overallRange.s || '';
   const months = S.months || [];
   const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
-  const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
+  const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter, S.activeProjMap);
   const resources = Object.values(S.resourceMap);
   // Change C (2026-09-11): any Project/UAT Lead/App filter set → hide zero-result rows.
   const allRows = buildCompareRows(bAgg, aAgg, resources, months, rangeStart, anyExtraFilterApplied());
-  const hintHTML = projectFilterHintHTML();
 
   if (!allRows.length) {
-    container.innerHTML = hintHTML + '<div class="empty-state">ไม่มีข้อมูล Booked/Actual MD สำหรับตัวกรองชุดนี้</div>';
+    container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล Booked/Actual MD สำหรับตัวกรองชุดนี้</div>';
     return;
   }
 
@@ -2712,7 +2900,6 @@ function renderOsCompare(container){
   </tr>`;
 
   container.innerHTML = `
-    ${hintHTML}
     <div class="dash-os-scroll">
       <table class="dash-compare-table" id="compareTable">
         <thead>${theadRow1}${theadRow2}</thead>
@@ -3049,8 +3236,8 @@ function buildDownloadFilterAoa(includeLeadFields){
   // ไม่ clip — dropdown #projectViewSelect ถูก disable ไปแล้วด้วย) ไม่อ่าน S.projectViewMode ตรงๆ
   // เพราะอาจยังค้างเป็น 'month' จากก่อนติ๊ก (ไม่ถูกล้าง — ดู updateAllActiveGating())
   if (S.dashView === 'project') {
-    rows.push(['All Active Project', S.allActiveProject ? `ใช่ (ณ ${dDisp(d2s(new Date()))})` : 'ไม่ใช่']);
-    rows.push(['View', S.allActiveProject ? 'Booked MD' : (S.projectViewMode === 'month' ? 'Selected Month' : 'Booked MD')]);
+    rows.push(['All Active Project', S.allActiveProject ? `ใช่ (End testing ≥ ${dDisp(activeMonthStart(d2s(new Date())))})` : 'ไม่ใช่']);
+    rows.push(['View', S.allActiveProject ? 'Booked MD' : ({ month: 'Selected Month', actual: 'Actual MD', compare: 'Compare' }[S.projectViewMode] || 'Booked MD')]);
   }
   return rows;
 }
@@ -3198,18 +3385,37 @@ async function downloadProjectExcel(){
   const btn = $('downloadExcelBtn');
   btn.disabled = true;
   try {
-    const rows = buildProjectRows();
-    if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
-
+    // 2026-09-30 (§5.76): โหมด actual/compare — แถว/คอลัมน์ชุดเดียวกับตารางบนจอ (buildProjectActualRows()
+    // + sort เดียวกับ renderProjectActualView() + แถว "ไม่พบ Project" ท้ายสุด) ไม่มีแถวรวม (§5.73)
+    // ติ๊ก All Active Project = ตารางบนจอเป็น Booked เสมอ (S.projectViewMode ค้างได้ ห้ามรั่ว)
+    const pvMode = S.allActiveProject ? 'all' : S.projectViewMode;
     const filterAoa = buildDownloadFilterAoa(false);
-    const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
-    rows.forEach(r => {
-      projectAoa.push([
-        r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp,
-        Number(fmtMD(r.totalMD)), Number(fmtMD(r.tcprep)), Number(fmtMD(r.uat)), Number(fmtMD(r.reg)),
-        Number(fmtMD(r.other1)), Number(fmtMD(r.other2)), Number(fmtMD(r.support)),
-      ]);
-    });
+    let projectAoa;
+    if (pvMode === 'actual' || pvMode === 'compare') {
+      const built = buildProjectActualRows();
+      if (!built.rows.length && !built.unmatched) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+      const finalRows = [...genericSort(built.rows, S.projectSort, PROJECT_KEYFNS), ...(built.unmatched ? [built.unmatched] : [])];
+      const cmp = pvMode === 'compare';
+      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period']
+        .concat(cmp ? ['Booked MD', 'Actual MD', 'B − A', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)'] : ['Actual MD'])];
+      finalRows.forEach(r => {
+        const base = [r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp];
+        projectAoa.push(base.concat(cmp
+          ? [r.totalMD, r.actualMD, r.diff, r.tcprep, r.uat, r.reg, r.other1, r.other2, r.support].map(v => Number(fmtMD(v)))
+          : [Number(fmtMD(r.actualMD))]));
+      });
+    } else {
+      const rows = buildProjectRows();
+      if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
+      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
+      rows.forEach(r => {
+        projectAoa.push([
+          r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp,
+          Number(fmtMD(r.totalMD)), Number(fmtMD(r.tcprep)), Number(fmtMD(r.uat)), Number(fmtMD(r.reg)),
+          Number(fmtMD(r.other1)), Number(fmtMD(r.other2)), Number(fmtMD(r.support)),
+        ]);
+      });
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filterAoa), 'Filter');
@@ -3317,7 +3523,7 @@ async function downloadOsExcel(){
       const rangeStart = S.overallRange.s || '';
       const months = S.months || [];
       const bAgg = (S.periodAggActiveOnly || {}).byOsAppMonth || {};
-      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter);
+      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), months, S.filter, S.activeProjMap);
       // Change C (2026-09-11): must match renderOsCompare()'s visible row set exactly.
       const allRows = buildCompareRows(bAgg, aAgg, Object.values(S.resourceMap), months, rangeStart, anyExtraFilterApplied());
 
@@ -3373,7 +3579,7 @@ async function downloadOsExcel(){
       const rangeStart = S.overallRange.s || '';
       // Change C (2026-09-11): must match renderOsView()'s visible row set exactly.
       const filterApplied = anyExtraFilterApplied();
-      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter);
+      const aAgg = buildActualOsAgg(S.actualPersonRows, Object.values(S.resourceMap), S.months, S.filter, S.activeProjMap);
       const apps = sortedApps(aAgg.apps);
       const visibleUnmatched = filterApplied ? aAgg.unmatched.filter(u => u.total !== 0) : aAgg.unmatched;
       const shaped = { byOsApp: {}, byOsTotal: aAgg.byResTotal };
