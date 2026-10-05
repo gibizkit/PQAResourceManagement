@@ -133,7 +133,16 @@
   /* header ของคอลัมน์ Project — ป้าย "Project" + icon-only Collapse All/Expand All
      (ย้ายมาจาก toolbar เดิม — เหลือแค่ icon ไม่มีข้อความ กด collapseAllProjects()/expandAllProjects()) */
   .c0-head { display:flex; align-items:center; justify-content:space-between; gap:4px; }
-  .c0-head-actions { display:flex; gap:2px; }
+  .c0-head-actions { display:flex; align-items:center; gap:2px; }
+  /* checkbox "Full name" ในหัวคอลัมน์ Project — ติ๊กแล้วชื่อโปรเจกต์ยาวๆ wrap หลายบรรทัดแทนการตัด ellipsis
+     (คลาส gantt-full-name อยู่ที่ <body> เพราะ thead/tbody re-render ทั้งก้อนทุกรอบ) */
+  .c0-fullname { display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600;
+    color:var(--dk-text2); cursor:pointer; margin-right:6px; white-space:nowrap; user-select:none; }
+  .c0-fullname input { margin:0; cursor:pointer; }
+  body.gantt-full-name .p-name { white-space:normal; overflow:visible; text-overflow:clip;
+    overflow-wrap:anywhere; }
+  body.gantt-full-name .p-name-row { align-items:flex-start; }
+  body.gantt-full-name .p-name-row .status-dot { margin-top:3px; }
 
   /* z-index layering (high → low): thead frozen > thead days > tbody frozen > tbody days
      thead มี 2 แถว sticky ซ้อนกัน (month + day) — ต้องคนละ top offset กัน ไม่งั้นแถว day
@@ -733,6 +742,7 @@ const S = {
   holidays: {},
   user: null,
   collapsed: {},
+  showFullName: false,   // checkbox "Full name" หัวคอลัมน์ Project — wrap ชื่อโปรเจกต์ยาวหลายบรรทัด (prefs gantt.fullName)
   appOrder: {},
   phaseSortOrder: {},   // master pqa.phase.sort_order (phase_code -> number) ใช้กับ Order = Phase
   phaseColorOverride: {},   // master pqa.phase.color (phase_code -> hex) — config ได้จาก Admin, ใช้ใน phaseColor()
@@ -852,6 +862,8 @@ function restoreFilterPrefs(){
     applyC0Width(Math.round(p.c0Width));
   }
 
+  if (typeof p.fullName === "boolean") applyShowFullName(p.fullName);
+
   return true;
 }
 
@@ -875,6 +887,7 @@ function saveFilterPrefs(){
     panelOpen: !$('filterPanel').classList.contains('hidden'),
     releaseApps: [...S.releaseRows],
     c0Width: COL_W.c0,
+    fullName: S.showFullName,
   });
 }
 
@@ -1496,6 +1509,7 @@ function renderGantt(){
   let head = '<thead><tr>' +
     '<th class="sticky-col c0" rowspan="2"><div class="c0-head"><span>Project</span>' +
     '<span class="c0-head-actions">' +
+    `<label class="c0-fullname" title="แสดงชื่อ Project เต็ม (wrap หลายบรรทัด)"><input type="checkbox" id="fullNameChk" onchange="toggleFullName(this.checked)"${S.showFullName ? " checked" : ""}>Full name</label>` +
     '<button class="ico" type="button" onclick="collapseAllProjects()" title="Collapse All">⊟</button>' +
     '<button class="ico" type="button" onclick="expandAllProjects()" title="Expand All">⊞</button>' +
     '</span></div></th>' +
@@ -1762,6 +1776,12 @@ window.toggleProject = function(pk){ S.collapsed[pk] = !S.collapsed[pk]; renderG
 // (เดิมเป็นปุ่มข้อความในนี้ toolbar) — head ของตาราง re-render ทุกครั้งที่ renderGantt() รัน
 // จึงต้องเป็น global function ผูกผ่าน inline onclick ไม่ใช่ $('id').onclick แบบเดิม
 window.collapseAllProjects = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=true); renderGantt(); };
+// checkbox "Full name" — แค่สลับคลาสบน <body> ไม่ต้อง re-render ตาราง
+function applyShowFullName(on){
+  S.showFullName = !!on;
+  document.body.classList.toggle("gantt-full-name", S.showFullName);
+}
+window.toggleFullName = function(on){ applyShowFullName(on); saveFilterPrefs(); };
 window.expandAllProjects   = function(){ filteredProjects().forEach(p => S.collapsed[p.project_key]=false); renderGantt(); };
 $('addBtn').onclick         = () => openProjAdd();
 $('toggleFilterBtn').onclick = () => { $('filterPanel').classList.toggle('hidden'); updateToggleFilterBtnLabel(); saveFilterPrefs(); };
