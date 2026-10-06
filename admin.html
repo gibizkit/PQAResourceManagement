@@ -1252,6 +1252,12 @@ function computeProjectPhaseMD(bookingRows, leaveRows){
 
 const PROJECT_STD_PHASES = ['TCPREP','UAT','REG','SUPPORT'];
 
+/** 'yyyy-mm-dd' → 'yyyymm' ('' เมื่อไม่มีค่า) — ก๊อปจาก dashboard.html yyyymm() (page-local ทั้งคู่) */
+function yyyymm(s){
+  if (!s) return '';
+  return s.slice(0, 4) + s.slice(5, 7);
+}
+
 /** 1 แถว Excel ต่อ project — คอลัมน์/สูตรเดียวกับ dashboard.html buildProjectRows() +
  *  downloadProjectExcel() (Project Period = TC Prep start → max end ทุกเฟสรวม SIT, Other1/Other2 =
  *  เฟสนอก 4 เฟสมาตรฐานเรียงตาม sort_order) */
@@ -1281,6 +1287,7 @@ function buildProjectExportRow(p, agg, subLeads, executors){
   return [
     p.app || p.other_app || '— ไม่มี App —', p.project_name || '', p.uat_lead || '',
     (subLeads[pk] || []).join(', '), (executors[pk] || []).join(', '), periodDisp,
+    yyyymm(periodStart), periodStart && maxEnd ? yyyymm(maxEnd) : '', // §5.81 สอดคล้องกับ Project Period
     n(agg.byProject[pk] || 0), n(pAgg.TCPREP || 0), n(pAgg.UAT || 0), n(pAgg.REG || 0),
     n(other1), n(other2), n(pAgg.SUPPORT || 0),
   ];
@@ -1334,7 +1341,7 @@ async function downloadAdminProjectExcel(){
       ['All Active Project', allActive ? `ใช่ (End testing ≥ ${dDisp(activeMonthStart(d2s(new Date())))})` : 'ไม่ใช่'],
       ['View', 'Booked MD'],
     ];
-    const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
+    const projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Project_Start_YYYYMM', 'Project_End_YYYYMM', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
     rows.forEach(p => projectAoa.push(buildProjectExportRow(p, agg, subLeads, executors)));
 
     const wb = XLSX.utils.book_new();

@@ -1835,7 +1835,14 @@ function projectPeriodDisp(pk){
   const periodStart = (tcprepPhase && tcprepPhase.start_date) || starts[0] || null;
   const disp = periodStart && maxEnd ? `${dDisp(periodStart)} – ${dDisp(maxEnd)}`
     : periodStart ? dDisp(periodStart) : '—';
-  return { disp, periodStart };
+  // periodEnd ใช้ทำคอลัมน์ Project_End_YYYYMM (§5.81) — null เมื่อ disp ไม่มีวันจบ ให้ตรงกับข้อความ
+  return { disp, periodStart, periodEnd: periodStart && maxEnd ? maxEnd : null };
+}
+
+/** คอลัมน์ Project_Start_YYYYMM / Project_End_YYYYMM ต่อจาก "Project Period" ในไฟล์ Excel (§5.81)
+ *  ต้องสอดคล้องกับข้อความ Project Period เสมอ: '—' = ว่างทั้งคู่, มีแค่วันเริ่ม = End ว่าง */
+function projectPeriodYm(r){
+  return [yyyymm(r.uatPeriodSortKey || ''), yyyymm(r.uatPeriodEndKey || '')];
 }
 
 function buildProjectRows(){
@@ -1900,6 +1907,7 @@ function buildProjectRows(){
       subLeads: subLeads[pk] || [],
       executors: executors[pk] || [],
       uatPeriodDisp, uatPeriodSortKey: periodStart || '',
+      uatPeriodEndKey: periodStart && maxEnd ? maxEnd : '', // §5.81 Project_End_YYYYMM
       totalMD, tcprep: pAgg.TCPREP || 0, uat: pAgg.UAT || 0, reg: pAgg.REG || 0,
       other1, other2, support: pAgg.SUPPORT || 0,
     };
@@ -1969,7 +1977,7 @@ function buildProjectActualRows(){
     rows.push({
       pk, app: p.app || p.other_app || '— ไม่มี App —', projectName: p.project_name || '',
       lead: p.uat_lead || '', subLeads: subLeads[pk] || [], executors: executors[pk] || [],
-      uatPeriodDisp: per.disp, uatPeriodSortKey: per.periodStart || '',
+      uatPeriodDisp: per.disp, uatPeriodSortKey: per.periodStart || '', uatPeriodEndKey: per.periodEnd || '',
       totalMD: bAgg.byProject[pk] || 0,
       tcprep: (bAgg.byProjectPhase[pk] || {}).TCPREP || 0, uat: (bAgg.byProjectPhase[pk] || {}).UAT || 0,
       reg: (bAgg.byProjectPhase[pk] || {}).REG || 0, support: (bAgg.byProjectPhase[pk] || {}).SUPPORT || 0,
@@ -1982,7 +1990,7 @@ function buildProjectActualRows(){
   rows.forEach(r => { r.actualMD = aAgg.byProject[r.pk] || 0; r.diff = r.totalMD - r.actualMD; });
   const unmatched = aAgg.unmatchedTotal > 0 ? {
     pk: null, unmatched: true, app: '—', projectName: PROJECT_UNMATCHED_LABEL, lead: '', subLeads: [], executors: [],
-    uatPeriodDisp: '—', uatPeriodSortKey: '', totalMD: 0, tcprep: 0, uat: 0, reg: 0, other1: 0, other2: 0, support: 0,
+    uatPeriodDisp: '—', uatPeriodSortKey: '', uatPeriodEndKey: '', totalMD: 0, tcprep: 0, uat: 0, reg: 0, other1: 0, other2: 0, support: 0,
     actualMD: aAgg.unmatchedTotal, diff: -aAgg.unmatchedTotal,
   } : null;
   return { rows, unmatched };
@@ -3396,10 +3404,10 @@ async function downloadProjectExcel(){
       if (!built.rows.length && !built.unmatched) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
       const finalRows = [...genericSort(built.rows, S.projectSort, PROJECT_KEYFNS), ...(built.unmatched ? [built.unmatched] : [])];
       const cmp = pvMode === 'compare';
-      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period']
+      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Project_Start_YYYYMM', 'Project_End_YYYYMM']
         .concat(cmp ? ['Booked MD', 'Actual MD', 'B − A', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)'] : ['Actual MD'])];
       finalRows.forEach(r => {
-        const base = [r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp];
+        const base = [r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp, ...projectPeriodYm(r)];
         projectAoa.push(base.concat(cmp
           ? [r.totalMD, r.actualMD, r.diff, r.tcprep, r.uat, r.reg, r.other1, r.other2, r.support].map(v => Number(fmtMD(v)))
           : [Number(fmtMD(r.actualMD))]));
@@ -3407,10 +3415,10 @@ async function downloadProjectExcel(){
     } else {
       const rows = buildProjectRows();
       if (!rows.length) { toast('ไม่มีข้อมูลให้ดาวน์โหลดสำหรับตัวกรองชุดนี้', true); return; }
-      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
+      projectAoa = [['App', 'Project Name', 'Lead', 'Sub Lead(s)', 'Executor(s)', 'Project Period', 'Project_Start_YYYYMM', 'Project_End_YYYYMM', 'Total MD', 'TC Prep (MD)', 'UAT (MD)', 'Regression (MD)', 'Other1 (MD)', 'Other2 (MD)', 'Support (MD)']];
       rows.forEach(r => {
         projectAoa.push([
-          r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp,
+          r.app, r.projectName, r.lead, r.subLeads.join(', '), r.executors.join(', '), r.uatPeriodDisp, ...projectPeriodYm(r),
           Number(fmtMD(r.totalMD)), Number(fmtMD(r.tcprep)), Number(fmtMD(r.uat)), Number(fmtMD(r.reg)),
           Number(fmtMD(r.other1)), Number(fmtMD(r.other2)), Number(fmtMD(r.support)),
         ]);
