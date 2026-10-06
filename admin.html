@@ -1050,6 +1050,10 @@ function findPhaseDateOrderError(sel) {
     return s && e && e < s;
   });
 }
+// §5.80: Support / Other 1 / Other 2 ตั้งชื่อเองได้ (project_phase.display_name ≤ 10 ตัวอักษร)
+// — mirror gantt.html ต้องตรงกันเสมอ
+const PHASE_RENAMABLE = new Set(['SUPPORT', 'OTHER1', 'OTHER2']);
+const PHASE_DISPLAY_NAME_MAX = 10;
 function buildProjectPhaseRows(data) {
   $('pfPhaseRows').innerHTML = PROJECT_PHASES.map(ph => {
     const d = (data && data[ph.code]) || {};
@@ -1066,8 +1070,12 @@ function buildProjectPhaseRows(data) {
          <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
     // SIT เป็นงานทีมพัฒนา ไม่ใช่ทีม UAT ที่ต้อง book resource → ไม่มีช่อง Required OS ให้กรอกเลย
     const resCell = isSit ? `<div></div>` : `<input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">`;
+    // §5.80: Support / Other 1 / Other 2 ตั้งชื่อเองได้ (≤ 10 ตัวอักษร) — placeholder = ชื่อเฟสมาตรฐาน
+    const nameCell = PHASE_RENAMABLE.has(ph.code)
+      ? `<input type="text" class="ph-dispname" maxlength="${PHASE_DISPLAY_NAME_MAX}" placeholder="${ph.name}" value="${esc(d.display_name || '')}" title="ตั้งชื่อเฟส (ไม่เกิน ${PHASE_DISPLAY_NAME_MAX} ตัวอักษร) — ว่าง = ${ph.name}">`
+      : `<div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>`;
     return `<div class="phase-row" data-phase="${ph.code}">
-      <div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
+      ${nameCell}
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
       <div class="ph-wd ph-calc">${wd || ''}</div>
@@ -1542,7 +1550,7 @@ window.openEditProject = async function(key) {
 
   // โหลด phase จริงจาก project_phase
   const { data: phs } = await supabase.from('project_phase')
-    .select('project_phase_id,phase_code,start_date,end_date,md,resource_count,ai_assisted,ai_note')
+    .select('project_phase_id,phase_code,display_name,start_date,end_date,md,resource_count,ai_assisted,ai_note')
     .eq('project_key', key);
   const map = {};
   (phs || []).forEach(ph => {
@@ -1567,8 +1575,11 @@ function readProjectPhases() {
     const aiOn = !isSit && !!(aiEl && aiEl.checked);
     const noteEl = r.querySelector('.ph-ainote');
     const resEl = r.querySelector('.ph-res');
+    const dnEl = r.querySelector('.ph-dispname');
     return {
       phase_code: phaseCode,
+      // §5.80: ว่าง = null (ใช้ชื่อเฟสมาตรฐาน) · มีเฉพาะ Support/Other 1/Other 2
+      display_name: (dnEl && dnEl.value.trim().slice(0, PHASE_DISPLAY_NAME_MAX)) || null,
       start_date: r.querySelector('.ph-start').value || null,
       end_date: r.querySelector('.ph-end').value || null,
       md: isSit ? null : (wdText === '' ? null : Number(wdText)),   // SIT ต้องส่ง md=null เสมอ ไม่มี WD
@@ -1717,7 +1728,7 @@ window.saveProject = async function() {
   const phases = readProjectPhases();
   for (const ph of phases) {
     const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null
-                    || ph.ai_assisted;
+                    || ph.ai_assisted || ph.display_name;   // §5.80: ตั้งชื่ออย่างเดียวก็ต้องเก็บ
     const existingId = existingProjectPhases[ph.phase_code];
     if (hasData) {
       const phPayload = {
@@ -1728,7 +1739,8 @@ window.saveProject = async function() {
         md: ph.md,
         resource_count: ph.resource_count,
         ai_assisted: ph.ai_assisted,
-        ai_note: ph.ai_note
+        ai_note: ph.ai_note,
+        display_name: ph.display_name
       };
       if (existingId) {
         await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);

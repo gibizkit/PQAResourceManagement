@@ -643,13 +643,13 @@ input.lead-search.invalid {
    min-width:0 บน grid item (โดยเฉพาะ input) กันแถวล้น (ห้ามลบ regel นี้ทิ้ง) */
 .phase-row {
   display: grid;
-  grid-template-columns: 76px 105px 105px 46px 66px 70px 34px minmax(170px,1fr);
+  grid-template-columns: 92px 105px 105px 46px 66px 70px 34px minmax(170px,1fr);
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
   border-radius: 8px;
   margin-bottom: 3px;
-  min-width: 745px;
+  min-width: 761px;
 }
 
 .phase-row > * {
@@ -924,3 +924,14 @@ input.lead-search.invalid {
 /* ระหว่างลาก: cursor ค้างเป็น col-resize ทั้งหน้า + ห้ามเลือกข้อความไปด้วย */
 body.col-resizing { cursor:col-resize; user-select:none; }
 body.col-resizing .col-resizer::after { opacity:1; }
+
+/* §5.80: ช่องตั้งชื่อเฟส Support / Other 1 / Other 2 (≤ 10 ตัวอักษร) ในตาราง Phases ของโมดัล Project
+   — คอลัมน์แรกขยาย 76 → 92px ให้พอ 10 ตัวอักษร · placeholder = ชื่อเฟสมาตรฐาน */
+.phase-row .ph-dispname {
+  font-weight: 600;
+  color: var(--dk-text2);
+}
+.phase-row .ph-dispname::placeholder {
+  color: var(--dk-text3);
+  font-weight: 600;
+}

@@ -662,9 +662,28 @@ function effPhaseCode(ph){
   const lbl = String(ph.phase_label || '').trim().toLowerCase();
   return (lbl && PHASE_CODE_BY_NAME[lbl]) || ph.phase_code;
 }
+// §5.80: เฟส Support / Other 1 / Other 2 ตั้งชื่อเองได้ (project_phase.display_name ≤ 10 ตัวอักษร)
+// กรอกไว้ = โชว์ชื่อที่ตั้ง แทนชื่อเฟสมาตรฐาน · ไม่กรอก = ชื่อเฟสเดิม
+const PHASE_RENAMABLE = new Set(['SUPPORT', 'OTHER1', 'OTHER2']);
+const PHASE_DISPLAY_NAME_MAX = 10;
+function phaseDispName(ph){
+  const dn = String((ph && ph.display_name) || '').trim();
+  return dn || phaseName(effPhaseCode(ph));
+}
+// §5.80: แถวเฟสใน Gantt เรียงตาม start_date (เฟสไม่มีวันที่ไปท้ายสุด) ให้แท่ง Timeline
+// ต่อกันเป็นขั้นบันได — วันเริ่มเท่ากันเรียงตามลำดับเฟสมาตรฐาน
+function phasesByStart(phs){
+  return (phs || []).slice().sort((a, b) => {
+    const sa = a.start_date || '', sb = b.start_date || '';
+    if (sa !== sb) return !sa ? 1 : !sb ? -1 : (sa < sb ? -1 : 1);
+    return phaseOrder(effPhaseCode(a)) - phaseOrder(effPhaseCode(b));
+  });
+}
 // ป้ายชื่อที่โชว์ในคอลัมน์ Phase — ไม่ต่อท้าย label ถ้า label ซ้ำกับชื่อเฟสอยู่แล้ว
 function phaseRowLabel(ph){
   const code = effPhaseCode(ph);
+  const dn = String(ph.display_name || '').trim();
+  if (dn) return esc(dn);   // §5.80: ชื่อที่ตั้งเองชนะเสมอ
   const name = phaseName(code);
   const lbl  = String(ph.phase_label || '').trim();
   return (!lbl || lbl.toLowerCase() === name.toLowerCase()) ? esc(name) : esc(name) + ' • ' + esc(lbl);
@@ -900,7 +919,7 @@ async function loadAll(){
       loadProjectStatuses(),   // master สถานะ + สี pill (ต้องมาก่อน render)
       supabase.from('project').select('project_key,project_name,app_code,other_app,status,signoff_date,deploy_date,signoff_url,project_note').eq('is_active', true).order('project_key', { ascending:false }),
       fetchAllRows((from, to) => supabase.from('project_phase')
-        .select('project_key,phase_code,phase_label,start_date,end_date,md,resource_count,sort_order')
+        .select('project_key,phase_code,phase_label,display_name,start_date,end_date,md,resource_count,sort_order')
         .order('project_key', { ascending: true })
         .order('phase_code', { ascending: true })
         .order('phase_label', { ascending: true })
@@ -1434,9 +1453,9 @@ function currentPhaseInfo(pk){
   const phs = (S.phasesByProject[pk]||[]).filter(ph => ph.start_date && ph.end_date && ph.phase_code !== 'SIT');
   if (!phs.length) return null;
   const cur = phs.find(ph => TODAY >= ph.start_date && TODAY <= ph.end_date);
-  if (cur) return { code:effPhaseCode(cur), label:phaseName(effPhaseCode(cur)), state:'active' };
+  if (cur) return { code:effPhaseCode(cur), label:phaseDispName(cur), state:'active' };
   const future = phs.filter(ph => ph.start_date > TODAY).sort((a,b) => a.start_date < b.start_date ? -1 : 1);
-  if (future.length) return { code:effPhaseCode(future[0]), label:phaseName(effPhaseCode(future[0])), state:'upcoming' };
+  if (future.length) return { code:effPhaseCode(future[0]), label:phaseDispName(future[0]), state:'upcoming' };
   return { code:null, label:'เสร็จสิ้น', state:'done' };
 }
 // สีตัวหนังสือของ chip นี้มาจาก phaseTextColor() (§5.45) — แยกจากสีพื้นหลังแท่ง Gantt (phaseColor())
@@ -1529,7 +1548,7 @@ function renderGantt(){
     const pk = p.project_key;
     body += summaryRow(p, days);
     if (!S.collapsed[pk]) {
-      (S.phasesByProject[pk]||[]).forEach(ph => { body += phaseRow(p, ph, days); });
+      phasesByStart(S.phasesByProject[pk]).forEach(ph => { body += phaseRow(p, ph, days); });
       // req 3: แถว Milestones ขึ้นเสมอตอน expand (ไว้โชว์ Total Booked MD / Total Plan MD ของโปรเจกต์)
       body += milestoneRow(p, days);
     }
@@ -1631,7 +1650,7 @@ function phaseRow(p, ph, days){
   const ok  = req != null && bkCnt === req && req > 0;
 
   const idx = S.renderedPhases.length;
-  S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseName(effPhaseCode(ph)), start:ph.start_date, end:ph.end_date });
+  S.renderedPhases.push({ pk, phaseCode:ph.phase_code, phaseLabel:ph.phase_label||'', phaseName:phaseDispName(ph), start:ph.start_date, end:ph.end_date });
 
   const color = phaseColor(effPhaseCode(ph));
   const cells = phaseCells(pk, ph.phase_code, days, ph.start_date, ph.end_date, color);
@@ -1884,8 +1903,12 @@ function buildPhaseRows(data){
          <input type="text" class="ph-ainote" placeholder="AI ช่วยอย่างไร" maxlength="500" value="${aiNote}" ${aiOn ? '' : 'disabled'}>`;
     // SIT เป็นงานทีมพัฒนา ไม่ใช่ทีม UAT ที่ต้อง book resource → ไม่มีช่อง Required OS ให้กรอกเลย
     const resCell = isSit ? `<div></div>` : `<input type="number" step="0.5" min="0" class="ph-res" placeholder="คน" value="${res}">`;
+    // §5.80: Support / Other 1 / Other 2 ตั้งชื่อเองได้ (≤ 10 ตัวอักษร) — placeholder = ชื่อเฟสมาตรฐาน
+    const nameCell = PHASE_RENAMABLE.has(ph.code)
+      ? `<input type="text" class="ph-dispname" maxlength="${PHASE_DISPLAY_NAME_MAX}" placeholder="${ph.name}" value="${esc(d.display_name || '')}" title="ตั้งชื่อเฟส (ไม่เกิน ${PHASE_DISPLAY_NAME_MAX} ตัวอักษร) — ว่าง = ${ph.name}">`
+      : `<div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>`;
     return `<div class="phase-row" data-phase="${ph.code}">
-      <div class="ph-name">${ph.name}${ph.code === 'UAT' ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
+      ${nameCell}
       <input type="date" class="ph-start" value="${d.start_date || ''}">
       <input type="date" class="ph-end" value="${d.end_date || ''}">
       <div class="ph-wd ph-calc">${isSit ? '' : (wd || '')}</div>
@@ -2043,7 +2066,7 @@ window.openProjEdit = async function(key){
   if (editingKey === key) buildLeadPicker(pl.main, pl.subs, pl.executors);   // กันเคสผู้ใช้เปิดโปรเจกต์อื่นทับ
 
   const { data: phs } = await supabase.from('project_phase')
-    .select('project_phase_id,phase_code,phase_label,start_date,end_date,md,resource_count,ai_assisted,ai_note')
+    .select('project_phase_id,phase_code,phase_label,display_name,start_date,end_date,md,resource_count,ai_assisted,ai_note')
     .eq('project_key', key);
   const map = {};
   // ข้อมูลเก่า Other1/Other2 เก็บเป็น SUPPORT + phase_label → จับเข้าแถวเฟสจริงในฟอร์ม
@@ -2067,8 +2090,11 @@ function readPhaseInputs(){
     const aiOn = !isSit && !!(aiEl && aiEl.checked);
     const noteEl = r.querySelector('.ph-ainote');
     const resEl = r.querySelector('.ph-res');
+    const dnEl = r.querySelector('.ph-dispname');
     return {
       phase_code: r.dataset.phase,
+      // §5.80: ว่าง = null (ใช้ชื่อเฟสมาตรฐาน) · มีเฉพาะ Support/Other 1/Other 2
+      display_name: (dnEl && dnEl.value.trim().slice(0, PHASE_DISPLAY_NAME_MAX)) || null,
       start_date: r.querySelector('.ph-start').value || null,
       end_date:   r.querySelector('.ph-end').value || null,
       // ค่า md ใน DB เก็บ WD ที่คำนวณอัตโนมัติ (ไม่ให้กรอกเอง) — req 6: SIT ไม่มี MD เลย ส่ง null เสมอ
@@ -2185,12 +2211,12 @@ window.saveProj = async function(){
   const phases = readPhaseInputs();
   for (const ph of phases){
     const hasData = ph.start_date || ph.end_date || ph.md != null || ph.resource_count != null
-                    || ph.ai_assisted;
+                    || ph.ai_assisted || ph.display_name;   // §5.80: ตั้งชื่ออย่างเดียวก็ต้องเก็บ
     const existingId = existingPhases[ph.phase_code];
     if (hasData){
       const phPayload = { project_key:key, phase_code:ph.phase_code, start_date:ph.start_date,
         end_date:ph.end_date, md:ph.md, resource_count:ph.resource_count,
-        ai_assisted:ph.ai_assisted, ai_note:ph.ai_note };
+        ai_assisted:ph.ai_assisted, ai_note:ph.ai_note, display_name:ph.display_name };
       if (existingId) await supabase.from('project_phase').update(phPayload).eq('project_phase_id', existingId);
       else await supabase.from('project_phase').insert(phPayload);
     } else if (existingId){
