@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — PQA Asset Mgmt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme.css">
+<link rel="stylesheet" href="asset.css">
+</head>
+<body>
+<script type="module">
+/* Dashboard — ตอบคำถามที่ทีมถามบ่อย: มีเครื่องว่างไหม / OS ไหนมีให้เทส / ใครถือนานเกิน */
+import { boot, api, store, loadStore, prefs, link, esc, modelText, dDisp } from './asset.js';
+
+const LONG_HELD_DAYS = 180;
+
+boot('dashboard', async main => {
+  const pf = prefs('dashboard');
+  let scope = pf.get('scope', 'all');           // OS matrix: all = ทุกเครื่อง / team = เฉพาะทีม PQA
+  main.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  const [, cov] = await Promise.all([loadStore(['devices']), api.osCoverage()]);
+
+  const live = d => d.status === 'active' || d.status === 'repair';
+  const teamMobile = store.devices.filter(d => d.ownership === 'team' && d.is_mobile && live(d));
+  const free = teamMobile.filter(d => d.is_available);
+  const long = teamMobile.filter(d => (d.held_days ?? 0) > LONG_HELD_DAYS).sort((a, b) => b.held_days - a.held_days);
+  const laptops = store.devices.filter(d => d.ownership === 'team' && !d.is_mobile && live(d));
+  const lapByType = {};
+  laptops.forEach(d => { lapByType[d.type_name] = (lapByType[d.type_name] || 0) + 1; });
+  const devLink = d => link(`${d.is_mobile ? 'mobile' : 'devices'}.html?id=${d.device_id}`);
+
+  const byHolder = {};
+  teamMobile.filter(d => d.holder_resource_id).forEach(d => {
+    const k = d.holder_resource_id;
+    byHolder[k] = byHolder[k] || { name: d.holder_name, n: 0, ids: [] };
+    byHolder[k].n++;
+    byHolder[k].ids.push(d.internal_id || modelText(d));
+  });
+  const topHolders = Object.values(byHolder).sort((a, b) => b.n - a.n).slice(0, 8);
+
+  main.innerHTML = `
+    <div class="page-head"><h2>Dashboard</h2><span class="muted" style="font-size:12.5px">ข้อมูล ณ ${dDisp(new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10))}</span></div>
+    <div class="kpis">
+      <a class="kpi" href="${link('mobile.html')}"><span class="v">${teamMobile.length}</span><span class="l">มือถือทีม PQA ที่ใช้งานอยู่</span></a>
+      <div class="kpi"><span class="v">${free.length}</span><span class="l">ว่าง พร้อมให้ยืม</span></div>
+      <div class="kpi ${long.length ? 'attn' : ''}"><span class="v">${long.length}</span><span class="l">ถือเกิน ${LONG_HELD_DAYS} วัน</span></div>
+      <a class="kpi" href="${link('devices.html')}"><span class="v">${laptops.length}</span>
+        <span class="l">Laptop ทีม${Object.keys(lapByType).length ? ` (${Object.entries(lapByType).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')})` : ''}</span></a>
+    </div>
+    <div class="dash-grid">
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+          <h3>OS ที่มีให้เทส</h3>
+          <div class="seg" id="scope"><button type="button" data-s="all">ทุกเครื่อง</button><button type="button" data-s="team">เฉพาะทีม PQA</button></div>
+        </div>
+        <div id="matrix"></div>
+        <span class="note">ตัวเลขใหญ่ = จำนวนเครื่องที่ใช้งานอยู่ · "ว่าง" = เครื่องทีมที่ไม่มีผู้ถือ ยืมได้เลย</span>
+      </section>
+      <section class="panel">
+        <h3>ถือนานที่สุด (มือถือทีม)</h3>
+        <div class="rank">${teamMobile.filter(d => d.holder_resource_id).sort((a, b) => b.held_days - a.held_days).slice(0, 8).map(d => `
+          <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(d.holder_name)}</a>
+          <b class="${d.held_days > LONG_HELD_DAYS ? 'days-warn' : ''}">${d.held_days} วัน</b></div>`).join('') || '<div class="muted">ยังไม่มีผู้ถือ</div>'}</div>
+      </section>
+      <section class="panel">
+        <h3>เครื่องว่าง ยืมได้เลย (${free.length})</h3>
+        <div class="rank">${free.sort((a, b) => String(a.internal_id).localeCompare(String(b.internal_id), 'th', { numeric: true })).slice(0, 12).map(d => `
+          <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(modelText(d))}</a>
+          <span class="muted">${esc([d.platform_name, d.os_version].filter(Boolean).join(' '))}${d.status === 'repair' ? ' · ส่งซ่อม' : ''}</span></div>`).join('') || '<div class="muted">ไม่มีเครื่องว่าง</div>'}
+          ${free.length > 12 ? `<div><a class="link" href="${link('mobile.html')}">ดูทั้งหมดที่หน้า Mobile →</a></div>` : ''}</div>
+      </section>
+      <section class="panel">
+        <h3>ใครถือมือถือทีมมากที่สุด</h3>
+        <div class="rank">${topHolders.map(h => `<div><span>${esc(h.name)} <span class="muted" style="font-size:12px">${esc(h.ids.slice(0, 4).join(', '))}${h.ids.length > 4 ? '…' : ''}</span></span><b>${h.n} เครื่อง</b></div>`).join('') || '<div class="muted">-</div>'}</div>
+      </section>
+    </div>`;
+
+  const renderMatrix = () => {
+    pf.set('scope', scope);
+    document.querySelectorAll('#scope [data-s]').forEach(b => b.classList.toggle('on', b.dataset.s === scope));
+    const rows = cov.filter(c => scope === 'all' || c.ownership === 'team');
+    const plats = [...new Set(rows.map(r => r.platform_name || 'ไม่ระบุ'))].sort();
+    const el = document.getElementById('matrix');
+    if (!rows.length) { el.innerHTML = '<div class="muted">ยังไม่มีข้อมูลมือถือ</div>'; return; }
+    // แต่ละ platform เลข OS ไม่เกี่ยวกัน (iOS 17 ≠ Android 17) จึงแยกหัวคอลัมน์ต่อแถว
+    el.innerHTML = plats.map(p => {
+      const cells = {};
+      rows.filter(r => (r.platform_name || 'ไม่ระบุ') === p).forEach(r => {
+        const k = r.os_major ?? '?';
+        cells[k] = cells[k] || { n: 0, free: 0 };
+        cells[k].n += Number(r.device_count);
+        if (r.ownership === 'team') cells[k].free += Number(r.available_count);
+      });
+      const keys = Object.keys(cells).sort((a, b) => (a === '?') - (b === '?') || Number(a) - Number(b));
+      const max = Math.max(...keys.map(k => cells[k].n));
+      const lvl = n => (n === 0 ? 'c0' : n >= max * 0.75 ? 'c3' : n >= max * 0.4 ? 'c2' : 'c1');
+      return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:10px">
+        <span></span>${keys.map(k => `<span class="h">${k === '?' ? 'ไม่ระบุ' : (p === 'Huawei' ? 'HMOS ' : '') + k}</span>`).join('')}
+        <span class="rh">${esc(p)}</span>${keys.map(k => `<span class="cell ${lvl(cells[k].n)}">${cells[k].n}${cells[k].free ? `<small>ว่าง ${cells[k].free}</small>` : ''}</span>`).join('')}
+      </div>`;
+    }).join('');
+  };
+  document.getElementById('scope').onclick = ev => { const b = ev.target.closest('[data-s]'); if (b) { scope = b.dataset.s; renderMatrix(); } };
+  renderMatrix();
+});
+</script>
+</body>
+</html>
