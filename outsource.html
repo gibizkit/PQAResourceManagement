@@ -408,6 +408,7 @@
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html">Signoff Review</a>
+      <a href="asset/">Asset</a>
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -432,7 +433,6 @@
       <div class="fld" id="fldProject">
         <label>Project</label>
         <div class="ms" id="msProject"></div>
-        <div class="fld-hint hidden" id="msProjectHint">ตัวกรองนี้ใช้กับ Actual MD ไม่ได้</div>
       </div>
       <div class="fld">
         <label>UAT Lead</label>
@@ -669,15 +669,13 @@ const S = {
   range: { s: null, e: null },
   // Mode = Booked MD (default) / Actual MD (§5.67 — spec 2026-09-11-outsource-actual-md-daily-design.md)
   osMode: 'booked',
-  // Group by = 'project' ไม่รองรับในโหมด Actual — เก็บค่าที่ต้อง fallback ไว้ชั่วคราวที่นี่
-  // (ไม่ใช่ prefs) เพื่อคืนกลับให้ตอนสลับกลับ Booked โดยไม่เขียนทับ sessionStorage (§4.6)
-  groupByBeforeActual: null,
   // Actual MD รายวัน (§5.67-D, spec §4.4/§4.5) — cache แยกจาก Booked data ทั้งหมด
   actual: {
     loadedKey: null,          // `${S.range.s}|${S.range.e}` ของช่วงล่าสุดที่ fetch ไปแล้ว (สำเร็จ/พลาดก็ตั้งไว้ กันยิงซ้ำ — §4.4)
     rawRows: [],              // แถวดิบจาก v_actual_md_daily_person + _resourceId (จับคู่ชื่อแล้ว, null = ไม่พบใน OS master)
     byKeyDate: {},             // (actualCellKey(p) + '|' + work_date) -> [{app_code, actual_md}] — หลังกรอง App/UAT Lead แล้ว
     matchedIdsWithData: new Set(), // resourceId ที่มี Actual row อย่างน้อย 1 แถวหลังกรอง App/UAT Lead
+    peopleByProject: {},       // project_key | ACTUAL_NO_PROJECT -> Set(actualCellKey) (§5.76-D, Group by Project)
     unmatchedList: []          // [{resourceId:null, fullName, ...}] คนที่จับคู่กับ OS master ไม่ได้ (§4.5)
   }
 };
@@ -896,11 +894,9 @@ function updateToggleFilterBtnLabel(){
   $('toggleFilterBtn').textContent = open ? '🔎 Close Filter' : '🔎 Open Filter';
 }
 
-// ค่า groupByMode "จริง" ที่ต้องเขียนลง prefs — ต่างจาก $('selGroupBy').value ตรงๆ เมื่ออยู่
-// โหมด Actual และ DOM ถูก fallback เป็น 'none' ชั่วคราว (applyOsModeGating(), §4.6): ต้องคง
-// ค่า 'project' เดิมไว้ใน prefs เสมอ ไม่งั้นสลับกลับ Booked แล้วจะได้ 'none' แทน 'project'
+// ค่า groupByMode ที่เขียนลง prefs — §5.76-D: โหมด Actual ใช้ Group by = Project ได้แล้ว
+// ไม่มี fallback ชั่วคราวอีก จึงเท่ากับค่าใน DOM ตรงๆ (คงฟังก์ชันไว้ให้จุดเรียกเดิมไม่ต้องแก้)
 function groupByModeForPrefs() {
-  if (isActualMode() && S.groupByBeforeActual) return S.groupByBeforeActual;
   return $('selGroupBy').value;
 }
 
@@ -923,35 +919,12 @@ function saveFilterPrefs() {
 
 /* ============ MODE = ACTUAL MD — GATING + INFO POPUP (§4.6/§4.7) ============ */
 // ปิดใช้งานตัวกรองที่ไม่มีผลกับ Actual MD เมื่ออยู่โหมด Actual — เรียกซ้ำได้ตลอด (idempotent)
-// ไม่เคยล้างค่าที่ผู้ใช้เลือกไว้เลย (Project/Group by) แค่ปิดการโต้ตอบ/fallback DOM ชั่วคราว
+// §5.76-D: Project filter + Group by = Project ใช้กับ Actual ได้แล้ว (Actual มี project_name) —
+// เหลือแค่ Show only conflict ที่ยังปิดในโหมด Actual
 function applyOsModeGating() {
   const actual = isActualMode();
 
-  // 1) Project multi-select — disabled + สีจาง + hint, ค่าที่เลือกไว้ (S.filter.projects) ไม่ถูกแตะ
-  const projFld = document.getElementById('fldProject');
-  if (projFld) projFld.classList.toggle('fld-disabled', actual);
-  const projHint = $('msProjectHint');
-  if (projHint) projHint.classList.toggle('hidden', !actual);
-
-  // 2) Group by = Project ใช้กับ Actual ไม่ได้ → fallback DOM เป็น 'none' ชั่วคราว โดยไม่เขียนทับ
-  //    prefs (saveFilterPrefs() อ่านค่าจริงผ่าน groupByModeForPrefs() แทน ไม่ใช่ DOM ตรงๆ)
-  const grpSel = $('selGroupBy');
-  const projOpt = grpSel.querySelector('option[value="project"]');
-  if (actual) {
-    if (grpSel.value === 'project') {
-      S.groupByBeforeActual = 'project';
-      grpSel.value = 'none';
-    }
-    if (projOpt) projOpt.disabled = true;
-  } else {
-    if (projOpt) projOpt.disabled = false;
-    if (S.groupByBeforeActual) {
-      grpSel.value = S.groupByBeforeActual;
-      S.groupByBeforeActual = null;
-    }
-  }
-
-  // 3) Show only conflict — ไม่เกี่ยวกับ Actual MD (conflict มาจาก booking ชนกัน)
+  // Show only conflict — ไม่เกี่ยวกับ Actual MD (conflict มาจาก booking ชนกัน)
   const chk = $('chkConflict');
   chk.disabled = actual;
   const chkLabel = chk.closest('.chk');
@@ -1327,6 +1300,10 @@ function buildActualNameIndex() {
   return map;
 }
 
+// §5.76-D: project_key ถูก resolve ที่ DB ตอน import แล้ว (view v_actual_md_daily_person) — หน้าเว็บใช้ตรงๆ
+// "ไม่พบ Project" = project_key เป็น null หรือไม่อยู่ในชุดโปรเจกต์ active (ACTUAL_NO_PROJECT ใช้เป็นคีย์กลุ่ม)
+const ACTUAL_NO_PROJECT = '\u0000no-project';
+
 // Task D เติม logic จริง: โหลด pqa.v_actual_md_daily_person (ห่อ fetchAllRows()) กรองตาม
 // S.range ปัจจุบัน + normNameKey() จับคู่กับ v_resource, สร้าง index ให้ buildActualDayCell()
 // อ่านแบบ O(1), และ cache ไว้ไม่ query ซ้ำถ้าโหมด/ช่วงวันที่ไม่เปลี่ยน (โหลด lazy — §4.4)
@@ -1341,7 +1318,7 @@ async function ensureActualData() {
   try {
     const s = S.range.s, e = S.range.e;
     const res = await fetchAllRows((from, to) => supabase.from('v_actual_md_daily_person')
-      .select('work_date,name_key,app_code,approver_choice,actual_md')
+      .select('work_date,name_key,app_code,approver_choice,project_key,actual_md')
       .gte('work_date', s).lte('work_date', e)
       .order('work_date', { ascending: true })
       .order('name_key', { ascending: true })
@@ -1354,6 +1331,7 @@ async function ensureActualData() {
       name_key: row.name_key,
       app_code: row.app_code,
       approver_choice: row.approver_choice,
+      project_key: row.project_key,
       actual_md: row.actual_md,
       _resourceId: nameIdx[normNameKey(row.name_key)] ?? null
     }));
@@ -1373,6 +1351,8 @@ function refreshActualIndex() {
   const byKeyDate = {};
   const unmatchedMap = {};
   const matchedIdsWithData = new Set();
+  const peopleByProject = {};   // project_key | ACTUAL_NO_PROJECT -> Set(cellKey) (หลังกรองทุกตัวกรองแล้ว)
+  const activeProjKeys = new Set((S.projectsActive || []).map(pr => pr.project_key));
 
   // approver_choice เป็นอีเมล — ต้อง map เป็น short_name ของ pqa_lead ถึงจะเทียบกับ
   // S.filter.leads ได้ (multi-select UAT Lead ใช้ short_name เป็น value เหมือน Booked mode)
@@ -1385,10 +1365,15 @@ function refreshActualIndex() {
       const leadShort = row.approver_choice ? emailToLeadShort[String(row.approver_choice).toLowerCase()] : null;
       if (!(leadShort && S.filter.leads.has(leadShort))) return;
     }
+    const projectKey = (row.project_key && activeProjKeys.has(row.project_key)) ? row.project_key : null;
+    // ตัวกรอง Project (§5.76-D): มีตัวกรอง → แถวที่ project ไม่ตรง/ไม่พบ Project ไม่ถูกนับ
+    if (S.filter.projects.size && !(projectKey && S.filter.projects.has(projectKey))) return;
     const isMatched = row._resourceId != null;
     const key = isMatched ? ('r:' + row._resourceId) : ('n:' + row.name_key);
     const dk = key + '|' + row.work_date;
-    (byKeyDate[dk] = byKeyDate[dk] || []).push({ app_code: row.app_code, actual_md: row.actual_md });
+    (byKeyDate[dk] = byKeyDate[dk] || []).push({ app_code: row.app_code, actual_md: row.actual_md, project_key: projectKey });
+    const pbk = projectKey || ACTUAL_NO_PROJECT;
+    (peopleByProject[pbk] = peopleByProject[pbk] || new Set()).add(key);
     if (isMatched) {
       matchedIdsWithData.add(row._resourceId);
     } else {
@@ -1404,14 +1389,14 @@ function refreshActualIndex() {
 
   S.actual.byKeyDate = byKeyDate;
   S.actual.matchedIdsWithData = matchedIdsWithData;
+  S.actual.peopleByProject = peopleByProject;
   S.actual.unmatchedList = Object.values(unmatchedMap)
     .sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
 }
 
 // ตัวกรอง Actual mode เฉพาะ (แยกจาก matchesFilters() เดิมของ Booked mode โดยตั้งใจ — ห้ามแก้
 // matchesFilters() ตามกติกา §5.67 regression guard) — ชื่อ/สกิล/วันลาออก เหมือนเดิมทุกประการ
-// แต่: (1) Project ไม่มีผลกับ Actual เลย (§4.6 — ไม่เช็ค S.filter.projects) (2) App/UAT Lead
-// เช็คจาก Actual data จริง (S.actual.matchedIdsWithData ที่ refreshActualIndex() กรองมาให้แล้ว)
+// แต่: Project (§5.76-D) / App / UAT Lead เช็คจาก Actual data จริง (S.actual.matchedIdsWithData ที่ refreshActualIndex() กรองมาให้แล้ว)
 // ไม่ใช่จาก Booking เหมือน matchesFilters()
 function matchesActualFilters(p) {
   const nameQ = $('fName').value.trim().toLowerCase();
@@ -1422,7 +1407,7 @@ function matchesActualFilters(p) {
   }
   if (skillQ && !(p.skills || '').toLowerCase().includes(skillQ)) return false;
   if (p.endDate && S.range.s && p.endDate < S.range.s) return false;
-  if ((S.filter.apps.size || S.filter.leads.size) && !S.actual.matchedIdsWithData.has(p.resourceId)) return false;
+  if ((S.filter.projects.size || S.filter.apps.size || S.filter.leads.size) && !S.actual.matchedIdsWithData.has(p.resourceId)) return false;
   return true;
 }
 
@@ -1457,11 +1442,10 @@ function renderUnmatchedActualGroup(days, conflictMap, colspan) {
 // ข้อดีของ view ที่ลดจำนวนแถวไว้ตามที่ spec §2.2 ตั้งใจ (2) project_code เป็น free text ไม่ผูก FK
 // อยู่แล้ว ไม่ใช่ข้อมูลที่ธุรกิจต้องอิงเป๊ะเหมือน App — สูญเสียแค่รายละเอียดใน tooltip เท่านั้น
 //
-// rowFilter ถูกละเว้นโดยตั้งใจ — ใช้เฉพาะ Group by Project/App/UAT Lead ของ Booked mode
-// (กรอง booking object ตาม project_key/attrKeyOf) ซึ่ง Actual data ไม่มีมิติ project ให้กรอง
-// แบบเดียวกัน (Group by Project ถูก disable ไปแล้วในโหมด Actual ตาม §4.6) และ Group by App/
-// UAT Lead ที่ยังเปิดใช้ได้ก็จัดกลุ่มจาก Booking-project attribute อยู่ดี (ไม่ใช่จาก Actual data)
-// — cell ของ Actual จึงแสดงผลรวมทั้งหมดของวันนั้นเสมอไม่ว่าจะอยู่ใน section ไหน
+// rowFilter: §5.76 (2026-09-30) — string = project_key (หรือ ACTUAL_NO_PROJECT) ⇒ รวมเฉพาะ
+// Actual ของโปรเจกต์นั้น (Group by Project ในโหมด Actual, project_key resolve ตอน import ฝั่ง DB)
+// function (Group by App/UAT Lead ที่จัดกลุ่มจาก Booking-project attribute) ⇒ ละเว้น
+// — cell แสดงผลรวม Actual ทั้งวันเหมือนเดิม
 function buildActualDayCell(p, ds, rowFilter) {
   const d = new Date(ds + 'T00:00:00');
   const wknd = isWknd(d, S.holidays);
@@ -1469,7 +1453,13 @@ function buildActualDayCell(p, ds, rowFilter) {
     ? (S.leavesByResource[p.resourceId] || []).find(l => ds >= l.start_date && ds <= l.end_date)
     : null;
 
-  const rows = (S.actual.byKeyDate || {})[actualCellKey(p) + '|' + ds] || [];
+  let rows = (S.actual.byKeyDate || {})[actualCellKey(p) + '|' + ds] || [];
+  // §5.76-D: rowFilter เป็น string = Group by Project ของโหมด Actual (project_key หรือ
+  // ACTUAL_NO_PROJECT) → นับเฉพาะแถว Actual ของ project นั้น; เป็น function (Group by App/Lead
+  // ของ Booked) ยังถูกละเว้นเหมือนเดิม
+  if (typeof rowFilter === 'string') {
+    rows = rows.filter(r => rowFilter === ACTUAL_NO_PROJECT ? !r.project_key : r.project_key === rowFilter);
+  }
   const total = rows.reduce((s, r) => s + (Number(r.actual_md) || 0), 0);
   const hasVal = rows.length > 0;
 
@@ -1536,6 +1526,44 @@ function toMeta(p) {
 }
 function sortFn(a, b) {
   return (a.rank - b.rank) || (a.p.nicknameName || '').localeCompare(b.p.nicknameName || '');
+}
+
+// §5.76-D: Group by Project ของโหมด Actual — 1 section ต่อ project (ที่มี Actual หลังกรอง), แถว = คนที่
+// มี Actual ใน project นั้น (cell นับเฉพาะ Actual ของ project นั้น); ท้ายสุด "ไม่พบ Project" (Actual ที่
+// project_key = null) และ "ยังไม่มี Project" (คนที่ผ่านตัวกรองแต่ไม่มี Actual เลย) — ไม่ทิ้งแถวใด
+function renderActualByProjectGroups(withMeta, days, conflictMap, colspan) {
+  const byProj = S.actual.peopleByProject || {};
+  let html = '';
+  const uniqueRes = new Set();
+  const section = (headHtml, rows, filterKey) => {
+    rows.forEach(x => uniqueRes.add(x.p.resourceId));
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">${headHtml}</span></td></tr>`;
+    html += rows.map(x => buildRow(x.p, days, conflictMap, filterKey)).join('');
+  };
+  S.projectsActive.forEach(proj => {
+    // ไม่เรียก projectPassesFilter() — Project/App/Lead กรองที่ระดับแถว Actual ใน refreshActualIndex() แล้ว
+    // (Lead ของ Actual = approver ไม่ใช่ UAT Lead ของโปรเจกต์)
+    const set = byProj[proj.project_key];
+    if (!set || !set.size) return;
+    const rows = withMeta.filter(x => set.has(actualCellKey(x.p))).sort(sortFn);
+    if (!rows.length) return;
+    const info = S.projMap[proj.project_key] || {};
+    const headParts = [proj.project_name, info.appCode || info.otherApp || '', info.uatLead || '', `(${rows.length} คน)`]
+      .filter(Boolean).map(esc);
+    section(`📁 ${headParts.join(' · ')}`, rows, proj.project_key);
+  });
+  const noProjSet = byProj[ACTUAL_NO_PROJECT];
+  if (noProjSet && noProjSet.size) {
+    const rows = withMeta.filter(x => noProjSet.has(actualCellKey(x.p))).sort(sortFn);
+    if (rows.length) section(`❓ ไม่พบ Project (${rows.length} คน)`, rows, ACTUAL_NO_PROJECT);
+  }
+  const rest = withMeta.filter(x => !uniqueRes.has(x.p.resourceId)).sort(sortFn);
+  if (rest.length) {
+    rest.forEach(x => uniqueRes.add(x.p.resourceId));
+    html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ยังไม่มี Project (${rest.length} คน)</span></td></tr>`;
+    html += rest.map(x => buildRow(x.p, days, conflictMap)).join('');
+  }
+  return { html, uniqueCount: uniqueRes.size };
 }
 
 // Group by Project: section header = ชื่อ Project, แถวข้างใต้ = คนที่ถูกจองใน project นั้น
@@ -1754,7 +1782,7 @@ function renderTbody(days) {
   let shownCount = list.length;
 
   if (groupMode === 'project') {
-    const built = renderByProjectGroups(withMeta, days, conflictMap, colspan);
+    const built = (actualMode ? renderActualByProjectGroups : renderByProjectGroups)(withMeta, days, conflictMap, colspan);
     html = built.html;
     shownCount = built.uniqueCount;
   } else if (groupMode === 'app' || groupMode === 'lead') {
@@ -1800,10 +1828,6 @@ function renderTbody(days) {
 $('fName').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
 $('fSkills').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); });
 $('selGroupBy').addEventListener('change', () => {
-  // ผู้ใช้เลือก Group by เองระหว่างอยู่โหมด Actual (เช่นเปลี่ยนเป็น App/UAT Lead/None) —
-  // ถือเป็นการเลือกใหม่ที่ตั้งใจ ไม่ต้อง auto-restore 'project' อีกตอนสลับกลับ Booked แล้ว
-  // (ค่าที่เลือกใหม่นี้ถูกเซฟลง prefs ปกติผ่าน saveFilterPrefs() ด้านล่างอยู่แล้ว)
-  if (isActualMode()) S.groupByBeforeActual = null;
   renderGrid(); saveFilterPrefs();
 });
 $('chkConflict').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
@@ -1854,9 +1878,6 @@ $('clearFilterBtn').addEventListener('click', async () => {
   const today = new Date();
   $('fStart').value = d2s(addDaysToDate(today, -10));
   $('fEnd').value = defaultFilterEndStr();
-  // ตั้ง Group by = 'project' ตรงๆ ข้างบน — ถ้ากำลังอยู่โหมด Actual ต้อง apply gating ซ้ำ
-  // เพื่อ fallback DOM เป็น 'none' อีกครั้ง (ไม่งั้น browser จะปฏิเสธ select ตัวเลือกที่ disabled
-  // อยู่เงียบๆ และ groupByBeforeActual จะไม่ถูกตั้งค่าให้ตรงกับที่ผู้ใช้เห็นจริง)
   applyOsModeGating();
   const ok = await onRangeChange();   // ตั้ง S.range จากค่า default ด้านบน + reload + render + save
   if (!ok) { renderGrid(); saveFilterPrefs(); }

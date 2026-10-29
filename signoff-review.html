@@ -126,6 +126,14 @@
   .sr-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px 24px; padding:4px 0 12px; }
   .sr-card-field-label { font-size:11px; font-weight:700; color:var(--dk-text3); display:block; }
   .sr-card-field-val { font-size:13.5px; color:var(--dk-text); font-weight:600; }
+  /* Signoff Date / Target Go-Live แก้ไขได้ในการ์ด (§5.77) */
+  .sr-date-edit-btn { border:1px solid var(--dk-border-s); background:var(--dk-card); border-radius:7px; width:22px; height:22px; font-size:11px; line-height:1; cursor:pointer; margin-left:6px; vertical-align:middle; color:var(--dk-text2); }
+  .sr-date-edit-btn:hover { background:var(--dk-hover); }
+  .sr-card-grid input[type="date"] { padding:6px 9px; border-radius:8px; border:1px solid var(--dk-border-s); font-size:13px; color:var(--dk-text); background:var(--dk-card); font-family:inherit; }
+  .sr-card-grid input[type="date"]:focus { outline:none; border-color:var(--dk-accent); }
+  .sr-req { color:var(--danger); }
+  .sr-dates-actions { display:flex; align-items:center; gap:8px; margin:-4px 0 12px; }
+  .sr-dates-actions .form-err { margin-right:auto; }
   .sr-card-divider { height:1px; background:var(--dk-border); margin:2px 0 12px; }
   .sr-card-section-title { font-size:13px; font-weight:800; color:var(--dk-text); }
   .sr-card-scope { font-size:13.5px; color:var(--dk-text); line-height:1.55; white-space:pre-wrap; margin-top:6px; }
@@ -235,6 +243,7 @@
       <a href="calendar.html">Calendar</a>
       <a href="dashboard.html">Dashboard</a>
       <a href="signoff-review.html" class="active">Signoff Review</a>
+      <a href="asset/">Asset</a>
       <a href="admin.html" id="navAdmin" style="display:none">Admin</a>
     </nav>
     <span class="spacer"></span>
@@ -353,6 +362,7 @@ const S = {
   pickerOpenKey: null,       // emoji-picker open for 'card' or String(commentId)
   replyOpenKey: null,        // reply box open for a comment id (number)
   editOpenKey: null,         // inline edit box open for a comment/reply/root id (number) — only one at a time
+  datesEditing: false,       // กล่องแก้ Signoff Date / Target Go-Live ในการ์ดเปิดอยู่ไหม (§5.77)
 };
 
 let realtimeChannel = null;
@@ -690,6 +700,7 @@ function selectRoom(pk){
   S.pickerOpenKey = null;
   S.replyOpenKey = null;
   S.editOpenKey = null;
+  S.datesEditing = false;
   renderRail();
   loadRoom(pk);
 }
@@ -934,9 +945,18 @@ function buildCardHTML(proj){
           <div class="sr-card-grid">
             <div><span class="sr-card-field-label">แอป (App)</span><span class="sr-card-field-val">${esc(appDisp)}</span></div>
             <div><span class="sr-card-field-label">UAT Lead</span><span class="sr-card-field-val">${esc(leadName)}</span></div>
-            <div><span class="sr-card-field-label">Signoff Date</span><span class="sr-card-field-val">${esc(signoffDisp)}</span></div>
-            <div><span class="sr-card-field-label">Target Go-Live</span><span class="sr-card-field-val">${esc(goLiveDisp)}</span></div>
+            ${S.datesEditing ? `
+            <div><span class="sr-card-field-label">Signoff Date <span class="sr-req">*</span></span><input type="date" id="srSignoffDateInput" value="${esc(proj.signoff_date||'')}"></div>
+            <div><span class="sr-card-field-label">Target Go-Live</span><input type="date" id="srDeployDateInput" value="${esc(proj.deploy_date||'')}"></div>` : `
+            <div><span class="sr-card-field-label">Signoff Date</span><span class="sr-card-field-val">${esc(signoffDisp)}<button class="sr-date-edit-btn" title="แก้ไข Signoff Date / Target Go-Live">✏️</button></span></div>
+            <div><span class="sr-card-field-label">Target Go-Live</span><span class="sr-card-field-val">${esc(goLiveDisp)}</span></div>`}
           </div>
+          ${S.datesEditing ? `
+          <div class="sr-dates-actions">
+            <div class="form-err" id="srDatesErr"></div>
+            <button class="btn sm accent sr-dates-save">บันทึก</button>
+            <button class="btn sm sr-dates-cancel">ยกเลิก</button>
+          </div>` : ''}
           <div class="sr-card-divider"></div>
           <div class="sr-card-section-title">Note</div>
           <div class="sr-card-scope">${noteRaw ? esc(noteRaw) : '<span class="muted">— ไม่มีรายละเอียด —</span>'}</div>
@@ -1418,6 +1438,34 @@ function setMode(mode){
   updateModeUI();
   renderRail();
 }
+/** บันทึก Signoff Date / Target Go-Live จากการ์ด (§5.77) — เขียนตรง pqa.project (RLS project_write =
+ *  is_authenticated) + .select() เช็คแถวที่เขียนจริง กัน RLS บล็อกเงียบ
+ *  Signoff Date ห้ามว่าง: ทุกห้องในหน้านี้มี Signoff Review แล้ว และหน้านี้แสดงเฉพาะโปรเจกต์ที่มี
+ *  signoff_date — ล้างทิ้ง = ห้องหายจากหน้านี้ไปเลย */
+async function saveSignoffDates(){
+  if (!S.room) return;
+  const pk = S.room.pk;
+  const errEl = $('srDatesErr'); if (errEl) errEl.textContent = '';
+  const signoff = ($('srSignoffDateInput') || {}).value || '';
+  const deploy = ($('srDeployDateInput') || {}).value || '';
+  if (!signoff) { if (errEl) errEl.textContent = 'ต้องระบุ Signoff Date'; return; }
+  try {
+    const { data, error } = await supabase.from('project')
+      .update({ signoff_date: signoff, deploy_date: deploy || null })
+      .eq('project_key', pk).select();
+    if (error) throw error;
+    if (!data || !data.length) { if (errEl) errEl.textContent = 'บันทึกไม่สำเร็จ — บัญชีนี้ไม่มีสิทธิ์แก้ไขโปรเจกต์'; return; }
+    const proj = S.projMap[pk];
+    if (proj) { proj.signoff_date = signoff; proj.deploy_date = deploy || null; }
+    S.datesEditing = false;
+    toast('บันทึก Signoff Date / Target Go-Live แล้ว ✓');
+    renderRail();              // เดือนของ signoff_date อาจเปลี่ยน → กลุ่ม/รายการซ้ายมือต้องจัดใหม่
+    rerenderRoomKeepData();
+  } catch (err) {
+    if (errEl) errEl.textContent = 'บันทึกไม่สำเร็จ: ' + (err.message || String(err));
+  }
+}
+
 /* เคลียร์ห้องที่เปิดอยู่ (ถ้ามี) — ใช้ตอนเปลี่ยนเดือนใน Calendar เพราะห้องเดิมอาจไม่อยู่ใน
    รายการเดือนใหม่แล้ว (โชว์เธรดของโปรเจกต์ที่ไม่อยู่ในรายการซ้ายมือค้างไว้ = สับสน) */
 function clearSelectedRoom(){
@@ -1428,6 +1476,7 @@ function clearSelectedRoom(){
   S.pickerOpenKey = null;
   S.replyOpenKey = null;
   S.editOpenKey = null;
+  S.datesEditing = false;
   renderConvEmpty();
 }
 function changeMonth(delta){
@@ -1486,6 +1535,11 @@ function wireStaticControls(){
       rerenderRoomKeepData();
       return;
     }
+    // Signoff Date / Target Go-Live ในการ์ด (§5.77)
+    if (e.target.closest('.sr-date-edit-btn')) { S.datesEditing = true; rerenderRoomKeepData(); return; }
+    if (e.target.closest('.sr-dates-cancel')) { S.datesEditing = false; rerenderRoomKeepData(); return; }
+    if (e.target.closest('.sr-dates-save')) { await saveSignoffDates(); return; }
+
     const editSaveBtn = e.target.closest('.sr-edit-save');
     if (editSaveBtn) { await saveCommentEdit(Number(editSaveBtn.dataset.cid)); return; }
 
