@@ -197,6 +197,9 @@ a.kpi:hover { border-color: var(--dk-accent); }
 .matrix { display: grid; gap: 4px; font-size: 12px; align-items: center; overflow-x: auto; }
 .matrix .h { color: var(--dk-text3); font-weight: 600; text-align: center; white-space: nowrap; }
 .matrix .rh { font-weight: 700; color: var(--dk-text2); white-space: nowrap; }
+.matrix .corner { font-weight: 700; color: var(--dk-text); white-space: nowrap; }
+.matrix .rh.tot { font-weight: 600; color: var(--dk-text3); }
+.cell.tot { background: transparent; border: 1px solid var(--dk-border-s); }
 .cell { border-radius: 6px; text-align: center; padding: 6px 2px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cell small { display: block; font-weight: 500; font-size: 10.5px; opacity: .8; }
 button.cell { border: 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; width: 100%; }

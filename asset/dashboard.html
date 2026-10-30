@@ -12,13 +12,13 @@
 <body>
 <script type="module">
 /* Dashboard — ตอบคำถามที่ทีมถามบ่อย: มีเครื่องว่างไหม / OS ไหนมีให้เทส (ไม่วิเคราะห์ข้อมูลการถือครอง) */
-import { boot, api, store, loadStore, prefs, link, esc, modelText, dDisp, openDialog, ownershipPill, OWNERSHIP_LABEL } from './asset.js';
+import { boot, store, loadStore, prefs, link, esc, modelText, dDisp, openDialog, ownershipPill, OWNERSHIP_LABEL } from './asset.js';
 
 boot('dashboard', async main => {
   const pf = prefs('dashboard');
   let scope = pf.get('scope', 'all');           // OS matrix: all = ทุกเครื่อง / team = เฉพาะทีม PQA
   main.innerHTML = '<div class="empty">กำลังโหลด…</div>';
-  const [, cov] = await Promise.all([loadStore(['devices']), api.osCoverage()]);
+  await loadStore(['devices']);
 
   const live = d => d.status === 'active' || d.status === 'repair';
   const teamMobile = store.devices.filter(d => d.ownership === 'team' && d.is_mobile && live(d));
@@ -61,52 +61,67 @@ boot('dashboard', async main => {
       </section>
     </div>`;
 
+  // ยี่ห้อหลัก — ตัดจากช่องยี่ห้อ (fallback ชื่อรุ่น) เพราะข้อมูลเดิมพิมพ์ไม่ตรงกัน เช่น Iphone / Galaxy S23 FE / Redmi
+  const BRAND_ALIAS = [
+    [/apple|iphone|iphon|ipad/, 'Apple'], [/samsung|galaxy/, 'Samsung'], [/xiaomi|redmi|poco/, 'Xiaomi'],
+    [/google|pixel/, 'Google'], [/huawei|hauwei/, 'Huawei'], [/honor/, 'Honor'], [/oppo/, 'Oppo'],
+    [/realme/, 'Realme'], [/vivo/, 'Vivo'], [/oneplus/, 'OnePlus'], [/motorola|moto/, 'Motorola'], [/nokia/, 'Nokia'],
+  ];
+  const brandOf = d => {
+    for (const src of [d.brand, d.model_name]) {
+      const key = String(src || '').toLowerCase().replace(/[^0-9a-z]+/g, '');
+      const hit = key && BRAND_ALIAS.find(([re]) => re.test(key));
+      if (hit) return hit[1];
+    }
+    const w = String(d.brand || d.model_name || '').trim().split(/\s+/)[0];
+    return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : 'ไม่ระบุ';
+  };
+  const osLabel = d => d.os_version || 'ไม่ระบุ';     // ชื่อจาก OS master — Huawei มีทั้ง HarmonyOS / Android
+  const inScope = d => scope === 'all' || d.ownership === 'team';
+
   const renderMatrix = () => {
     pf.set('scope', scope);
     document.querySelectorAll('#scope [data-s]').forEach(b => b.classList.toggle('on', b.dataset.s === scope));
-    const rows = cov.filter(c => scope === 'all' || c.ownership === 'team');
-    const plats = [...new Set(rows.map(r => r.platform_name || 'ไม่ระบุ'))].sort();
+    const rows = activeMobile.filter(inScope);
     const el = document.getElementById('matrix');
     if (!rows.length) { el.innerHTML = '<div class="muted">ยังไม่มีข้อมูลมือถือ</div>'; return; }
-    // แต่ละ platform เลข OS ไม่เกี่ยวกัน (iOS 17 ≠ Android 17) จึงแยกหัวคอลัมน์ต่อแถว
+    const plats = [...new Set(rows.map(platLabel))].sort();
+    // แต่ละ platform เลข OS ไม่เกี่ยวกัน (iOS 17 ≠ Android 17) จึงแยกตารางต่อ platform — 1 แถว = 1 ยี่ห้อ
     el.innerHTML = plats.map(p => {
-      const cells = {};
-      rows.filter(r => (r.platform_name || 'ไม่ระบุ') === p).forEach(r => {
-        const k = r.os_name || 'ไม่ระบุ';                   // ชื่อจาก OS master — Huawei มีทั้ง HarmonyOS / Android
-        cells[k] = cells[k] || { n: 0, free: 0, major: r.os_major };
-        cells[k].n += Number(r.device_count);
-        if (r.ownership === 'team') cells[k].free += Number(r.available_count);
-      });
-      const keys = Object.keys(cells).sort((a, b) => (cells[a].major == null) - (cells[b].major == null)
-                                                     || (cells[a].major ?? 0) - (cells[b].major ?? 0) || a.localeCompare(b));
-      const max = Math.max(...keys.map(k => cells[k].n));
+      const pr = rows.filter(d => platLabel(d) === p);
+      const major = {};
+      pr.forEach(d => { major[osLabel(d)] = d.os_major; });
+      const keys = Object.keys(major).sort((a, b) => (major[a] == null) - (major[b] == null)
+                                                    || (major[a] ?? 0) - (major[b] ?? 0) || a.localeCompare(b));
+      const count = (list, k) => {
+        const ds = list.filter(d => osLabel(d) === k);
+        return { n: ds.length, free: ds.filter(d => d.ownership === 'team' && !d.holder_resource_id).length };
+      };
+      const brands = [...new Set(pr.map(brandOf))].sort((a, b) => (a === 'ไม่ระบุ') - (b === 'ไม่ระบุ') || a.localeCompare(b));
+      const lines = brands.map(b => ({ b, label: b, cells: keys.map(k => count(pr.filter(d => brandOf(d) === b), k)) }));
+      if (brands.length > 1) lines.push({ b: '', label: 'รวม', total: true, cells: keys.map(k => count(pr, k)) });
+      const max = Math.max(...lines.filter(l => !l.total).flatMap(l => l.cells.map(c => c.n)));
       const lvl = n => (n === 0 ? 'c0' : n >= max * 0.75 ? 'c3' : n >= max * 0.4 ? 'c2' : 'c1');
-      return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:10px">
-        <span></span>${keys.map(k => `<span class="h">${esc(k)}</span>`).join('')}
-        <span class="rh">${esc(p)}</span>${keys.map(k => `<button type="button" class="cell ${lvl(cells[k].n)}" data-p="${esc(p)}" data-k="${esc(k)}"
-          aria-label="${esc(`${p} ${k}: ${cells[k].n} เครื่อง — ดูผู้ถือ`)}">${cells[k].n}${cells[k].free ? `<small>ว่าง ${cells[k].free}</small>` : ''}</button>`).join('')}
+      return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:14px">
+        <span class="corner">${esc(p)}</span>${keys.map(k => `<span class="h">${esc(k)}</span>`).join('')}
+        ${lines.map(l => `<span class="rh${l.total ? ' tot' : ''}">${esc(l.label)}</span>${l.cells.map((c, i) => c.n
+          ? `<button type="button" class="cell ${l.total ? 'tot' : lvl(c.n)}" data-p="${esc(p)}" data-b="${esc(l.b)}" data-k="${esc(keys[i])}"
+              aria-label="${esc(`${p} ${l.b || 'รวม'} ${keys[i]}: ${c.n} เครื่อง — ดูผู้ถือ`)}">${c.n}${c.free ? `<small>ว่าง ${c.free}</small>` : ''}</button>`
+          : '<span class="cell c0">–</span>').join('')}`).join('')}
       </div>`;
     }).join('');
-    cellMap = Object.fromEntries(plats.map(p => [p, {}]));
-    rows.forEach(r => {
-      const p = r.platform_name || 'ไม่ระบุ', k = r.os_name || 'ไม่ระบุ';
-      (cellMap[p][k] = cellMap[p][k] || new Set()).add(r.os_id ?? null);
-    });
   };
-  let cellMap = {};
 
-  // กดตัวเลข → รายการเครื่องใน OS นั้น + ผู้ถือ (ตาม scope ที่เลือกอยู่)
+  // กดตัวเลข → รายการเครื่องใน OS นั้น (ยี่ห้อนั้น / ทุกยี่ห้อถ้าเป็นแถวรวม) + ผู้ถือ ตาม scope ที่เลือกอยู่
   const ownOrder = { team: 0, personal: 1, outsource: 2 };
-  const showCell = (p, k) => {
-    const ids = cellMap[p]?.[k];
-    if (!ids) return;
+  const showCell = (p, b, k) => {
     const list = activeMobile
-      .filter(d => platLabel(d) === p && ids.has(d.os_id ?? null) && (scope === 'all' || d.ownership === 'team'))
+      .filter(d => platLabel(d) === p && osLabel(d) === k && (!b || brandOf(d) === b) && inScope(d))
       .sort((a, b) => (ownOrder[a.ownership] ?? 9) - (ownOrder[b.ownership] ?? 9)
                       || String(a.internal_id || '').localeCompare(String(b.internal_id || ''), 'th', { numeric: true })
                       || modelText(a).localeCompare(modelText(b)));
     openDialog({
-      title: `${p} · ${k} (${list.length} เครื่อง)`,
+      title: `${p}${b ? ` · ${b}` : ''} · ${k} (${list.length} เครื่อง)`,
       cancelText: 'ปิด',
       guardDirty: false,
       body: `<div class="cell-list">${list.map(d => `
@@ -123,7 +138,7 @@ boot('dashboard', async main => {
   };
   document.getElementById('matrix').onclick = ev => {
     const c = ev.target.closest('button.cell');
-    if (c) showCell(c.dataset.p, c.dataset.k);
+    if (c) showCell(c.dataset.p, c.dataset.b, c.dataset.k);
   };
   document.getElementById('scope').onclick = ev => { const b = ev.target.closest('[data-s]'); if (b) { scope = b.dataset.s; renderMatrix(); } };
   renderMatrix();
