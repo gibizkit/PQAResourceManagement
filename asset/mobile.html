@@ -15,7 +15,7 @@
    แทนหน้า All Mobile Devices + PQA Mobile ของแอปเดิม */
 import {
   boot, me, store, loadStore, deviceById, createDrawer, deviceDialog, multiChip, prefs, sorter, link,
-  esc, ownershipPill, statusPill, holderHTML, modelText, errMsg, toast,
+  esc, holderEmpId, ownershipPill, statusPill, holderHTML, modelText, errMsg, toast,
 } from './asset.js';
 
 boot('mobile', async main => {
@@ -30,9 +30,8 @@ boot('mobile', async main => {
     brands: pf.get('brands', []),
     os: pf.get('os', []),
     sort: pf.get('sort', null),
-    collapsed: new Set(pf.get('collapsed', [])),
   };
-  const save = () => { for (const k of ['seg', 'q', 'mine', 'free', 'inactive', 'platforms', 'brands', 'os', 'sort']) pf.set(k, st[k]); pf.set('collapsed', [...st.collapsed]); };
+  const save = () => { for (const k of ['seg', 'q', 'mine', 'free', 'inactive', 'platforms', 'brands', 'os', 'sort']) pf.set(k, st[k]); };
 
   main.innerHTML = `
     <div class="page-head">
@@ -43,7 +42,7 @@ boot('mobile', async main => {
     </div>
     <div class="filters">
       <div class="seg" id="seg" role="tablist"></div>
-      <input class="search" id="q" type="search" placeholder="ค้นหา Internal ID, รุ่น, ผู้ถือ, Serial…" aria-label="ค้นหา">
+      <input class="search" id="q" type="search" placeholder="ค้นหา Internal ID, รุ่น, ผู้ถือ, Emp ID, Serial…" aria-label="ค้นหา">
     </div>
     <div class="filters">
       ${me.resource_id ? '<button class="chip" id="cMine" type="button">ของฉัน</button>' : ''}
@@ -93,10 +92,8 @@ boot('mobile', async main => {
     Object.assign(st, { q: '', mine: false, free: false, inactive: false, platforms: [], brands: [], os: [] });
     q.value = ''; chips.plat.set([]); chips.brand.set([]); chips.os.set([]); render();
   };
-  document.getElementById('addBtn').onclick = () => deviceDialog(null, {
-    kind: 'byod',
-    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); },
-  });
+  const onSaved = async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); drawer.refresh(); };
+  document.getElementById('addBtn').onclick = () => deviceDialog(null, { kind: 'byod', onSaved });
 
   // ผ่านทุกตัวกรองยกเว้น segment (ไว้นับจำนวนบนปุ่ม segment)
   function baseFilter(d) {
@@ -107,7 +104,7 @@ boot('mobile', async main => {
     if (st.brands.length && !st.brands.includes(d.brand)) return false;
     if (st.os.length && !st.os.includes(osMajor(d))) return false;
     const t = st.q.trim().toLowerCase();
-    if (t && ![d.internal_id, d.asset_tag, d.serial_number, d.brand, d.model_name, modelText(d), d.holder_name, d.os_version, d.note, d.holder_note]
+    if (t && ![d.internal_id, d.asset_tag, d.serial_number, d.brand, d.model_name, modelText(d), d.holder_name, holderEmpId(d), d.received_by_emp_id, d.os_version, d.note, d.holder_note]
       .some(v => String(v || '').toLowerCase().includes(t))) return false;
     return true;
   }
@@ -117,7 +114,6 @@ boot('mobile', async main => {
     model: modelText,
     os: d => d.os_major,
     holder: d => d.holder_name || '',
-    held: d => d.held_days ?? -1,
     ownership: d => OWN_ORDER[d.ownership],
   });
   const defaultCmp = (a, b) => (OWN_ORDER[a.ownership] - OWN_ORDER[b.ownership])
@@ -125,7 +121,7 @@ boot('mobile', async main => {
     || modelText(a).localeCompare(modelText(b)) || String(a.holder_name || '').localeCompare(String(b.holder_name || ''), 'th');
 
   const COLS = [
-    ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['held', 'ถือมา'], ['ownership', 'ประเภท'], [null, 'Note'],
+    ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['ownership', 'ประเภท'], [null, 'Note'], [null, ''],
   ];
 
   function render() {
@@ -150,26 +146,20 @@ boot('mobile', async main => {
       wrap.innerHTML = `<div class="empty">ไม่พบมือถือตามตัวกรองนี้${st.mine ? ' — ลองปิดตัวกรอง "ของฉัน"' : ''}</div>`;
       return;
     }
-    const groups = {};
-    rows.forEach(d => { const g = d.platform_name || 'ไม่ระบุ Platform'; (groups[g] = groups[g] || []).push(d); });
     const sel = drawer.current()?.device_id;
     const head = COLS.map(([k, l]) => k
       ? `<th class="sortable" data-sort="${k}">${l}${st.sort?.key === k ? `<span class="arrow">${st.sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`
       : `<th>${l}</th>`).join('');
-    const body = Object.keys(groups).sort().map(g => {
-      const list = groups[g];
-      const col = st.collapsed.has(g);
-      return `<tr class="grp" data-grp="${esc(g)}"><td colspan="${COLS.length}"><span class="tw">${col ? '▸' : '▾'}</span>${esc(g)} · ${list.length}</td></tr>`
-        + (col ? '' : list.map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
+    // ไม่จัดกลุ่มตาม Platform แล้ว — เรียงเครื่องต่อกันเป็นรายการเดียว; OS ไม่ระบุ → โชว์ชื่อ Platform นำหน้าแทน
+    const body = rows.map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
           <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
           <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
-          <td data-card="full"><span class="muted">${d.os_major == null ? `<span class="card-only">${esc(d.platform_name || '')} </span>` : ''}${esc(d.os_version || '-')}</span></td>
+          <td data-card="full"><span class="muted">${d.os_major == null && d.platform_name ? `${esc(d.platform_name)} · ` : ''}${esc(d.os_version || '-')}</span></td>
           <td data-card="full">${holderHTML(d)}</td>
-          <td class="num" data-card="hide">${d.held_days != null ? d.held_days : ''}</td>
           <td data-card="full">${ownershipPill(d.ownership)}</td>
           <td class="muted" data-card="${d.holder_note || d.note ? 'full' : 'hide'}">${esc(d.holder_note || d.note || '')}</td>
-        </tr>`).join(''));
-    }).join('');
+          <td class="act" data-card="act"><button type="button" class="row-edit" data-edit="${d.device_id}" title="แก้ไขข้อมูล" aria-label="แก้ไข ${esc(modelText(d))}">✏️</button></td>
+        </tr>`).join('');
     wrap.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 
     wrap.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => {
@@ -177,15 +167,14 @@ boot('mobile', async main => {
       st.sort = st.sort?.key === k ? (st.sort.dir > 0 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 };
       render();
     });
-    wrap.querySelectorAll('[data-grp]').forEach(tr => tr.onclick = () => {
-      const g = tr.dataset.grp;
-      st.collapsed.has(g) ? st.collapsed.delete(g) : st.collapsed.add(g);
-      render();
+    wrap.querySelectorAll('[data-edit]').forEach(b => b.onclick = ev => {
+      ev.stopPropagation();
+      deviceDialog(deviceById(b.dataset.edit), { onSaved });
     });
     wrap.querySelectorAll('tr.row').forEach(tr => {
       const open = () => { drawer.open(deviceById(tr.dataset.id)); render(); };
       tr.onclick = open;
-      tr.onkeydown = ev => { if (ev.key === 'Enter') open(); };
+      tr.onkeydown = ev => { if (ev.key === 'Enter' && ev.target === tr) open(); };
     });
   }
 

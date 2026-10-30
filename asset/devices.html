@@ -15,7 +15,7 @@
    ส่งต่อ / ประวัติผู้ถือ เปิดเฉพาะมือถือ (Laptop รองรับใน DB แล้ว เปิดปุ่มทีหลังได้ที่ LAPTOP_ASSIGN) */
 import {
   boot, store, loadStore, deviceById, createDrawer, deviceDialog, multiChip, prefs, sorter,
-  esc, dDisp, statusPill, holderHTML, modelText, toast,
+  esc, holderEmpId, dDisp, statusPill, holderHTML, modelText, toast,
 } from './asset.js';
 
 const LAPTOP_ASSIGN = false;
@@ -37,7 +37,7 @@ boot('devices', async main => {
     </div>
     <div class="filters">
       <div class="seg" id="seg"></div>
-      <input class="search" id="q" type="search" placeholder="ค้นหา Asset Tag, S/N, Internal ID, รุ่น, ผู้รับ…" aria-label="ค้นหา">
+      <input class="search" id="q" type="search" placeholder="ค้นหา Asset Tag, S/N, Internal ID, รุ่น, ผู้รับ, Emp ID…" aria-label="ค้นหา">
     </div>
     <div class="filters">
       <button class="chip" id="cYear"></button>
@@ -86,7 +86,7 @@ boot('devices', async main => {
     if (st.years.length && !st.years.includes(d.asset_year)) return false;
     if (st.receivers.length && !st.receivers.includes(d.received_by_name)) return false;
     const t = st.q.trim().toLowerCase();
-    if (t && ![d.asset_tag, d.serial_number, d.internal_id, modelText(d), d.received_by_name, d.received_by_emp_id, d.holder_name, d.note]
+    if (t && ![d.asset_tag, d.serial_number, d.internal_id, modelText(d), d.received_by_name, d.received_by_emp_id, d.holder_name, holderEmpId(d), d.note]
       .some(v => String(v || '').toLowerCase().includes(t))) return false;
     return true;
   }

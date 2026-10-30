@@ -197,6 +197,14 @@ export function heldText(d) {
   return `<span class="${n > LONG_HELD_DAYS ? 'days-warn' : ''}">${n} วัน</span>`;
 }
 
+// รหัสพนักงานของผู้ถือ — PQA = Emp ID (pqa_emp_id), Outsource = EID จาก v_person (v_device ไม่มี EID)
+export function holderEmpId(d) {
+  if (!d.holder_resource_id) return '';
+  if (d.holder_emp_id) return d.holder_emp_id;
+  const eid = store.people.find(p => p.resource_id === d.holder_resource_id)?.outsource_eid;
+  return eid != null ? `EID ${eid}` : '';
+}
+
 export function holderHTML(d) {
   if (d.holder_resource_id) {
     return `<div class="holder"><b>${esc(d.holder_name)}</b><small>ตั้งแต่ ${dDisp(d.holder_since)} · ${heldText(d)}</small></div>`;
@@ -783,7 +791,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
       if (d.holder_resource_id) {
         holder = `<div class="holder-card">
           <span class="lbl">${ownerWord}</span>
-          <span class="nm">${esc(d.holder_name)}</span>
+          <span class="nm">${esc(d.holder_name)}${holderEmpId(d) ? ` <small class="muted iid">${esc(holderEmpId(d))}</small>` : ''}</span>
           <span class="muted">${d.holder_type === 'outsource' ? 'Outsource' : 'PQA'}${d.holder_company ? ' · ' + esc(d.holder_company) : ''} · ตั้งแต่ ${dDisp(d.holder_since)} (${heldText(d)})</span>
           ${d.holder_note ? `<span>${esc(d.holder_note)}</span>` : ''}
           ${d.status === 'active' ? `<div class="row"><button type="button" class="btn sm accent" data-act="assign">${team ? 'ส่งต่อเครื่อง' : 'เปลี่ยนเจ้าของ'}</button>
@@ -806,6 +814,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
       team ? ['Asset Tag', `<span class="iid">${esc(d.asset_tag || '-')}</span>${d.asset_year ? ` <span class="muted">ปี ${esc(d.asset_year)}</span>` : ''}`] : null,
       ['Serial Number', `<span class="iid">${esc(d.serial_number || '-')}</span>`],
       team ? ['รับเข้าทีม', `${esc(d.received_by_name || '-')}${d.received_date ? ` · ${dDisp(d.received_date)}` : ''}`] : null,
+      team ? ['Emp ID ผู้รับเข้าทีม', `<span class="iid">${esc(d.received_by_emp_id || '-')}</span>`] : null,
       ['Note', esc(d.note || '-')],
     ].filter(Boolean);
     const actions = {
@@ -971,31 +980,37 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
   const isMobileType = tc => !!store.types.find(t => t.type_code === tc)?.is_mobile;
   const mobileTypes = store.types.filter(t => t.is_mobile).map(t => t.type_code);
   const recvPerson = d?.received_by_emp_id ? store.people.find(p => p.pqa_emp_id === d.received_by_emp_id) : null;
+  // แก้มือถือ: สลับ ทีม ↔ personal / outsource ได้ (fn_save_device ล้างข้อมูลรับเข้าทีมให้เอง) — เครื่องประเภทอื่นเป็นทีมเสมอ
+  const canSwitch = !isNew && isMobileType(d.type_code);
+  const isTeam = () => ownership === 'team';
+  const ownOpts = canSwitch ? ['team', 'personal', 'outsource'] : team ? [] : ['personal', 'outsource'];
+  const teamFields = team || canSwitch;
+  const ownerField = (!team && isNew) || canSwitch;
 
   const title = isNew ? (team ? 'เพิ่มเครื่องทีม' : 'ลงทะเบียนมือถือ Personal / Outsource') : `แก้ไข ${deviceTitle(d)}`;
   const body = `
-    ${!team ? `<div class="field"><label>ประเภทการถือครอง</label>
-      <div class="seg" data-own>${['personal', 'outsource'].map(o => `<button type="button" data-v="${o}" class="${ownership === o ? 'on' : ''}">${OWNERSHIP_LABEL[o]}</button>`).join('')}</div>
-      ${isNew ? '' : '<div class="help">เปลี่ยนเจ้าของใช้ปุ่ม "เปลี่ยนเจ้าของ" ในหน้ารายละเอียด</div>'}</div>` : ''}
+    ${ownOpts.length ? `<div class="field"><label>ประเภทการถือครอง</label>
+      <div class="seg" data-own>${ownOpts.map(o => `<button type="button" data-v="${o}" class="${ownership === o ? 'on' : ''}">${OWNERSHIP_LABEL[o]}</button>`).join('')}</div>
+      <div class="help" data-own-help></div></div>` : ''}
     ${team ? `<div class="field"><label for="dvType">ประเภท<span class="req">*</span></label>
       <select id="dvType" ${isNew ? '' : 'disabled'}>${store.types.filter(t => t.is_active !== false || t.type_code === typeCode)
         .map(t => `<option value="${esc(t.type_code)}" ${t.type_code === typeCode ? 'selected' : ''}>${esc(t.type_name)}</option>`).join('')}</select>
       ${isNew ? '' : '<div class="help">เปลี่ยนประเภทไม่ได้ ถ้าลงผิดให้ปลดระวางแล้วลงใหม่</div>'}</div>` : ''}
     <div class="field"><label>รุ่น<span class="req">*</span></label><div class="picker" data-model></div></div>
-    ${team ? `<div class="grid2">
+    ${teamFields ? `<div class="grid2" data-team-only>
         <div class="field"><label for="dvIid">Internal ID</label><input id="dvIid" value="${esc(d?.internal_id || '')}" placeholder="PQA18"></div>
         <div class="field"><label for="dvTag">Asset Tag<span class="req" data-req-tag>*</span></label><input id="dvTag" value="${esc(d?.asset_tag || '')}" placeholder="N1M810-2407-0018">
           <div class="help" data-year></div></div>
       </div>` : ''}
     <div class="grid2">
-      <div class="field"><label for="dvSn">Serial Number${team ? '<span class="req">*</span>' : ''}</label><input id="dvSn" value="${esc(d?.serial_number || '')}"></div>
+      <div class="field"><label for="dvSn">Serial Number<span class="req" data-req-sn>*</span></label><input id="dvSn" value="${esc(d?.serial_number || '')}"></div>
       <div class="field" data-os-field><label for="dvOs">OS Version<span class="req" data-req-os>*</span></label><select id="dvOs"></select>
         <div data-os-new></div></div>
     </div>
-    ${team ? `<div class="field"><label>รับเข้าทีมโดย<span class="req">*</span></label><div class="picker" data-recv></div></div>
-      <div class="field"><label for="dvRecvDate">วันที่รับเข้าทีม<span class="req">*</span></label>${dateFieldHTML('dvRecvDate', d?.received_date || '')}</div>` : ''}
-    ${!team && isNew ? `<div class="field"><label>เจ้าของเครื่อง<span class="req">*</span></label><div class="picker" data-owner></div></div>
-      <div class="field"><label for="dvSince">ลงทะเบียนตั้งแต่</label>${dateFieldHTML('dvSince', todayISO())}</div>` : ''}
+    ${teamFields ? `<div data-team-only><div class="field"><label>รับเข้าทีมโดย<span class="req">*</span></label><div class="picker" data-recv></div></div>
+      <div class="field"><label for="dvRecvDate">วันที่รับเข้าทีม<span class="req">*</span></label>${dateFieldHTML('dvRecvDate', d?.received_date || '')}</div></div>` : ''}
+    ${ownerField ? `<div data-owner-field><div class="field"><label>เจ้าของเครื่อง<span class="req">*</span></label><div class="picker" data-owner></div></div>
+      ${isNew ? `<div class="field"><label for="dvSince">ลงทะเบียนตั้งแต่</label>${dateFieldHTML('dvSince', todayISO())}</div>` : ''}</div>` : ''}
     <div class="field"><label for="dvNote">Note</label><textarea id="dvNote" rows="2">${esc(d?.note || '')}</textarea></div>`;
 
   openDialog({
@@ -1050,7 +1065,7 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
         const tReq = store.types.find(t => t.type_code === typeCode)?.requires_asset_tag;
         const reqTag = root.querySelector('[data-req-tag]');
         if (reqTag) reqTag.hidden = !tReq;
-        root.querySelector('[data-req-os]').hidden = !(team && mob);
+        root.querySelector('[data-req-os]').hidden = !(isTeam() && mob);
         root.querySelector('[data-os-field]').hidden = !mob;           // OS ใช้กับมือถือเท่านั้น
       };
       const mountModel = () => {
@@ -1062,15 +1077,34 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       syncType();
       const typeSel = root.querySelector('#dvType');
       if (typeSel) typeSel.onchange = () => { typeCode = typeSel.value; mountModel(); syncType(); };
+      // ทีมโชว์ช่องรับเข้าทีม / personal-outsource โชว์ช่องเจ้าของ (ตอนแก้: เฉพาะทีม → personal ที่ยังไม่มีผู้ถือ)
+      const toByod = () => !isNew && d.ownership === 'team' && !isTeam();
+      const syncOwn = () => {
+        root.querySelectorAll('[data-team-only]').forEach(el => { el.hidden = !isTeam(); });
+        root.querySelector('[data-req-sn]').hidden = !isTeam();
+        const of = root.querySelector('[data-owner-field]');
+        if (of) of.hidden = isTeam() || (!isNew && !(toByod() && !d.holder_resource_id));
+        const help = root.querySelector('[data-own-help]');
+        if (help) help.textContent = isNew ? ''
+          : toByod() ? `Internal ID / Asset Tag / ผู้รับเข้าทีม จะถูกล้าง${d.holder_resource_id ? ` — เจ้าของเครื่อง = ผู้ถือปัจจุบัน (${d.holder_name})` : ''}`
+          : !isNew && d.ownership !== 'team' && isTeam() ? 'ระบุผู้รับเข้าทีมและวันที่รับ — ผู้ถือปัจจุบันคงเดิม'
+          : d.ownership !== 'team' ? 'เปลี่ยนเจ้าของใช้ปุ่ม "เปลี่ยนเจ้าของ" ในหน้ารายละเอียด' : '';
+        syncType();
+      };
+      const mountOwner = () => {
+        if (root.querySelector('[data-owner]')) ownerPicker = personPicker(root.querySelector('[data-owner]'), { people: store.people, types: [ownership === 'outsource' ? 'outsource' : 'insource'] });
+      };
       const own = root.querySelector('[data-own]');
       if (own) own.onclick = ev => {
         const b = ev.target.closest('[data-v]'); if (!b) return;
         ownership = b.dataset.v;
         own.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-        if (ownerPicker) ownerPicker = personPicker(root.querySelector('[data-owner]'), { people: store.people, types: [ownership === 'personal' ? 'insource' : 'outsource'] });
+        mountOwner();
+        syncOwn();
       };
       if (root.querySelector('[data-recv]')) recvPicker = personPicker(root.querySelector('[data-recv]'), { people: store.people, types: ['insource'], value: recvPerson?.resource_id || null });
-      if (root.querySelector('[data-owner]')) ownerPicker = personPicker(root.querySelector('[data-owner]'), { people: store.people, types: ['insource'] });
+      mountOwner();
+      syncOwn();
       const tag = root.querySelector('#dvTag'), yr = root.querySelector('[data-year]');
       if (tag) { const y = () => { const m = tag.value.match(/-(\d{2})\d{2}-/); yr.textContent = m ? `Asset Year: ${m[1]}` : ''; }; tag.oninput = y; y(); }
       if (!isNew && d.received_by_emp_id && !recvPerson && recvPicker) {
@@ -1083,9 +1117,9 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       if (!model_id) throw new Error('เลือกรุ่นเครื่อง');
       const mob = isMobileType(store.models.find(m => m.model_id === model_id)?.type_code);
       const p = { ownership, model_id, serial_number: v('dvSn'), os_id: mob && v('dvOs') ? Number(v('dvOs')) : null, note: v('dvNote') };
-      if (team && mob && !p.os_id) throw new Error('เลือก OS Version');
+      if (isTeam() && mob && !p.os_id) throw new Error('เลือก OS Version');
       if (!isNew) p.device_id = d.device_id;
-      if (team) {
+      if (isTeam()) {
         Object.assign(p, { internal_id: v('dvIid'), asset_tag: v('dvTag'), received_date: readDate(root, 'dvRecvDate', 'วันที่รับเข้าทีม', { required: true }) });
         const rp = store.people.find(x => x.resource_id === recvPicker.get());
         if (rp) p.received_by_emp_id = rp.pqa_emp_id;
@@ -1095,6 +1129,9 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
         p.holder_resource_id = ownerPicker.get();
         if (!p.holder_resource_id) throw new Error('เลือกเจ้าของเครื่อง');
         p.holder_since = readDate(root, 'dvSince', 'วันที่ลงทะเบียน') || todayISO();
+      } else if (d.ownership === 'team' && !d.holder_resource_id) {
+        p.holder_resource_id = ownerPicker.get();                 // ทีม → personal / outsource เครื่องว่าง: ต้องระบุเจ้าของ
+        if (!p.holder_resource_id) throw new Error('เลือกเจ้าของเครื่อง');
       }
       await api.saveDevice(p);
       await onSaved(isNew ? 'เพิ่มเครื่องแล้ว' : 'บันทึกแล้ว');
