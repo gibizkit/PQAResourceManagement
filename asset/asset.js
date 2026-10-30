@@ -6,6 +6,7 @@
  *   store / loadStore   ข้อมูลที่หน้าใช้ร่วมกัน (เครื่อง / คน / รุ่น / lookup)
  *   createDrawer()      แผงรายละเอียดเครื่อง + ส่งต่อ / คืน / สถานะ / แก้ไข
  *   deviceDialog()      ลงทะเบียน / แก้ไขเครื่อง
+ *   exportDevicesXlsx() ดาวน์โหลดเครื่องเป็น Excel
  *
  * ไม่ import ../common.js ของ RM (มีโค้ด signoff / แจ้งเตือน / login_log ของ RM ผูกอยู่)
  * แต่สร้าง client ของ Supabase project เดียวกัน → session ใช้ร่วมกับ RM เมื่ออยู่ origin เดียวกัน
@@ -483,7 +484,7 @@ export function confirmBox(msg, { okText = 'ยืนยัน', danger = false,
  * dialog ฟอร์ม — onOk(root) คืน false = ยังไม่ปิด / throw = แสดง error ใน dialog
  * ปิดตอนมีข้อมูลที่แก้แล้วยังไม่บันทึก → ถามยืนยันก่อน (เหมือน _modalDirty ของแอปเดิม)
  */
-export function openDialog({ title, body, okText = 'บันทึก', okClass = 'accent', size = 'modal-sm', onOk, onMount, guardDirty = true }) {
+export function openDialog({ title, body, okText = 'บันทึก', okClass = 'accent', cancelText = 'ยกเลิก', size = 'modal-sm', onOk, onMount, guardDirty = true }) {
   const ov = document.createElement('div');
   ov.className = 'overlay';
   ov.dataset.layer = '1';
@@ -494,7 +495,7 @@ export function openDialog({ title, body, okText = 'บันทึก', okClass
       <form class="dlg-form" novalidate>
         <div class="modal-body"><div class="form-err hidden" data-err role="alert"></div>${body}</div>
         <div class="modal-foot">
-          <button class="btn" type="button" data-a="close">ยกเลิก</button>
+          <button class="btn" type="button" data-a="close">${esc(cancelText)}</button>
           ${onOk ? `<button class="btn ${okClass}" type="submit" data-a="ok">${esc(okText)}</button>` : ''}
         </div>
       </form>
@@ -1139,4 +1140,50 @@ export function sorter(getters) {
     if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
     return String(x).localeCompare(String(y), 'th', { numeric: true, sensitivity: 'base' }) * dir;
   };
+}
+
+/* =====================================================================
+   EXPORT — ดาวน์โหลดเครื่องเป็น Excel (.xlsx) ด้วย SheetJS (โหลดจาก CDN ตอนกดเท่านั้น)
+   ===================================================================== */
+const XLSX_JS = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm';
+
+export async function exportDevicesXlsx(devices, filename = `pqa-assets-${todayISO()}.xlsx`) {
+  const XLSX = await import(XLSX_JS);
+  const own = { team: 0, personal: 1, outsource: 2 };
+  const rows = [...devices]
+    .sort((a, b) => String(a.type_name).localeCompare(String(b.type_name))
+      || (own[a.ownership] - own[b.ownership])
+      || String(a.internal_id || a.asset_tag || '~').localeCompare(String(b.internal_id || b.asset_tag || '~'), 'th', { numeric: true }))
+    .map(d => ({
+      'Type': d.type_name || '',
+      'ประเภทการถือครอง': OWNERSHIP_LABEL[d.ownership] || d.ownership || '',
+      'Internal ID': d.internal_id || '',
+      'Asset Tag': d.asset_tag || '',
+      'Asset Year': d.asset_year || '',
+      'Serial Number': d.serial_number || '',
+      'Platform': d.platform_name || '',
+      'Brand': d.brand || '',
+      'Model': d.model_name || '',
+      'OS Version': d.os_version || '',
+      'สถานะ': STATUS_LABEL[d.status] || d.status || '',
+      'ผู้ถือ / เจ้าของ': d.holder_name || '',
+      'Emp ID / EID ผู้ถือ': holderEmpId(d),
+      'บริษัทผู้ถือ': d.holder_company || '',
+      'ถือตั้งแต่': dDisp(d.holder_since),
+      'Note ผู้ถือ': d.holder_note || '',
+      'รับเข้าทีมโดย': d.received_by_name || '',
+      'Emp ID ผู้รับเข้าทีม': d.received_by_emp_id || '',
+      'วันที่รับเข้าทีม': dDisp(d.received_date),
+      'วันที่ปลดระวาง': dDisp(d.retired_date),
+      'Note': d.note || '',
+    }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // ความกว้างคอลัมน์ตามข้อความยาวสุด (จำกัด 10–40 ตัวอักษร)
+  const keys = Object.keys(rows[0] || {});
+  ws['!cols'] = keys.map(k => ({ wch: Math.min(40, Math.max(10, k.length, ...rows.map(r => String(r[k]).length))) }));
+  if (rows.length) ws['!autofilter'] = { ref: ws['!ref'] };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Assets');
+  XLSX.writeFile(wb, filename);
+  return rows.length;
 }

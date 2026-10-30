@@ -15,7 +15,7 @@
    แทนหน้า All Mobile Devices + PQA Mobile ของแอปเดิม */
 import {
   boot, me, store, loadStore, deviceById, createDrawer, deviceDialog, multiChip, prefs, sorter, link,
-  esc, holderEmpId, ownershipPill, statusPill, holderHTML, modelText, errMsg, toast,
+  esc, holderEmpId, ownershipPill, statusPill, holderHTML, modelText, errMsg, toast, exportDevicesXlsx,
 } from './asset.js';
 
 boot('mobile', async main => {
@@ -38,6 +38,7 @@ boot('mobile', async main => {
       <h2>Mobile</h2><span class="badge" id="count">…</span>
       <span class="spacer"></span>
       <span class="muted" style="font-size:12px">มือถือทีมเพิ่มที่หน้า <a href="${link('devices.html')}">อุปกรณ์ทีม</a></span>
+      <button class="btn" id="xlsBtn" type="button" title="ทุกเครื่องทุกประเภท ทุกสถานะ (ไม่สนตัวกรอง)">⬇ Download Excel</button>
       <button class="btn accent" id="addBtn" type="button">+ ลงทะเบียนมือถือ Personal / Outsource</button>
     </div>
     <div class="filters">
@@ -94,6 +95,14 @@ boot('mobile', async main => {
   };
   const onSaved = async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); drawer.refresh(); };
   document.getElementById('addBtn').onclick = () => deviceDialog(null, { kind: 'byod', onSaved });
+  // ดาวน์โหลดทุกเครื่องในระบบ (มือถือ + Laptop ทุกสถานะ) — ไม่ขึ้นกับตัวกรองบนหน้า
+  const xlsBtn = document.getElementById('xlsBtn');
+  xlsBtn.onclick = async () => {
+    xlsBtn.disabled = true;
+    try { toast(`ดาวน์โหลด ${await exportDevicesXlsx(store.devices)} เครื่องแล้ว`); }
+    catch (e) { toast('ดาวน์โหลดไม่สำเร็จ: ' + errMsg(e), true); }
+    finally { xlsBtn.disabled = false; }
+  };
 
   // ผ่านทุกตัวกรองยกเว้น segment (ไว้นับจำนวนบนปุ่ม segment)
   function baseFilter(d) {
@@ -121,7 +130,7 @@ boot('mobile', async main => {
     || modelText(a).localeCompare(modelText(b)) || String(a.holder_name || '').localeCompare(String(b.holder_name || ''), 'th');
 
   const COLS = [
-    [null, ''], ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['ownership', 'ประเภท'], [null, 'Note'],
+    ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['ownership', 'ประเภท'], [null, 'Note'],
   ];
 
   function render() {
@@ -153,7 +162,6 @@ boot('mobile', async main => {
       : `<th>${l}</th>`).join('');
     // ไม่จัดกลุ่มตาม Platform แล้ว — เรียงเครื่องต่อกันเป็นรายการเดียว; OS ไม่ระบุ → โชว์ชื่อ Platform นำหน้าแทน
     const body = rows.map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
-          <td class="act" data-card="act"><button type="button" class="row-edit" data-edit="${d.device_id}" title="แก้ไขข้อมูล" aria-label="แก้ไข ${esc(modelText(d))}">✏️</button></td>
           <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
           <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
           <td data-card="full"><span class="muted">${d.os_major == null && d.platform_name ? `${esc(d.platform_name)} · ` : ''}${esc(d.os_version || '-')}</span></td>
@@ -167,10 +175,6 @@ boot('mobile', async main => {
       const k = th.dataset.sort;
       st.sort = st.sort?.key === k ? (st.sort.dir > 0 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 };
       render();
-    });
-    wrap.querySelectorAll('[data-edit]').forEach(b => b.onclick = ev => {
-      ev.stopPropagation();
-      deviceDialog(deviceById(b.dataset.edit), { onSaved });
     });
     wrap.querySelectorAll('tr.row').forEach(tr => {
       const open = () => { drawer.open(deviceById(tr.dataset.id)); render(); };

@@ -84,14 +84,8 @@ tbody tr.grp td {
 tbody tr.grp td .tw { display: inline-block; width: 14px; }
 td.iid, .iid { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 12.5px; }
 td.num { text-align: right; }
-td.act { width: 1%; text-align: center; padding-right: 0; }
 /* ฟอร์มเครื่อง: ซ่อนช่องตามประเภทการถือครอง (.grid2 มี display:grid ทับ [hidden]) */
 [data-team-only][hidden], [data-owner-field][hidden] { display: none !important; }
-.row-edit {
-  border: 0; background: none; padding: 4px 6px; border-radius: 6px; font-size: 14px; line-height: 1;
-  cursor: pointer; opacity: .55;
-}
-.row-edit:hover, .row-edit:focus-visible { opacity: 1; background: var(--dk-hover); }
 .holder b { font-weight: 600; }
 .holder small { display: block; color: var(--dk-text3); font-size: 11.5px; }
 .empty { padding: 40px 16px; text-align: center; color: var(--dk-text3); }
@@ -191,7 +185,7 @@ td.act { width: 1%; text-align: center; padding-right: 0; }
 .inline-box { border: 1px dashed var(--dk-border-s); border-radius: 10px; padding: 12px; margin-top: 8px; background: var(--dk-bg); }
 
 /* ---------- dashboard ---------- */
-.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { background: #fff; border: 1px solid var(--dk-border); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; text-decoration: none; color: inherit; }
 a.kpi:hover { border-color: var(--dk-accent); }
 .kpi .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -205,6 +199,15 @@ a.kpi:hover { border-color: var(--dk-accent); }
 .matrix .rh { font-weight: 700; color: var(--dk-text2); white-space: nowrap; }
 .cell { border-radius: 6px; text-align: center; padding: 6px 2px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cell small { display: block; font-weight: 500; font-size: 10.5px; opacity: .8; }
+button.cell { border: 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; width: 100%; }
+button.cell:hover, button.cell:focus-visible { outline: 2px solid var(--dk-text); outline-offset: 1px; }
+.cell-list { display: grid; font-size: 13px; max-height: 60vh; overflow-y: auto; }
+.cell-list > a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 2px; border-bottom: 1px solid var(--dk-border); color: inherit; text-decoration: none; }
+.cell-list > a:last-child { border-bottom: 0; }
+.cell-list > a:hover { background: var(--dk-hover); }
+.cell-list .who { font-weight: 600; }
+.cell-list .who.free { color: var(--as-ok); }
+.cell-list .sub { grid-column: 1 / -1; font-size: 12px; color: var(--dk-text3); }
 .c0 { background: var(--dk-surface); color: var(--dk-text3); }
 .c1 { background: color-mix(in srgb, var(--dk-accent) 20%, #fff); }
 .c2 { background: color-mix(in srgb, var(--dk-accent) 45%, #fff); }
@@ -227,7 +230,7 @@ td select { padding: 5px 8px; border: 1px solid var(--dk-border-s); border-radiu
   .drawer {
     position: fixed; inset: 0; z-index: 55; border-radius: 0; max-height: none; border: 0;
   }
-  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .dash-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 768px) {
@@ -254,9 +257,6 @@ td select { padding: 5px 8px; border: 1px solid var(--dk-border-s); border-radiu
   .table-wrap.cards tr.row td[data-card="title"] { font-weight: 700; font-size: 14px; }
   .table-wrap.cards tr.row td[data-card="side"] { grid-column: 2; grid-row: 1; text-align: right; }
   .table-wrap.cards tr.row td[data-card="full"] { grid-column: 1 / -1; }
-  .table-wrap.cards tr.row { position: relative; }
-  .table-wrap.cards tr.row td[data-card="act"] { position: absolute; right: 8px; bottom: 8px; width: auto; }
-  .table-wrap.cards .row-edit { min-width: 40px; min-height: 40px; }
   .table-wrap.cards tr.grp { display: block; }
   .table-wrap.cards tr.grp td { display: block; position: static; border-radius: 8px; margin: 10px 0 6px; padding: 8px 11px; }
   .table-wrap.cards .card-only { display: inline; }
