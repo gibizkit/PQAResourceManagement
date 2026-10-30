@@ -22,7 +22,6 @@ const RM_HOME = '../gantt.html';
 // อีเมลของ Supabase เองจำกัดจำนวนต่อชั่วโมงและส่งได้แค่บางที่อยู่ RM ก็ยังไม่ได้ตั้ง SMTP (SETUP.md)
 // เปิดแล้วต้องแก้ template Magic Link ให้มี {{ .Token }} ด้วย
 const EMAIL_OTP = false;
-const LONG_HELD_DAYS = 180;          // ถือนานเกินนี้ = ไฮไลต์ (Dashboard / ตาราง)
 
 const PAGES = [
   { id: 'devices',   href: 'devices.html',   label: 'อุปกรณ์ทีม' },
@@ -191,12 +190,6 @@ export function personTypePill(t) {
 export function modelText(d) { return [d.brand, d.model_name].filter(Boolean).join(' '); }
 export function deviceTitle(d) { return [d.internal_id || d.asset_tag, modelText(d)].filter(Boolean).join(' · '); }
 
-export function heldText(d) {
-  const n = d.held_days ?? daysBetween(d.holder_since);
-  if (n == null) return '';
-  return `<span class="${n > LONG_HELD_DAYS ? 'days-warn' : ''}">${n} วัน</span>`;
-}
-
 // รหัสพนักงานของผู้ถือ — PQA = Emp ID (pqa_emp_id), Outsource = EID จาก v_person (v_device ไม่มี EID)
 export function holderEmpId(d) {
   if (!d.holder_resource_id) return '';
@@ -207,7 +200,7 @@ export function holderEmpId(d) {
 
 export function holderHTML(d) {
   if (d.holder_resource_id) {
-    return `<div class="holder"><b>${esc(d.holder_name)}</b><small>ตั้งแต่ ${dDisp(d.holder_since)} · ${heldText(d)}</small></div>`;
+    return `<div class="holder"><b>${esc(d.holder_name)}</b></div>`;
   }
   if (d.status === 'active') return '<span class="pill p-free">ว่าง</span>';
   return statusPill(d.status);
@@ -246,11 +239,6 @@ function createApi(client) {
       { p_device_id: id, p_status: status, p_date: date })),
     addModel: async m => ok(await a.from('device_model').insert(m).select().single()),
     addOs: async o => ok(await a.from('os_version').insert(o).select('os_id, platform_code, os_name, os_major, is_active').single()),
-    updateOs: async (id, patch) => {
-      const rows = ok(await a.from('os_version').update(patch).eq('os_id', id).select());
-      if (!rows.length) throw new Error('ไม่มีสิทธิ์แก้ OS (เฉพาะ admin)');
-      return rows[0];
-    },
     updateModel: async (id, patch) => {
       const rows = ok(await a.from('device_model').update(patch).eq('model_id', id).select());
       if (!rows.length) throw new Error('ไม่มีสิทธิ์แก้รุ่นนี้ (เฉพาะ admin)');
@@ -792,7 +780,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
         holder = `<div class="holder-card">
           <span class="lbl">${ownerWord}</span>
           <span class="nm">${esc(d.holder_name)}${holderEmpId(d) ? ` <small class="muted iid">${esc(holderEmpId(d))}</small>` : ''}</span>
-          <span class="muted">${d.holder_type === 'outsource' ? 'Outsource' : 'PQA'}${d.holder_company ? ' · ' + esc(d.holder_company) : ''} · ตั้งแต่ ${dDisp(d.holder_since)} (${heldText(d)})</span>
+          <span class="muted">${d.holder_type === 'outsource' ? 'Outsource' : 'PQA'}${d.holder_company ? ' · ' + esc(d.holder_company) : ''}</span>
           ${d.holder_note ? `<span>${esc(d.holder_note)}</span>` : ''}
           ${d.status === 'active' ? `<div class="row"><button type="button" class="btn sm accent" data-act="assign">${team ? 'ส่งต่อเครื่อง' : 'เปลี่ยนเจ้าของ'}</button>
             ${team ? '<button type="button" class="btn sm" data-act="return">คืนเข้าคลัง</button>' : ''}</div>` : ''}
@@ -835,7 +823,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
     if (!rows.length) return '<div class="muted">ยังไม่มีประวัติผู้ถือ</div>';
     return `<div class="tl">${rows.map(h => `<div class="tl-i ${h.is_current ? 'now' : ''}"><span class="tl-dot"></span><div>
       <b>${esc(h.holder_name)}</b> ${personTypePill(h.holder_type)}
-      <small>${dDisp(h.start_date)} – ${h.end_date ? dDisp(h.end_date) : 'ปัจจุบัน'} · ${h.held_days} วัน</small>
+      <small>${dDisp(h.start_date)} – ${h.end_date ? dDisp(h.end_date) : 'ปัจจุบัน'}</small>
       ${h.note ? `<small>${esc(h.note)}</small>` : ''}</div></div>`).join('')}</div>
       <p class="muted" style="font-size:12px;margin:0">ประวัติเริ่มนับตั้งแต่ย้ายขึ้นระบบใหม่</p>`;
   }
@@ -908,7 +896,7 @@ export function assignDialog(d, onDone) {
         const p = store.people.find(x => x.resource_id === picker?.get());
         const date = parseDateInput(root.querySelector('#asDate').value);
         const lines = [];
-        if (d.holder_resource_id) lines.push(`• ปิดช่วงของ <b>${esc(d.holder_name)}</b> วันที่ ${date ? dDisp(date) : '-'}${date ? ` (ถือ ${daysBetween(d.holder_since, date)} วัน)` : ''}`);
+        if (d.holder_resource_id) lines.push(`• ปิดช่วงของ <b>${esc(d.holder_name)}</b> วันที่ ${date ? dDisp(date) : '-'}`);
         if (p) lines.push(`• เริ่มช่วงใหม่ของ <b>${esc(p.display_name)}</b> วันที่ ${date ? dDisp(date) : '-'}`);
         prev.innerHTML = lines.map(l => `<div>${l}</div>`).join('') || 'เลือกผู้ถือคนใหม่';
       };
@@ -1048,7 +1036,7 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
           if (!osKey(name)) { msg.textContent = 'กรอกชื่อ OS'; return; }
           const same = store.os.find(o => (o.platform_code === plat || o.platform_code == null) && osKey(o.os_name) === osKey(name));
           if (same) {
-            if (!same.is_active) { msg.textContent = `มี ${same.os_name} อยู่แล้วแต่ถูกปิด (เปิดได้ที่หน้า Admin)`; return; }
+            if (!same.is_active) { msg.textContent = `มี ${same.os_name} อยู่แล้วแต่ถูกปิด`; return; }
             osNew.innerHTML = ''; fillOs(same.os_id); toast(`ใช้ OS เดิม ${same.os_name}`); return;
           }
           try {

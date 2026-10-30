@@ -107,7 +107,7 @@ boot('devices', async main => {
     const seg = document.getElementById('seg');
     seg.innerHTML = [['all', 'ทั้งหมด'], ...store.types.map(t => [t.type_code, t.type_name])]
       .map(([k, l]) => `<button type="button" data-seg="${esc(k)}" class="${st.type === k ? 'on' : ''}">${esc(l)}<em>${counts[k] || 0}</em></button>`).join('');
-    seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.type = b.dataset.seg; render(); });
+    seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.type = b.dataset.seg; drawer.close(); });   // close() → onClose → render()
 
     const rows = base.filter(d => st.type === 'all' || d.type_code === st.type).sort(st.sort ? cmp(st.sort.key, st.sort.dir) : defaultCmp);
     document.getElementById('count').textContent = `${rows.length} เครื่อง`;

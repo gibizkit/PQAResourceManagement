@@ -11,10 +11,8 @@
 </head>
 <body>
 <script type="module">
-/* Dashboard — ตอบคำถามที่ทีมถามบ่อย: มีเครื่องว่างไหม / OS ไหนมีให้เทส / ใครถือนานเกิน */
+/* Dashboard — ตอบคำถามที่ทีมถามบ่อย: มีเครื่องว่างไหม / OS ไหนมีให้เทส (ไม่วิเคราะห์ข้อมูลการถือครอง) */
 import { boot, api, store, loadStore, prefs, link, esc, modelText, dDisp } from './asset.js';
-
-const LONG_HELD_DAYS = 180;
 
 boot('dashboard', async main => {
   const pf = prefs('dashboard');
@@ -25,27 +23,16 @@ boot('dashboard', async main => {
   const live = d => d.status === 'active' || d.status === 'repair';
   const teamMobile = store.devices.filter(d => d.ownership === 'team' && d.is_mobile && live(d));
   const free = teamMobile.filter(d => d.is_available);
-  const long = teamMobile.filter(d => (d.held_days ?? 0) > LONG_HELD_DAYS).sort((a, b) => b.held_days - a.held_days);
   const laptops = store.devices.filter(d => d.ownership === 'team' && !d.is_mobile && live(d));
   const lapByType = {};
   laptops.forEach(d => { lapByType[d.type_name] = (lapByType[d.type_name] || 0) + 1; });
   const devLink = d => link(`${d.is_mobile ? 'mobile' : 'devices'}.html?id=${d.device_id}`);
-
-  const byHolder = {};
-  teamMobile.filter(d => d.holder_resource_id).forEach(d => {
-    const k = d.holder_resource_id;
-    byHolder[k] = byHolder[k] || { name: d.holder_name, n: 0, ids: [] };
-    byHolder[k].n++;
-    byHolder[k].ids.push(d.internal_id || modelText(d));
-  });
-  const topHolders = Object.values(byHolder).sort((a, b) => b.n - a.n).slice(0, 8);
 
   main.innerHTML = `
     <div class="page-head"><h2>Dashboard</h2><span class="muted" style="font-size:12.5px">ข้อมูล ณ ${dDisp(new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10))}</span></div>
     <div class="kpis">
       <a class="kpi" href="${link('mobile.html')}"><span class="v">${teamMobile.length}</span><span class="l">มือถือทีม PQA ที่ใช้งานอยู่</span></a>
       <div class="kpi"><span class="v">${free.length}</span><span class="l">ว่าง พร้อมให้ยืม</span></div>
-      <div class="kpi ${long.length ? 'attn' : ''}"><span class="v">${long.length}</span><span class="l">ถือเกิน ${LONG_HELD_DAYS} วัน</span></div>
       <a class="kpi" href="${link('devices.html')}"><span class="v">${laptops.length}</span>
         <span class="l">Laptop ทีม${Object.keys(lapByType).length ? ` (${Object.entries(lapByType).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')})` : ''}</span></a>
     </div>
@@ -59,21 +46,11 @@ boot('dashboard', async main => {
         <span class="note">ตัวเลขใหญ่ = จำนวนเครื่องที่ใช้งานอยู่ · "ว่าง" = เครื่องทีมที่ไม่มีผู้ถือ ยืมได้เลย</span>
       </section>
       <section class="panel">
-        <h3>ถือนานที่สุด (มือถือทีม)</h3>
-        <div class="rank">${teamMobile.filter(d => d.holder_resource_id).sort((a, b) => b.held_days - a.held_days).slice(0, 8).map(d => `
-          <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(d.holder_name)}</a>
-          <b class="${d.held_days > LONG_HELD_DAYS ? 'days-warn' : ''}">${d.held_days} วัน</b></div>`).join('') || '<div class="muted">ยังไม่มีผู้ถือ</div>'}</div>
-      </section>
-      <section class="panel">
         <h3>เครื่องว่าง ยืมได้เลย (${free.length})</h3>
         <div class="rank">${free.sort((a, b) => String(a.internal_id).localeCompare(String(b.internal_id), 'th', { numeric: true })).slice(0, 12).map(d => `
           <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(modelText(d))}</a>
           <span class="muted">${esc(d.os_major == null ? [d.platform_name, d.os_version].filter(Boolean).join(' ') : d.os_version)}${d.status === 'repair' ? ' · ส่งซ่อม' : ''}</span></div>`).join('') || '<div class="muted">ไม่มีเครื่องว่าง</div>'}
           ${free.length > 12 ? `<div><a class="link" href="${link('mobile.html')}">ดูทั้งหมดที่หน้า Mobile →</a></div>` : ''}</div>
-      </section>
-      <section class="panel">
-        <h3>ใครถือมือถือทีมมากที่สุด</h3>
-        <div class="rank">${topHolders.map(h => `<div><span>${esc(h.name)} <span class="muted" style="font-size:12px">${esc(h.ids.slice(0, 4).join(', '))}${h.ids.length > 4 ? '…' : ''}</span></span><b>${h.n} เครื่อง</b></div>`).join('') || '<div class="muted">-</div>'}</div>
       </section>
     </div>`;
 

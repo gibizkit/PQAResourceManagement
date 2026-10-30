@@ -121,7 +121,7 @@ boot('mobile', async main => {
     || modelText(a).localeCompare(modelText(b)) || String(a.holder_name || '').localeCompare(String(b.holder_name || ''), 'th');
 
   const COLS = [
-    ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['ownership', 'ประเภท'], [null, 'Note'], [null, ''],
+    [null, ''], ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['os', 'OS'], ['holder', 'ผู้ถือ / เจ้าของ'], ['ownership', 'ประเภท'], [null, 'Note'],
   ];
 
   function render() {
@@ -135,7 +135,8 @@ boot('mobile', async main => {
     base.forEach(d => { counts[d.ownership] = (counts[d.ownership] || 0) + 1; });
     const seg = document.getElementById('seg');
     seg.innerHTML = SEGS.map(([k, l]) => `<button type="button" role="tab" data-seg="${k}" class="${st.seg === k ? 'on' : ''}">${l}<em>${counts[k] || 0}</em></button>`).join('');
-    seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.seg = b.dataset.seg; render(); });
+    // เปลี่ยน tab → ปิด drawer ด้วย (ไม่งั้นค้างอยู่โดยไม่รู้ว่าเป็นแถวไหน); close() เรียก onClose → render() ให้เอง
+    seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.seg = b.dataset.seg; drawer.close(); });
 
     const rows = base.filter(d => st.seg === 'all' || d.ownership === st.seg)
       .sort(st.sort ? cmp(st.sort.key, st.sort.dir) : defaultCmp);
@@ -152,13 +153,13 @@ boot('mobile', async main => {
       : `<th>${l}</th>`).join('');
     // ไม่จัดกลุ่มตาม Platform แล้ว — เรียงเครื่องต่อกันเป็นรายการเดียว; OS ไม่ระบุ → โชว์ชื่อ Platform นำหน้าแทน
     const body = rows.map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
+          <td class="act" data-card="act"><button type="button" class="row-edit" data-edit="${d.device_id}" title="แก้ไขข้อมูล" aria-label="แก้ไข ${esc(modelText(d))}">✏️</button></td>
           <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
           <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
           <td data-card="full"><span class="muted">${d.os_major == null && d.platform_name ? `${esc(d.platform_name)} · ` : ''}${esc(d.os_version || '-')}</span></td>
           <td data-card="full">${holderHTML(d)}</td>
           <td data-card="full">${ownershipPill(d.ownership)}</td>
           <td class="muted" data-card="${d.holder_note || d.note ? 'full' : 'hide'}">${esc(d.holder_note || d.note || '')}</td>
-          <td class="act" data-card="act"><button type="button" class="row-edit" data-edit="${d.device_id}" title="แก้ไขข้อมูล" aria-label="แก้ไข ${esc(modelText(d))}">✏️</button></td>
         </tr>`).join('');
     wrap.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 

@@ -104,16 +104,17 @@ boot('admin', async main => {
     render();
   }
 
-  /* ---------- OS Version (master — ฟอร์มเครื่องเลือกจากรายการนี้ ไม่พิมพ์เอง) ---------- */
+  /* ---------- OS Version (master — ฟอร์มเครื่องเลือกจากรายการนี้ ไม่พิมพ์เอง)
+     เพิ่มได้อย่างเดียว ไม่มีแก้ / ลบ — กันชื่อ OS ของเครื่องเดิมเปลี่ยนตามกันเละ ---------- */
   async function showOs() {
     await loadStore(['os', 'platforms']);
     const platName = c => c ? (store.platforms.find(p => p.platform_code === c)?.platform_name || c) : 'ทุก Platform';
     pane.innerHTML = `
       <div class="filters"><button class="chip" id="oOff" type="button">แสดง OS ที่ปิด</button><span class="spacer" style="flex:1"></span>
         <button class="btn accent" id="oAdd" type="button">+ เพิ่ม OS</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Platform</th><th>OS</th><th class="num">เครื่อง</th><th>สถานะ</th><th></th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>Platform</th><th>OS</th><th class="num">เครื่อง</th><th>สถานะ</th></tr></thead>
       <tbody id="oBody"></tbody></table></div>
-      <p class="muted" style="font-size:12.5px">เก็บแค่เวอร์ชันหลัก (iOS 26, Android 16) · ปิด OS = ไม่โชว์ในตัวเลือกตอนลงทะเบียน เครื่องเดิมยังอยู่ · แก้ชื่อแล้วทุกเครื่องที่ใช้ OS นี้เปลี่ยนตาม · "ไม่ระบุ" ใช้ได้ทุก Platform</p>`;
+      <p class="muted" style="font-size:12.5px">เก็บแค่เวอร์ชันหลัก (iOS 26, Android 16) · เพิ่มได้อย่างเดียว แก้ไข / ลบไม่ได้ — ตรวจชื่อให้ถูกก่อนบันทึก · "ไม่ระบุ" ใช้ได้ทุก Platform</p>`;
     let showOff = false;
     const sorted = () => [...store.os].sort((a, b) => (a.platform_code == null) - (b.platform_code == null)
                                                  || String(a.platform_code ?? '').localeCompare(String(b.platform_code ?? ''))
@@ -123,33 +124,29 @@ boot('admin', async main => {
       const list = sorted().filter(o => showOff || o.is_active);
       document.getElementById('oBody').innerHTML = list.map(o => `<tr>
         <td>${esc(platName(o.platform_code))}</td><td><b>${esc(o.os_name)}</b></td><td class="num">${o.device_count ?? 0}</td>
-        <td>${o.is_active ? 'ใช้งาน' : '<span class="pill p-retired">ปิด</span>'}</td>
-        <td><button class="btn sm" type="button" data-edit="${o.os_id}">แก้ไข</button></td></tr>`).join('')
-        || '<tr><td colspan="5" class="empty">ไม่มี OS</td></tr>';
-      document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => osDialog(store.os.find(o => o.os_id === +b.dataset.edit)));
+        <td>${o.is_active ? 'ใช้งาน' : '<span class="pill p-retired">ปิด</span>'}</td></tr>`).join('')
+        || '<tr><td colspan="4" class="empty">ไม่มี OS</td></tr>';
     };
-    const osDialog = o => openDialog({
-      title: o ? `แก้ไข OS ${o.os_name}` : 'เพิ่ม OS',
+    const osDialog = () => openDialog({
+      title: 'เพิ่ม OS',
       body: `<div class="grid2">
-          <div class="field"><label for="oPlat">Platform</label><select id="oPlat" ${o?.device_count ? 'disabled' : ''}>
-            <option value="">ทุก Platform</option>${store.platforms.map(p => `<option value="${esc(p.platform_code)}" ${p.platform_code === o?.platform_code ? 'selected' : ''}>${esc(p.platform_name)}</option>`).join('')}</select>
-            ${o?.device_count ? '<div class="help">มีเครื่องใช้ OS นี้อยู่ เปลี่ยน Platform ไม่ได้</div>' : ''}</div>
-          <div class="field"><label for="oName">ชื่อ OS<span class="req">*</span></label><input id="oName" value="${esc(o?.os_name || '')}" placeholder="iOS 26"></div></div>
-        ${o ? `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="oActive" ${o.is_active ? 'checked' : ''}> ใช้งาน OS นี้</label>` : ''}`,
+          <div class="field"><label for="oPlat">Platform</label><select id="oPlat">
+            <option value="">ทุก Platform</option>${store.platforms.map(p => `<option value="${esc(p.platform_code)}">${esc(p.platform_name)}</option>`).join('')}</select></div>
+          <div class="field"><label for="oName">ชื่อ OS<span class="req">*</span></label><input id="oName" placeholder="iOS 26"></div></div>
+        <div class="help">บันทึกแล้วแก้ไข / ลบไม่ได้ ตรวจ Platform และชื่อให้ถูกก่อน</div>`,
       async onOk(root) {
         const row = { platform_code: root.querySelector('#oPlat').value || null, os_name: root.querySelector('#oName').value.trim().replace(/\s+/g, ' ') };
         if (!osKey(row.os_name)) throw new Error('กรอกชื่อ OS');
-        const same = store.os.find(x => x.os_id !== o?.os_id && (x.platform_code ?? null) === row.platform_code && osKey(x.os_name) === osKey(row.os_name));
-        if (same) throw new Error(`มี ${same.os_name} (${platName(same.platform_code)}) อยู่แล้ว${same.is_active ? '' : ' แต่ปิดอยู่ — กด "แสดง OS ที่ปิด" แล้วเปิดใช้แทน'}`);
-        if (o) await api.updateOs(o.os_id, { ...row, is_active: root.querySelector('#oActive').checked });
-        else await api.addOs(row);
+        const same = store.os.find(x => (x.platform_code ?? null) === row.platform_code && osKey(x.os_name) === osKey(row.os_name));
+        if (same) throw new Error(`มี ${same.os_name} (${platName(same.platform_code)}) อยู่แล้ว${same.is_active ? '' : ' (ปิดอยู่)'}`);
+        await api.addOs(row);
         await loadStore(['os']);
         render();
-        toast('บันทึก OS แล้ว');
+        toast('เพิ่ม OS แล้ว');
       },
     });
     document.getElementById('oOff').onclick = () => { showOff = !showOff; render(); };
-    document.getElementById('oAdd').onclick = () => osDialog(null);
+    document.getElementById('oAdd').onclick = osDialog;
     render();
   }
 

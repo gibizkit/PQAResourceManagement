@@ -84,7 +84,7 @@ tbody tr.grp td {
 tbody tr.grp td .tw { display: inline-block; width: 14px; }
 td.iid, .iid { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 12.5px; }
 td.num { text-align: right; }
-td.act { width: 1%; text-align: right; }
+td.act { width: 1%; text-align: center; padding-right: 0; }
 /* ฟอร์มเครื่อง: ซ่อนช่องตามประเภทการถือครอง (.grid2 มี display:grid ทับ [hidden]) */
 [data-team-only][hidden], [data-owner-field][hidden] { display: none !important; }
 .row-edit {
@@ -95,7 +95,6 @@ td.act { width: 1%; text-align: right; }
 .holder b { font-weight: 600; }
 .holder small { display: block; color: var(--dk-text3); font-size: 11.5px; }
 .empty { padding: 40px 16px; text-align: center; color: var(--dk-text3); }
-.days-warn { color: var(--as-warn); font-weight: 700; }
 
 /* ---------- pill ---------- */
 .pill { display: inline-block; border-radius: 20px; padding: 1px 9px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
@@ -192,12 +191,11 @@ td.act { width: 1%; text-align: right; }
 .inline-box { border: 1px dashed var(--dk-border-s); border-radius: 10px; padding: 12px; margin-top: 8px; background: var(--dk-bg); }
 
 /* ---------- dashboard ---------- */
-.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { background: #fff; border: 1px solid var(--dk-border); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; text-decoration: none; color: inherit; }
 a.kpi:hover { border-color: var(--dk-accent); }
 .kpi .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .kpi .l { font-size: 12.5px; color: var(--dk-text2); }
-.kpi.attn .v { color: var(--as-warn); }
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
 .panel { background: #fff; border: 1px solid var(--dk-border); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
 .panel h3 { margin: 0; font-size: 14px; }
