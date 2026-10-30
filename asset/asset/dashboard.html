@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — PQA Asset Mgmt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme.css">
+<link rel="stylesheet" href="asset.css">
+</head>
+<body>
+<script type="module">
+/* Dashboard — ตอบคำถามที่ทีมถามบ่อย: มีเครื่องว่างไหม / OS ไหนมีให้เทส (ไม่วิเคราะห์ข้อมูลการถือครอง) */
+import { boot, api, store, loadStore, prefs, link, esc, modelText, dDisp, openDialog, ownershipPill, OWNERSHIP_LABEL } from './asset.js';
+
+boot('dashboard', async main => {
+  const pf = prefs('dashboard');
+  let scope = pf.get('scope', 'all');           // OS matrix: all = ทุกเครื่อง / team = เฉพาะทีม PQA
+  main.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+  const [, cov] = await Promise.all([loadStore(['devices']), api.osCoverage()]);
+
+  const live = d => d.status === 'active' || d.status === 'repair';
+  const teamMobile = store.devices.filter(d => d.ownership === 'team' && d.is_mobile && live(d));
+  const free = teamMobile.filter(d => d.is_available);
+  // สรุปมือถือแยก platform (รวมทุก ownership) — นับเฉพาะ status = active ให้ตรงกับตาราง OS ด้านล่าง
+  const platLabel = d => d.platform_name || 'ไม่ระบุ';
+  const activeMobile = store.devices.filter(d => d.is_mobile && d.status === 'active');
+  const byPlat = {};
+  activeMobile.forEach(d => {
+    const p = byPlat[platLabel(d)] = byPlat[platLabel(d)] || { n: 0, own: {} };
+    p.n++;
+    p.own[d.ownership] = (p.own[d.ownership] || 0) + 1;
+  });
+  const devLink = d => link(`${d.is_mobile ? 'mobile' : 'devices'}.html?id=${d.device_id}`);
+
+  main.innerHTML = `
+    <div class="page-head"><h2>Dashboard</h2><span class="muted" style="font-size:12.5px">ข้อมูล ณ ${dDisp(new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10))}</span></div>
+    <div class="kpis">
+      <a class="kpi" href="${link('mobile.html')}"><span class="v">${teamMobile.length}</span><span class="l">มือถือทีม PQA ที่ใช้งานอยู่</span></a>
+      <div class="kpi"><span class="v">${free.length}</span><span class="l">ว่าง พร้อมให้ยืม</span></div>
+      ${Object.keys(byPlat).sort().map(p => `<div class="kpi"><span class="v">${byPlat[p].n}</span>
+        <span class="l">${esc(p)} ทั้งหมด (${Object.keys(OWNERSHIP_LABEL).filter(o => byPlat[p].own[o])
+          .map(o => `${esc(OWNERSHIP_LABEL[o])} ${byPlat[p].own[o]}`).join(' · ')})</span></div>`).join('')}
+    </div>
+    <div class="dash-grid">
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+          <h3>OS ที่มีให้เทส</h3>
+          <div class="seg" id="scope"><button type="button" data-s="all">ทุกเครื่อง</button><button type="button" data-s="team">เฉพาะทีม PQA</button></div>
+        </div>
+        <div id="matrix"></div>
+        <span class="note">ตัวเลขใหญ่ = จำนวนเครื่องที่ใช้งานอยู่ · "ว่าง" = เครื่องทีมที่ไม่มีผู้ถือ ยืมได้เลย · กดที่ตัวเลขเพื่อดูว่าใครถือเครื่อง</span>
+      </section>
+      <section class="panel">
+        <h3>เครื่องว่าง ยืมได้เลย (${free.length})</h3>
+        <div class="rank">${free.sort((a, b) => String(a.internal_id).localeCompare(String(b.internal_id), 'th', { numeric: true })).slice(0, 12).map(d => `
+          <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(modelText(d))}</a>
+          <span class="muted">${esc(d.os_major == null ? [d.platform_name, d.os_version].filter(Boolean).join(' ') : d.os_version)}${d.status === 'repair' ? ' · ส่งซ่อม' : ''}</span></div>`).join('') || '<div class="muted">ไม่มีเครื่องว่าง</div>'}
+          ${free.length > 12 ? `<div><a class="link" href="${link('mobile.html')}">ดูทั้งหมดที่หน้า Mobile →</a></div>` : ''}</div>
+      </section>
+    </div>`;
+
+  const renderMatrix = () => {
+    pf.set('scope', scope);
+    document.querySelectorAll('#scope [data-s]').forEach(b => b.classList.toggle('on', b.dataset.s === scope));
+    const rows = cov.filter(c => scope === 'all' || c.ownership === 'team');
+    const plats = [...new Set(rows.map(r => r.platform_name || 'ไม่ระบุ'))].sort();
+    const el = document.getElementById('matrix');
+    if (!rows.length) { el.innerHTML = '<div class="muted">ยังไม่มีข้อมูลมือถือ</div>'; return; }
+    // แต่ละ platform เลข OS ไม่เกี่ยวกัน (iOS 17 ≠ Android 17) จึงแยกหัวคอลัมน์ต่อแถว
+    el.innerHTML = plats.map(p => {
+      const cells = {};
+      rows.filter(r => (r.platform_name || 'ไม่ระบุ') === p).forEach(r => {
+        const k = r.os_name || 'ไม่ระบุ';                   // ชื่อจาก OS master — Huawei มีทั้ง HarmonyOS / Android
+        cells[k] = cells[k] || { n: 0, free: 0, major: r.os_major };
+        cells[k].n += Number(r.device_count);
+        if (r.ownership === 'team') cells[k].free += Number(r.available_count);
+      });
+      const keys = Object.keys(cells).sort((a, b) => (cells[a].major == null) - (cells[b].major == null)
+                                                     || (cells[a].major ?? 0) - (cells[b].major ?? 0) || a.localeCompare(b));
+      const max = Math.max(...keys.map(k => cells[k].n));
+      const lvl = n => (n === 0 ? 'c0' : n >= max * 0.75 ? 'c3' : n >= max * 0.4 ? 'c2' : 'c1');
+      return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:10px">
+        <span></span>${keys.map(k => `<span class="h">${esc(k)}</span>`).join('')}
+        <span class="rh">${esc(p)}</span>${keys.map(k => `<button type="button" class="cell ${lvl(cells[k].n)}" data-p="${esc(p)}" data-k="${esc(k)}"
+          aria-label="${esc(`${p} ${k}: ${cells[k].n} เครื่อง — ดูผู้ถือ`)}">${cells[k].n}${cells[k].free ? `<small>ว่าง ${cells[k].free}</small>` : ''}</button>`).join('')}
+      </div>`;
+    }).join('');
+    cellMap = Object.fromEntries(plats.map(p => [p, {}]));
+    rows.forEach(r => {
+      const p = r.platform_name || 'ไม่ระบุ', k = r.os_name || 'ไม่ระบุ';
+      (cellMap[p][k] = cellMap[p][k] || new Set()).add(r.os_id ?? null);
+    });
+  };
+  let cellMap = {};
+
+  // กดตัวเลข → รายการเครื่องใน OS นั้น + ผู้ถือ (ตาม scope ที่เลือกอยู่)
+  const ownOrder = { team: 0, personal: 1, outsource: 2 };
+  const showCell = (p, k) => {
+    const ids = cellMap[p]?.[k];
+    if (!ids) return;
+    const list = activeMobile
+      .filter(d => platLabel(d) === p && ids.has(d.os_id ?? null) && (scope === 'all' || d.ownership === 'team'))
+      .sort((a, b) => (ownOrder[a.ownership] ?? 9) - (ownOrder[b.ownership] ?? 9)
+                      || String(a.internal_id || '').localeCompare(String(b.internal_id || ''), 'th', { numeric: true })
+                      || modelText(a).localeCompare(modelText(b)));
+    openDialog({
+      title: `${p} · ${k} (${list.length} เครื่อง)`,
+      cancelText: 'ปิด',
+      guardDirty: false,
+      body: `<div class="cell-list">${list.map(d => `
+        <a href="${devLink(d)}">
+          <span>${d.internal_id ? `<span class="iid">${esc(d.internal_id)}</span> ` : ''}${esc(modelText(d))}</span>
+          ${ownershipPill(d.ownership)}
+          ${d.holder_resource_id
+            ? `<span class="who">${esc(d.holder_name)}${d.holder_company ? ` <span class="muted" style="font-weight:400">· ${esc(d.holder_company)}</span>` : ''}</span>`
+            : '<span class="who free">ว่าง พร้อมให้ยืม</span>'}
+          ${d.holder_since ? `<span class="muted" style="font-size:12px">ตั้งแต่ ${dDisp(d.holder_since)}</span>` : '<span></span>'}
+          ${d.holder_note ? `<span class="sub">${esc(d.holder_note)}</span>` : ''}
+        </a>`).join('') || '<div class="muted">ไม่มีเครื่อง</div>'}</div>`,
+    });
+  };
+  document.getElementById('matrix').onclick = ev => {
+    const c = ev.target.closest('button.cell');
+    if (c) showCell(c.dataset.p, c.dataset.k);
+  };
+  document.getElementById('scope').onclick = ev => { const b = ev.target.closest('[data-s]'); if (b) { scope = b.dataset.s; renderMatrix(); } };
+  renderMatrix();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — PQA Asset Mgmt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme.css">
+<link rel="stylesheet" href="asset.css">
+</head>
+<body>
+<script type="module">
+/* Admin — master data: รุ่นเครื่อง / ประเภท / Platform (เฉพาะ admin ของ RM)
+   ไม่มีหน้าจัดการสิทธิ์: ใช้ UAM เดียวกับ RM — ใครเข้า RM ได้ก็เข้า Asset ได้, admin ของ RM = admin ของ Asset */
+import { boot, api, store, loadStore, prefs, openDialog, confirmBox, esc, errMsg, toast,
+         modelKey, findSimilarModels, nearModelsMsg, osKey } from './asset.js';
+
+const RM_ADMIN = '../admin.html';
+
+boot('admin', async main => {
+  const pf = prefs('admin');
+  let tab = pf.get('tab', 'models');
+  if (!['models', 'os', 'lookups'].includes(tab)) tab = 'models';
+  main.innerHTML = `
+    <div class="page-head"><h2>Admin</h2>
+      <span class="muted" style="font-size:12.5px">ผู้ใช้ / สิทธิ์ จัดการที่ <a href="${RM_ADMIN}">Admin ของ Resource Mgmt</a> ที่เดียว (admin ของ RM = admin ของ Asset)</span></div>
+    <div class="seg admin-tabs" id="tabs">
+      <button type="button" data-t="models">รุ่นเครื่อง</button>
+      <button type="button" data-t="os">OS Version</button>
+      <button type="button" data-t="lookups">ประเภท &amp; Platform</button>
+    </div>
+    <div id="pane"><div class="empty">กำลังโหลด…</div></div>`;
+  const pane = document.getElementById('pane');
+  document.getElementById('tabs').onclick = ev => { const b = ev.target.closest('[data-t]'); if (b) { tab = b.dataset.t; show(); } };
+
+  async function show() {
+    pf.set('tab', tab);
+    document.querySelectorAll('#tabs [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+    pane.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+    try {
+      if (tab === 'models') await showModels();
+      else if (tab === 'os') await showOs();
+      else await showLookups();
+    } catch (e) {
+      pane.innerHTML = `<div class="empty">โหลดไม่สำเร็จ: ${esc(errMsg(e))}</div>`;
+    }
+  }
+
+  /* ---------- รุ่นเครื่อง ---------- */
+  async function showModels() {
+    await loadStore(['models', 'types', 'platforms']);
+    pane.innerHTML = `
+      <div class="filters"><input class="search" id="mq" type="search" placeholder="ค้นหายี่ห้อหรือรุ่น" aria-label="ค้นหารุ่น">
+        <button class="chip" id="mOff" type="button">แสดงรุ่นที่ปิด</button><span class="spacer" style="flex:1"></span>
+        <button class="btn accent" id="mAdd" type="button">+ เพิ่มรุ่น</button></div>
+      <div class="table-wrap"><table><thead><tr><th>ยี่ห้อ</th><th>รุ่น</th><th>ประเภท</th><th>Platform</th><th class="num">เครื่อง (ใช้งาน)</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody id="mBody"></tbody></table></div>
+      <p class="muted" style="font-size:12.5px">ปิดรุ่น = ไม่โชว์ในตัวเลือกตอนลงทะเบียนเครื่องใหม่ เครื่องเดิมยังอยู่ · แก้ชื่อรุ่นแล้วทุกเครื่องที่ใช้รุ่นนี้เปลี่ยนตาม</p>`;
+    let showOff = false;
+    const render = () => {
+      document.getElementById('mOff').classList.toggle('on', showOff);
+      const t = document.getElementById('mq').value.trim().toLowerCase();
+      const list = store.models.filter(m => (showOff || m.is_active) && (!t || `${m.brand} ${m.model_name}`.toLowerCase().includes(t)));
+      document.getElementById('mBody').innerHTML = list.map(m => `<tr>
+        <td>${esc(m.brand)}</td><td><b>${esc(m.model_name)}</b></td><td>${esc(m.type_name || m.type_code)}</td><td>${esc(m.platform_name || '-')}</td>
+        <td class="num">${m.device_count ?? 0} <span class="muted">(${m.active_count ?? 0})</span></td>
+        <td>${m.is_active ? 'ใช้งาน' : '<span class="pill p-retired">ปิด</span>'}</td>
+        <td><button class="btn sm" type="button" data-edit="${m.model_id}">แก้ไข</button></td></tr>`).join('')
+        || '<tr><td colspan="7" class="empty">ไม่พบรุ่น</td></tr>';
+      document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => modelDialog(store.models.find(m => m.model_id === +b.dataset.edit)));
+    };
+    const modelDialog = m => openDialog({
+      title: m ? `แก้ไขรุ่น ${m.brand} ${m.model_name}` : 'เพิ่มรุ่น',
+      body: `<div class="grid2">
+          <div class="field"><label for="mBrand">ยี่ห้อ<span class="req">*</span></label><input id="mBrand" value="${esc(m?.brand || '')}"></div>
+          <div class="field"><label for="mName">ชื่อรุ่น<span class="req">*</span></label><input id="mName" value="${esc(m?.model_name || '')}"></div></div>
+        <div class="grid2">
+          <div class="field"><label for="mType">ประเภท</label><select id="mType" ${m?.device_count ? 'disabled' : ''}>${store.types.map(t => `<option value="${esc(t.type_code)}" ${t.type_code === (m?.type_code || 'MOBILE') ? 'selected' : ''}>${esc(t.type_name)}</option>`).join('')}</select>
+            ${m?.device_count ? '<div class="help">มีเครื่องใช้รุ่นนี้อยู่ เปลี่ยนประเภทไม่ได้</div>' : ''}</div>
+          <div class="field"><label for="mPlat">Platform</label><select id="mPlat"><option value="">— ไม่มี —</option>${store.platforms.map(p => `<option value="${esc(p.platform_code)}" ${p.platform_code === m?.platform_code ? 'selected' : ''}>${esc(p.platform_name)}</option>`).join('')}</select></div></div>
+        ${m ? `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mActive" ${m.is_active ? 'checked' : ''}> ใช้งานรุ่นนี้</label>` : ''}`,
+      async onOk(root) {
+        const v = id => root.querySelector('#' + id).value.trim().replace(/\s+/g, ' ');
+        const row = { brand: v('mBrand'), model_name: v('mName'), type_code: root.querySelector('#mType').value, platform_code: v('mPlat') || null };
+        if (!row.brand || !row.model_name) throw new Error('กรอกยี่ห้อและชื่อรุ่น');
+        if (store.types.find(t => t.type_code === row.type_code)?.is_mobile && !row.platform_code) throw new Error('รุ่นมือถือต้องมี Platform');
+        // กันรุ่นซ้ำ — เช็คเฉพาะตอนเพิ่ม หรือแก้ชื่อจนคีย์เปลี่ยน (แก้ Platform / สถานะอย่างเดียวไม่ต้องถาม)
+        if (!m || modelKey(m.brand, m.model_name) !== modelKey(row.brand, row.model_name)) {
+          const { same, near } = findSimilarModels(row.brand, row.model_name, store.models, m?.model_id);
+          if (same) throw new Error(`มีรุ่น ${same.brand} ${same.model_name} อยู่แล้ว${same.is_active ? '' : ' (ปิดอยู่ — กด "แสดงรุ่นที่ปิด" แล้วเปิดใช้แทน)'} · ชื่อที่ต่างกันแค่เว้นวรรค ขีด หรือตัวพิมพ์ ถือเป็นรุ่นเดียวกัน`);
+          if (near.length && !(await confirmBox(nearModelsMsg(near), { okText: 'บันทึกเป็นรุ่นใหม่', title: 'รุ่นนี้ซ้ำหรือไม่?' }))) return false;
+        }
+        if (m) await api.updateModel(m.model_id, { ...row, is_active: root.querySelector('#mActive').checked });
+        else await api.addModel(row);
+        await loadStore(['models']);
+        render();
+        toast('บันทึกรุ่นแล้ว');
+      },
+    });
+    document.getElementById('mq').oninput = render;
+    document.getElementById('mOff').onclick = () => { showOff = !showOff; render(); };
+    document.getElementById('mAdd').onclick = () => modelDialog(null);
+    render();
+  }
+
+  /* ---------- OS Version (master — ฟอร์มเครื่องเลือกจากรายการนี้ ไม่พิมพ์เอง)
+     เพิ่มได้อย่างเดียว ไม่มีแก้ / ลบ — กันชื่อ OS ของเครื่องเดิมเปลี่ยนตามกันเละ ---------- */
+  async function showOs() {
+    await loadStore(['os', 'platforms']);
+    const platName = c => c ? (store.platforms.find(p => p.platform_code === c)?.platform_name || c) : 'ทุก Platform';
+    pane.innerHTML = `
+      <div class="filters"><button class="chip" id="oOff" type="button">แสดง OS ที่ปิด</button><span class="spacer" style="flex:1"></span>
+        <button class="btn accent" id="oAdd" type="button">+ เพิ่ม OS</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Platform</th><th>OS</th><th class="num">เครื่อง</th><th>สถานะ</th></tr></thead>
+      <tbody id="oBody"></tbody></table></div>
+      <p class="muted" style="font-size:12.5px">เก็บแค่เวอร์ชันหลัก (iOS 26, Android 16) · เพิ่มได้อย่างเดียว แก้ไข / ลบไม่ได้ — ตรวจชื่อให้ถูกก่อนบันทึก · "ไม่ระบุ" ใช้ได้ทุก Platform</p>`;
+    let showOff = false;
+    const sorted = () => [...store.os].sort((a, b) => (a.platform_code == null) - (b.platform_code == null)
+                                                 || String(a.platform_code ?? '').localeCompare(String(b.platform_code ?? ''))
+                                                 || (b.os_major ?? -1) - (a.os_major ?? -1) || String(a.os_name).localeCompare(String(b.os_name)));
+    const render = () => {
+      document.getElementById('oOff').classList.toggle('on', showOff);
+      const list = sorted().filter(o => showOff || o.is_active);
+      document.getElementById('oBody').innerHTML = list.map(o => `<tr>
+        <td>${esc(platName(o.platform_code))}</td><td><b>${esc(o.os_name)}</b></td><td class="num">${o.device_count ?? 0}</td>
+        <td>${o.is_active ? 'ใช้งาน' : '<span class="pill p-retired">ปิด</span>'}</td></tr>`).join('')
+        || '<tr><td colspan="4" class="empty">ไม่มี OS</td></tr>';
+    };
+    const osDialog = () => openDialog({
+      title: 'เพิ่ม OS',
+      body: `<div class="grid2">
+          <div class="field"><label for="oPlat">Platform</label><select id="oPlat">
+            <option value="">ทุก Platform</option>${store.platforms.map(p => `<option value="${esc(p.platform_code)}">${esc(p.platform_name)}</option>`).join('')}</select></div>
+          <div class="field"><label for="oName">ชื่อ OS<span class="req">*</span></label><input id="oName" placeholder="iOS 26"></div></div>
+        <div class="help">บันทึกแล้วแก้ไข / ลบไม่ได้ ตรวจ Platform และชื่อให้ถูกก่อน</div>`,
+      async onOk(root) {
+        const row = { platform_code: root.querySelector('#oPlat').value || null, os_name: root.querySelector('#oName').value.trim().replace(/\s+/g, ' ') };
+        if (!osKey(row.os_name)) throw new Error('กรอกชื่อ OS');
+        const same = store.os.find(x => (x.platform_code ?? null) === row.platform_code && osKey(x.os_name) === osKey(row.os_name));
+        if (same) throw new Error(`มี ${same.os_name} (${platName(same.platform_code)}) อยู่แล้ว${same.is_active ? '' : ' (ปิดอยู่)'}`);
+        await api.addOs(row);
+        await loadStore(['os']);
+        render();
+        toast('เพิ่ม OS แล้ว');
+      },
+    });
+    document.getElementById('oOff').onclick = () => { showOff = !showOff; render(); };
+    document.getElementById('oAdd').onclick = osDialog;
+    render();
+  }
+
+  /* ---------- ประเภท & Platform ---------- */
+  async function showLookups() {
+    await loadStore(['types', 'platforms']);
+    const section = (title, table, key, rows, cols) => `
+      <section class="panel" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>${title}</h3>
+          <button class="btn sm" type="button" data-add="${table}">+ เพิ่ม</button></div>
+        <div class="table-wrap" style="max-height:none"><table><thead><tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>
+        ${rows.map(r => `<tr>${cols.map(([k]) => `<td>${typeof r[k] === 'boolean' ? (r[k] ? '✓' : '—') : esc(r[k] ?? '')}</td>`).join('')}
+          <td><button class="btn sm" type="button" data-edit="${table}" data-key="${esc(r[key])}">แก้ไข</button></td></tr>`).join('')}
+        </tbody></table></div></section>`;
+    const TYPE_COLS = [['type_code', 'รหัส'], ['type_name', 'ชื่อ'], ['is_mobile', 'เป็นมือถือ'], ['requires_asset_tag', 'บังคับ Asset Tag'], ['sort_order', 'ลำดับ'], ['is_active', 'ใช้งาน']];
+    const PLAT_COLS = [['platform_code', 'รหัส'], ['platform_name', 'ชื่อ'], ['sort_order', 'ลำดับ'], ['is_active', 'ใช้งาน']];
+    pane.innerHTML = section('ประเภทเครื่อง', 'asset_type', 'type_code', store.types, TYPE_COLS)
+      + section('Platform', 'platform', 'platform_code', store.platforms, PLAT_COLS)
+      + '<p class="muted" style="font-size:12.5px">รหัสแก้ไม่ได้หลังสร้าง (เครื่อง / รุ่นอ้างถึงอยู่) ถ้าไม่ใช้แล้วให้ปิดการใช้งานแทน</p>';
+    const dlg = (table, row) => {
+      const isType = table === 'asset_type';
+      const cols = isType ? TYPE_COLS : PLAT_COLS;
+      const key = cols[0][0];
+      openDialog({
+        title: `${row ? 'แก้ไข' : 'เพิ่ม'}${isType ? 'ประเภทเครื่อง' : ' Platform'}`,
+        body: cols.map(([k, l]) => typeof (row?.[k] ?? (k.startsWith('is_') || k.startsWith('requires') ? false : '')) === 'boolean'
+          ? `<label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="f_${k}" ${(row ? row[k] : k === 'is_active') ? 'checked' : ''}> ${l}</label>`
+          : `<div class="field"><label for="f_${k}">${l}${k === key || k.endsWith('_name') ? '<span class="req">*</span>' : ''}</label>
+             <input id="f_${k}" value="${esc(row?.[k] ?? (k === 'sort_order' ? 100 : ''))}" ${k === key && row ? 'disabled' : ''} ${k === 'sort_order' ? 'inputmode="numeric"' : ''}></div>`).join(''),
+        async onOk(root) {
+          const out = {};
+          cols.forEach(([k]) => {
+            const el = root.querySelector('#f_' + k);
+            out[k] = el.type === 'checkbox' ? el.checked : k === 'sort_order' ? Number(el.value) || 100 : el.value.trim();
+          });
+          out[key] = String(out[key]).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+          if (!out[key] || !out[cols[1][0]]) throw new Error('กรอกรหัสและชื่อ');
+          await api.saveLookup(table, key, out, !row);
+          await showLookups();
+          toast('บันทึกแล้ว');
+        },
+      });
+    };
+    pane.querySelectorAll('[data-add]').forEach(b => b.onclick = () => dlg(b.dataset.add, null));
+    pane.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const list = b.dataset.edit === 'asset_type' ? store.types : store.platforms;
+      dlg(b.dataset.edit, list.find(r => String(r[b.dataset.edit === 'asset_type' ? 'type_code' : 'platform_code']) === b.dataset.key));
+    });
+  }
+
+  show();
+});
+</script>
+</body>
+</html>

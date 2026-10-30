@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>อุปกรณ์ทีม — PQA Asset Mgmt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme.css">
+<link rel="stylesheet" href="asset.css">
+</head>
+<body>
+<script type="module">
+/* หน้าอุปกรณ์ทีม — ทะเบียนเครื่องของทีม PQA ทุกประเภท (แทนหน้า PQA Assets เดิม)
+   ส่งต่อ / ประวัติผู้ถือ เปิดเฉพาะมือถือ (Laptop รองรับใน DB แล้ว เปิดปุ่มทีหลังได้ที่ LAPTOP_ASSIGN) */
+import {
+  boot, store, loadStore, deviceById, createDrawer, deviceDialog, multiChip, prefs, sorter,
+  esc, holderEmpId, dDisp, statusPill, holderHTML, modelText, toast,
+} from './asset.js';
+
+const LAPTOP_ASSIGN = false;
+
+boot('devices', async main => {
+  const pf = prefs('devices');
+  const st = {
+    type: pf.get('type', 'all'), q: pf.get('q', ''), inactive: pf.get('inactive', false),
+    years: pf.get('years', []), receivers: pf.get('receivers', []), sort: pf.get('sort', null),
+    collapsed: new Set(pf.get('collapsed', [])),
+  };
+  const save = () => { for (const k of ['type', 'q', 'inactive', 'years', 'receivers', 'sort']) pf.set(k, st[k]); pf.set('collapsed', [...st.collapsed]); };
+
+  main.innerHTML = `
+    <div class="page-head">
+      <h2>อุปกรณ์ทีม</h2><span class="badge" id="count">…</span>
+      <span class="spacer"></span>
+      <button class="btn accent" id="addBtn" type="button">+ เพิ่มเครื่องทีม</button>
+    </div>
+    <div class="filters">
+      <div class="seg" id="seg"></div>
+      <input class="search" id="q" type="search" placeholder="ค้นหา Asset Tag, S/N, Internal ID, รุ่น, ผู้รับ, Emp ID…" aria-label="ค้นหา">
+    </div>
+    <div class="filters">
+      <button class="chip" id="cYear"></button>
+      <button class="chip" id="cRecv"></button>
+      <button class="chip" id="cInactive" type="button">รวมที่ปิดใช้งาน</button>
+      <button class="link" id="clear" type="button">ล้างตัวกรอง</button>
+    </div>
+    <div class="list-layout" id="layout">
+      <div class="table-wrap cards" id="tableWrap"><div class="empty">กำลังโหลด…</div></div>
+      <div id="drawerHost" hidden></div>
+    </div>`;
+
+  await loadStore();
+  const drawer = createDrawer(document.getElementById('drawerHost'), {
+    layoutEl: document.getElementById('layout'),
+    canAssign: d => d.is_mobile || LAPTOP_ASSIGN,
+    onChanged: async () => { await loadStore(['devices', 'models', 'os']); render(); drawer.refresh(); },
+    onClose: () => render(),
+  });
+
+  const team = () => store.devices.filter(d => d.ownership === 'team');
+  const opts = fn => {
+    const c = {};
+    team().forEach(d => { const v = fn(d); if (v) c[v] = (c[v] || 0) + 1; });
+    return Object.keys(c).sort((a, b) => a.localeCompare(b, 'th', { numeric: true })).map(v => ({ value: v, label: v, count: c[v] }));
+  };
+  const chips = {
+    year: multiChip(document.getElementById('cYear'), { label: 'Asset Year', options: opts(d => d.asset_year), selected: st.years, onChange: v => { st.years = v; render(); } }),
+    recv: multiChip(document.getElementById('cRecv'), { label: 'รับเข้าโดย', options: opts(d => d.received_by_name), selected: st.receivers, onChange: v => { st.receivers = v; render(); } }),
+  };
+  document.getElementById('cInactive').onclick = () => { st.inactive = !st.inactive; render(); };
+  const q = document.getElementById('q');
+  q.value = st.q;
+  q.oninput = () => { st.q = q.value; render(); };
+  document.getElementById('clear').onclick = () => {
+    Object.assign(st, { q: '', inactive: false, years: [], receivers: [] });
+    q.value = ''; chips.year.set([]); chips.recv.set([]); render();
+  };
+  document.getElementById('addBtn').onclick = () => deviceDialog(null, {
+    kind: 'team', presetType: st.type !== 'all' ? st.type : undefined,
+    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); },
+  });
+
+  function baseFilter(d) {
+    if (!st.inactive && !(d.status === 'active' || d.status === 'repair')) return false;
+    if (st.years.length && !st.years.includes(d.asset_year)) return false;
+    if (st.receivers.length && !st.receivers.includes(d.received_by_name)) return false;
+    const t = st.q.trim().toLowerCase();
+    if (t && ![d.asset_tag, d.serial_number, d.internal_id, modelText(d), d.received_by_name, d.received_by_emp_id, d.holder_name, holderEmpId(d), d.note]
+      .some(v => String(v || '').toLowerCase().includes(t))) return false;
+    return true;
+  }
+
+  const cmp = sorter({ model: modelText, received: d => d.received_date, holder: d => d.holder_name || '' });
+  const defaultCmp = (a, b) => String(a.internal_id || a.asset_tag || '~').localeCompare(String(b.internal_id || b.asset_tag || '~'), 'th', { numeric: true });
+  const COLS = [
+    ['asset_tag', 'Asset Tag'], ['asset_year', 'ปี'], ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['serial_number', 'S/N'],
+    ['received_by_name', 'รับเข้าโดย'], ['received', 'วันที่รับ'], ['holder', 'ผู้ถือ'], [null, 'Note'],
+  ];
+
+  function render() {
+    save();
+    document.getElementById('cInactive').classList.toggle('on', st.inactive);
+    const base = team().filter(baseFilter);
+    const counts = { all: base.length };
+    base.forEach(d => { counts[d.type_code] = (counts[d.type_code] || 0) + 1; });
+    const seg = document.getElementById('seg');
+    seg.innerHTML = [['all', 'ทั้งหมด'], ...store.types.map(t => [t.type_code, t.type_name])]
+      .map(([k, l]) => `<button type="button" data-seg="${esc(k)}" class="${st.type === k ? 'on' : ''}">${esc(l)}<em>${counts[k] || 0}</em></button>`).join('');
+    seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.type = b.dataset.seg; drawer.close(); });   // close() → onClose → render()
+
+    const rows = base.filter(d => st.type === 'all' || d.type_code === st.type).sort(st.sort ? cmp(st.sort.key, st.sort.dir) : defaultCmp);
+    document.getElementById('count').textContent = `${rows.length} เครื่อง`;
+    const wrap = document.getElementById('tableWrap');
+    if (!rows.length) { wrap.innerHTML = '<div class="empty">ไม่พบเครื่องตามตัวกรองนี้</div>'; return; }
+
+    const groups = {};
+    rows.forEach(d => (groups[d.type_name] = groups[d.type_name] || []).push(d));
+    const order = store.types.map(t => t.type_name);
+    const sel = drawer.current()?.device_id;
+    const head = COLS.map(([k, l]) => k
+      ? `<th class="sortable" data-sort="${k}">${l}${st.sort?.key === k ? `<span class="arrow">${st.sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`
+      : `<th>${l}</th>`).join('');
+    const body = Object.keys(groups).sort((a, b) => order.indexOf(a) - order.indexOf(b)).map(g => {
+      const col = st.collapsed.has(g);
+      return `<tr class="grp" data-grp="${esc(g)}"><td colspan="${COLS.length}"><span class="tw">${col ? '▸' : '▾'}</span>${esc(g)} · ${groups[g].length}</td></tr>`
+        + (col ? '' : groups[g].map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
+          <td class="iid" data-card="${d.asset_tag ? 'full' : 'hide'}">${esc(d.asset_tag || '')}</td>
+          <td data-card="hide">${esc(d.asset_year || '')}</td>
+          <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
+          <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
+          <td class="iid" data-card="hide">${esc(d.serial_number || '')}</td>
+          <td data-card="full">${esc(d.received_by_name || d.received_by_emp_id || '')}</td>
+          <td data-card="hide">${dDisp(d.received_date)}</td>
+          <td data-card="${d.is_mobile ? 'full' : 'hide'}">${d.is_mobile || LAPTOP_ASSIGN ? holderHTML(d) : (d.status === 'active' ? '' : statusPill(d.status))}</td>
+          <td class="muted" data-card="${d.note ? 'full' : 'hide'}">${esc(d.note || '')}</td>
+        </tr>`).join(''));
+    }).join('');
+    wrap.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    wrap.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => {
+      const k = th.dataset.sort;
+      st.sort = st.sort?.key === k ? (st.sort.dir > 0 ? { key: k, dir: -1 } : null) : { key: k, dir: 1 };
+      render();
+    });
+    wrap.querySelectorAll('[data-grp]').forEach(tr => tr.onclick = () => {
+      const g = tr.dataset.grp;
+      st.collapsed.has(g) ? st.collapsed.delete(g) : st.collapsed.add(g);
+      render();
+    });
+    wrap.querySelectorAll('tr.row').forEach(tr => {
+      const open = () => { drawer.open(deviceById(tr.dataset.id)); render(); };
+      tr.onclick = open;
+      tr.onkeydown = ev => { if (ev.key === 'Enter') open(); };
+    });
+  }
+
+  render();
+  const want = new URLSearchParams(location.search).get('id');
+  if (want && deviceById(want)) { drawer.open(deviceById(want)); render(); }
+});
+</script>
+</body>
+</html>
