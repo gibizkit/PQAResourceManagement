@@ -62,12 +62,12 @@ boot('mobile', async main => {
   await loadStore();
   const drawer = createDrawer(document.getElementById('drawerHost'), {
     layoutEl: document.getElementById('layout'),
-    onChanged: async () => { await loadStore(['devices', 'models']); render(); drawer.refresh(); },
+    onChanged: async () => { await loadStore(['devices', 'models', 'os']); render(); drawer.refresh(); },
     onClose: () => render(),
   });
 
   const mobiles = () => store.devices.filter(d => d.is_mobile);
-  const osMajor = d => { const m = String(d.os_version || '').match(/\d+/); return m ? `${d.platform_name || ''} ${m[0]}`.trim() : null; };
+  const osMajor = d => d.os_version || null;          // ชื่อจาก OS master ('iOS 26', 'Android 16', 'ไม่ระบุ')
   const SEGS = [['all', 'ทั้งหมด'], ['team', 'ทีม PQA'], ['personal', 'Personal'], ['outsource', 'Outsource']];
 
   const opts = (fn) => {
@@ -95,7 +95,7 @@ boot('mobile', async main => {
   };
   document.getElementById('addBtn').onclick = () => deviceDialog(null, {
     kind: 'byod',
-    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models']); render(); },
+    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); },
   });
 
   // ผ่านทุกตัวกรองยกเว้น segment (ไว้นับจำนวนบนปุ่ม segment)
@@ -115,7 +115,7 @@ boot('mobile', async main => {
   const OWN_ORDER = { team: 0, personal: 1, outsource: 2 };
   const cmp = sorter({
     model: modelText,
-    os: d => String(d.os_version || '').replace(/\d+/g, n => n.padStart(4, '0')),
+    os: d => d.os_major,
     holder: d => d.holder_name || '',
     held: d => d.held_days ?? -1,
     ownership: d => OWN_ORDER[d.ownership],
@@ -163,7 +163,7 @@ boot('mobile', async main => {
         + (col ? '' : list.map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
           <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
           <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
-          <td data-card="full"><span class="muted"><span class="card-only">${esc(d.platform_name || '')} </span>${esc(d.os_version || '-')}</span></td>
+          <td data-card="full"><span class="muted">${d.os_major == null ? `<span class="card-only">${esc(d.platform_name || '')} </span>` : ''}${esc(d.os_version || '-')}</span></td>
           <td data-card="full">${holderHTML(d)}</td>
           <td class="num" data-card="hide">${d.held_days != null ? d.held_days : ''}</td>
           <td data-card="full">${ownershipPill(d.ownership)}</td>

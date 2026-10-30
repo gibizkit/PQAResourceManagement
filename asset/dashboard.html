@@ -68,7 +68,7 @@ boot('dashboard', async main => {
         <h3>เครื่องว่าง ยืมได้เลย (${free.length})</h3>
         <div class="rank">${free.sort((a, b) => String(a.internal_id).localeCompare(String(b.internal_id), 'th', { numeric: true })).slice(0, 12).map(d => `
           <div><a href="${devLink(d)}" style="color:inherit;text-decoration:none"><span class="iid">${esc(d.internal_id || '')}</span> ${esc(modelText(d))}</a>
-          <span class="muted">${esc([d.platform_name, d.os_version].filter(Boolean).join(' '))}${d.status === 'repair' ? ' · ส่งซ่อม' : ''}</span></div>`).join('') || '<div class="muted">ไม่มีเครื่องว่าง</div>'}
+          <span class="muted">${esc(d.os_major == null ? [d.platform_name, d.os_version].filter(Boolean).join(' ') : d.os_version)}${d.status === 'repair' ? ' · ส่งซ่อม' : ''}</span></div>`).join('') || '<div class="muted">ไม่มีเครื่องว่าง</div>'}
           ${free.length > 12 ? `<div><a class="link" href="${link('mobile.html')}">ดูทั้งหมดที่หน้า Mobile →</a></div>` : ''}</div>
       </section>
       <section class="panel">
@@ -88,16 +88,17 @@ boot('dashboard', async main => {
     el.innerHTML = plats.map(p => {
       const cells = {};
       rows.filter(r => (r.platform_name || 'ไม่ระบุ') === p).forEach(r => {
-        const k = r.os_major ?? '?';
-        cells[k] = cells[k] || { n: 0, free: 0 };
+        const k = r.os_name || 'ไม่ระบุ';                   // ชื่อจาก OS master — Huawei มีทั้ง HarmonyOS / Android
+        cells[k] = cells[k] || { n: 0, free: 0, major: r.os_major };
         cells[k].n += Number(r.device_count);
         if (r.ownership === 'team') cells[k].free += Number(r.available_count);
       });
-      const keys = Object.keys(cells).sort((a, b) => (a === '?') - (b === '?') || Number(a) - Number(b));
+      const keys = Object.keys(cells).sort((a, b) => (cells[a].major == null) - (cells[b].major == null)
+                                                     || (cells[a].major ?? 0) - (cells[b].major ?? 0) || a.localeCompare(b));
       const max = Math.max(...keys.map(k => cells[k].n));
       const lvl = n => (n === 0 ? 'c0' : n >= max * 0.75 ? 'c3' : n >= max * 0.4 ? 'c2' : 'c1');
       return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:10px">
-        <span></span>${keys.map(k => `<span class="h">${k === '?' ? 'ไม่ระบุ' : (p === 'Huawei' ? 'HMOS ' : '') + k}</span>`).join('')}
+        <span></span>${keys.map(k => `<span class="h">${esc(k)}</span>`).join('')}
         <span class="rh">${esc(p)}</span>${keys.map(k => `<span class="cell ${lvl(cells[k].n)}">${cells[k].n}${cells[k].free ? `<small>ว่าง ${cells[k].free}</small>` : ''}</span>`).join('')}
       </div>`;
     }).join('');

@@ -54,7 +54,7 @@ boot('devices', async main => {
   const drawer = createDrawer(document.getElementById('drawerHost'), {
     layoutEl: document.getElementById('layout'),
     canAssign: d => d.is_mobile || LAPTOP_ASSIGN,
-    onChanged: async () => { await loadStore(['devices', 'models']); render(); drawer.refresh(); },
+    onChanged: async () => { await loadStore(['devices', 'models', 'os']); render(); drawer.refresh(); },
     onClose: () => render(),
   });
 
@@ -78,7 +78,7 @@ boot('devices', async main => {
   };
   document.getElementById('addBtn').onclick = () => deviceDialog(null, {
     kind: 'team', presetType: st.type !== 'all' ? st.type : undefined,
-    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models']); render(); },
+    onSaved: async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); },
   });
 
   function baseFilter(d) {

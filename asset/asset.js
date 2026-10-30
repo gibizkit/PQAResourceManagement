@@ -87,10 +87,81 @@ export function toast(msg, isErr) {
 export function errMsg(e) {
   const m = (e && (e.message || e.error_description)) || String(e || 'เกิดข้อผิดพลาด');
   // error ที่มาจาก constraint ตรงๆ (insert/update ตาราง ไม่ผ่าน RPC) → แปลเป็นภาษาไทย
-  if (/device_model_uk/.test(m)) return 'มียี่ห้อ + รุ่นนี้อยู่แล้ว';
+  if (/device_model_uk/.test(m)) return 'มียี่ห้อ + รุ่นนี้อยู่แล้ว (ชื่อที่ต่างกันแค่เว้นวรรค ขีด หรือตัวพิมพ์ ถือเป็นรุ่นเดียวกัน)';
+  if (/device_model_key_ok/.test(m)) return 'ยี่ห้อและชื่อรุ่นต้องมีตัวอักษรหรือตัวเลข';
+  if (/os_version_uk/.test(m)) return 'มี OS นี้อยู่แล้ว (ชื่อที่ต่างกันแค่เว้นวรรค ขีด หรือตัวพิมพ์ ถือเป็นตัวเดียวกัน)';
+  if (/os_version_name_ok/.test(m)) return 'ชื่อ OS ต้องมีตัวอักษรหรือตัวเลข';
   if (/asset_type_pkey|platform_pkey/.test(m)) return 'รหัสนี้มีอยู่แล้ว';
   if (/row-level security|permission denied/i.test(m)) return 'ไม่มีสิทธิ์ทำรายการนี้';
   return m;
+}
+
+/* ---------- กันรุ่นซ้ำ ----------
+   modelKey = กฎเดียวกับ asset.fn_model_key() (DB) และ model_group_key() (migrate.py) — แก้ต้องแก้ 3 ที่
+   ตัวอย่างใน tests/model_key_cases.json (test ทั้ง 3 ฝั่งใช้ร่วมกัน) */
+const alnumKey = s => String(s ?? '').toLowerCase().replace(/[^0-9a-z\u0E00-\u0E7F]+/g, '');
+
+export function modelKey(brand, model) {
+  const b = alnumKey(brand);
+  let m = alnumKey(model);
+  if (b && m.length > b.length && m.startsWith(b)) m = m.slice(b.length);
+  return `${b}:${m}`;
+}
+
+/** ความเหมือนของ 2 ข้อความ 0–1 (Ratcliff/Obershelp แบบเดียวกับ difflib.SequenceMatcher ที่ migrate.py ใช้) */
+export function similarity(a, b) {
+  const matched = (x, y) => {
+    if (!x || !y) return 0;
+    let len = 0, xi = 0, yi = 0;
+    const prev = new Array(y.length + 1).fill(0);
+    for (let i = 1; i <= x.length; i++) {
+      let diag = 0;
+      for (let j = 1; j <= y.length; j++) {
+        const keep = prev[j];
+        prev[j] = x[i - 1] === y[j - 1] ? diag + 1 : 0;
+        if (prev[j] > len) { len = prev[j]; xi = i - len; yi = j - len; }
+        diag = keep;
+      }
+    }
+    if (!len) return 0;
+    return len + matched(x.slice(0, xi), y.slice(0, yi)) + matched(x.slice(xi + len), y.slice(yi + len));
+  };
+  const total = a.length + b.length;
+  return total ? (2 * matched(a, b)) / total : 1;
+}
+
+/** หารุ่นที่ซ้ำ (same = model_key ตรง) และชื่อใกล้กันในยี่ห้อเดียวกัน (near, เหมือน ≥ 85% — เกณฑ์เดียวกับ migrate.py) */
+export function findSimilarModels(brand, model, models, excludeId = null) {
+  const key = modelKey(brand, model);
+  const [bk, mk] = key.split(':');
+  let same = null;
+  const near = [];
+  for (const m of models) {
+    if (m.model_id === excludeId) continue;
+    const k = modelKey(m.brand, m.model_name);
+    if (k === key) { same = m; continue; }
+    const [b2, m2] = k.split(':');
+    if (b2 === bk && mk && m2 && similarity(mk, m2) >= 0.85) near.push(m);
+  }
+  return { same, near };
+}
+
+/* ---------- OS master ----------
+   osKey = กฎเดียวกับ asset.fn_os_key() — 'iOS 26' = 'ios26' */
+export const osKey = s => alnumKey(s);
+
+/** OS ที่เลือกได้สำหรับ Platform นี้ (+ 'ไม่ระบุ' ที่ใช้ได้ทุก Platform) — ใหม่ → เก่า, ไม่ระบุ ไว้ท้าย */
+export function osOptions(platformCode, keepId = null) {
+  return store.os
+    .filter(o => (o.is_active || o.os_id === keepId) && (o.platform_code === platformCode || o.platform_code == null))
+    .sort((a, b) => (a.platform_code == null) - (b.platform_code == null) || (b.os_major ?? -1) - (a.os_major ?? -1)
+                    || String(a.os_name).localeCompare(String(b.os_name), 'th', { numeric: true }));
+}
+
+/** ข้อความถามยืนยันเมื่อมีรุ่นชื่อใกล้กัน (HTML สำหรับ confirmBox) */
+export function nearModelsMsg(near) {
+  return `มีรุ่นชื่อใกล้กันอยู่แล้ว:<br>${near.map(m => `• <b>${esc(m.brand)} ${esc(m.model_name)}</b>${m.is_active === false ? ' (ปิดอยู่)' : ''}`).join('<br>')}
+    <br><br>ถ้าเป็นรุ่นเดียวกันให้กดยกเลิกแล้วใช้รุ่นเดิม · ถ้าเป็นคนละรุ่นจริง กดบันทึกเป็นรุ่นใหม่`;
 }
 
 /** ลิงก์ภายในแอป — โหมด mock ต้องติด ?mock ไปด้วย */
@@ -156,6 +227,7 @@ function createApi(client) {
     osLog: async id => ok(await a.from('device_os_log').select('*').eq('device_id', id).order('changed_at', { ascending: false })),
     people: () => all((f, t) => a.from('v_person').select('*').eq('is_active', true).order('display_name').range(f, t)),
     models: () => all((f, t) => a.from('v_model_usage').select('*').order('brand').order('model_name').range(f, t)),
+    os: () => all((f, t) => a.from('v_os_usage').select('*').order('os_id').range(f, t)),
     types: async () => ok(await a.from('asset_type').select('*').order('sort_order')),
     platforms: async () => ok(await a.from('platform').select('*').order('sort_order')),
     osCoverage: async () => ok(await a.from('v_os_coverage').select('*')),
@@ -165,6 +237,12 @@ function createApi(client) {
     setStatus: async (id, status, date) => ok(await a.rpc('fn_set_device_status',
       { p_device_id: id, p_status: status, p_date: date })),
     addModel: async m => ok(await a.from('device_model').insert(m).select().single()),
+    addOs: async o => ok(await a.from('os_version').insert(o).select('os_id, platform_code, os_name, os_major, is_active').single()),
+    updateOs: async (id, patch) => {
+      const rows = ok(await a.from('os_version').update(patch).eq('os_id', id).select());
+      if (!rows.length) throw new Error('ไม่มีสิทธิ์แก้ OS (เฉพาะ admin)');
+      return rows[0];
+    },
     updateModel: async (id, patch) => {
       const rows = ok(await a.from('device_model').update(patch).eq('model_id', id).select());
       if (!rows.length) throw new Error('ไม่มีสิทธิ์แก้รุ่นนี้ (เฉพาะ admin)');
@@ -186,9 +264,9 @@ function createApi(client) {
 /* =====================================================================
    STORE — ข้อมูลที่ใช้ร่วมกันในหน้า
    ===================================================================== */
-export const store = { devices: [], people: [], models: [], types: [], platforms: [] };
+export const store = { devices: [], people: [], models: [], types: [], platforms: [], os: [] };
 
-export async function loadStore(parts = ['devices', 'people', 'models', 'types', 'platforms']) {
+export async function loadStore(parts = ['devices', 'people', 'models', 'types', 'platforms', 'os']) {
   const res = await Promise.all(parts.map(p => api[p]()));
   parts.forEach((p, i) => { store[p] = res[i] || []; });
   return store;
@@ -569,8 +647,10 @@ export function modelPicker(el, { typeCodes = null, value = null, onChange } = {
     const input = el.querySelector('input'), list = el.querySelector('.picker-list');
     let items = [];
     const show = () => {
-      const q = input.value.trim().toLowerCase();
-      items = pool().filter(m => !q || `${m.brand} ${m.model_name}`.toLowerCase().includes(q)).slice(0, 30);
+      const q = input.value.trim().toLowerCase(), qk = alnumKey(q);
+      // พิมพ์ "iphone13" ก็เจอ "iPhone 13" — ช่วยให้เลือกรุ่นเดิมแทนการเพิ่มรุ่นซ้ำ
+      items = pool().filter(m => !q || `${m.brand} ${m.model_name}`.toLowerCase().includes(q)
+                                    || (qk && alnumKey(`${m.brand}${m.model_name}`).includes(qk))).slice(0, 30);
       list.innerHTML = items.map((m, i) => `<div class="picker-opt" data-i="${i}"><span>${esc(m.brand)} ${esc(m.model_name)}</span>
           <small>${esc(m.platform_name || m.type_name || '')}</small></div>`).join('')
         + `<div class="picker-opt picker-add" data-new-opt>+ เพิ่มรุ่นใหม่${q ? ` "${esc(input.value.trim())}"` : ''}</div>`;
@@ -622,8 +702,18 @@ export function modelPicker(el, { typeCodes = null, value = null, onChange } = {
         const msg = box.querySelector('[data-msg]');
         if (!row.brand || !row.model_name) { msg.textContent = 'กรอกยี่ห้อและชื่อรุ่น'; return; }
         if (t?.is_mobile && !row.platform_code) { msg.textContent = 'เลือก Platform'; return; }
-        const dup = store.models.find(m => m.brand.toLowerCase() === row.brand.toLowerCase() && m.model_name.toLowerCase() === row.model_name.toLowerCase());
-        if (dup) { picked = dup.model_id; render(); onChange?.(picked); return; }
+        const { same, near } = findSimilarModels(row.brand, row.model_name, store.models);
+        if (same) {
+          if (!pool().some(m => m.model_id === same.model_id)) {
+            msg.textContent = `มีรุ่น ${same.brand} ${same.model_name} อยู่แล้ว${same.is_active === false ? ' แต่ปิดอยู่ (เปิดได้ที่หน้า Admin)' : ' แต่เป็นคนละประเภท'}`;
+            return;
+          }
+          picked = same.model_id; render(); onChange?.(picked);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          toast(`ใช้รุ่นเดิม ${same.brand} ${same.model_name}`);
+          return;
+        }
+        if (near.length && !(await confirmBox(nearModelsMsg(near), { okText: 'บันทึกเป็นรุ่นใหม่', title: 'รุ่นนี้ซ้ำหรือไม่?' }))) return;
         try {
           const m = await api.addModel(row);
           const pl = store.platforms.find(p => p.platform_code === m.platform_code);
@@ -899,7 +989,8 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       </div>` : ''}
     <div class="grid2">
       <div class="field"><label for="dvSn">Serial Number${team ? '<span class="req">*</span>' : ''}</label><input id="dvSn" value="${esc(d?.serial_number || '')}"></div>
-      <div class="field" data-os-field><label for="dvOs">OS Version<span class="req" data-req-os>*</span></label><input id="dvOs" value="${esc(d?.os_version || '')}" placeholder="17.5.1"></div>
+      <div class="field" data-os-field><label for="dvOs">OS Version<span class="req" data-req-os>*</span></label><select id="dvOs"></select>
+        <div data-os-new></div></div>
     </div>
     ${team ? `<div class="field"><label>รับเข้าทีมโดย<span class="req">*</span></label><div class="picker" data-recv></div></div>
       <div class="field"><label for="dvRecvDate">วันที่รับเข้าทีม<span class="req">*</span></label>${dateFieldHTML('dvRecvDate', d?.received_date || '')}</div>` : ''}
@@ -912,16 +1003,60 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
     okText: isNew ? (team ? 'เพิ่มเครื่อง' : 'ลงทะเบียน') : 'บันทึก',
     onMount(root) {
       wireDateFields(root);
+      // OS เลือกจาก master ตาม Platform ของรุ่น (ไม่พิมพ์เอง) — ไม่มีในรายการ เพิ่มได้จากตัวเลือกท้ายสุด
+      const osSel = root.querySelector('#dvOs'), osNew = root.querySelector('[data-os-new]');
+      const platformOf = () => store.models.find(m => m.model_id === mp?.get())?.platform_code || null;
+      const fillOs = (want = osSel.value) => {
+        const plat = platformOf();
+        if (!mp?.get()) { osSel.innerHTML = '<option value="">— เลือกรุ่นก่อน —</option>'; osSel.disabled = true; return; }
+        const opts = osOptions(plat, d?.os_id ?? null);
+        osSel.disabled = false;
+        osSel.innerHTML = '<option value="">— เลือก OS —</option>'
+          + opts.map(o => `<option value="${o.os_id}">${esc(o.os_name)}${o.is_active ? '' : ' (ปิดแล้ว)'}</option>`).join('')
+          + (plat ? '<option value="__new">+ เพิ่ม OS ใหม่…</option>' : '');
+        osSel.value = opts.some(o => String(o.os_id) === String(want)) ? String(want) : '';
+      };
+      osSel.onchange = () => {
+        if (osSel.value !== '__new') { osNew.innerHTML = ''; return; }
+        osSel.value = '';
+        const plat = platformOf();
+        const pname = store.platforms.find(x => x.platform_code === plat)?.platform_name || plat;
+        osNew.innerHTML = `<div class="inline-box"><div class="field"><label>OS ใหม่ (${esc(pname)}) — ใส่แค่เวอร์ชันหลัก</label>
+            <input data-os-name placeholder="${esc(pname)} 26"></div>
+          <div class="btn-row"><button type="button" class="btn sm accent" data-os-save>เพิ่ม OS นี้</button>
+            <button type="button" class="btn sm" data-os-cancel>ยกเลิก</button><span class="muted" data-os-msg></span></div></div>`;
+        const inp = osNew.querySelector('[data-os-name]'), msg = osNew.querySelector('[data-os-msg]');
+        inp.focus();
+        osNew.querySelector('[data-os-cancel]').onclick = () => { osNew.innerHTML = ''; };
+        osNew.querySelector('[data-os-save]').onclick = async () => {
+          const name = inp.value.trim().replace(/\s+/g, ' ');
+          if (!osKey(name)) { msg.textContent = 'กรอกชื่อ OS'; return; }
+          const same = store.os.find(o => (o.platform_code === plat || o.platform_code == null) && osKey(o.os_name) === osKey(name));
+          if (same) {
+            if (!same.is_active) { msg.textContent = `มี ${same.os_name} อยู่แล้วแต่ถูกปิด (เปิดได้ที่หน้า Admin)`; return; }
+            osNew.innerHTML = ''; fillOs(same.os_id); toast(`ใช้ OS เดิม ${same.os_name}`); return;
+          }
+          try {
+            const o = await api.addOs({ platform_code: plat, os_name: name });
+            store.os.push({ ...o, platform_name: pname, device_count: 0 });
+            osNew.innerHTML = ''; fillOs(o.os_id);
+            osSel.dispatchEvent(new Event('input', { bubbles: true }));
+            toast(`เพิ่ม OS ${o.os_name} แล้ว`);
+          } catch (e) { msg.textContent = errMsg(e); }
+        };
+      };
       const syncType = () => {
         const mob = isMobileType(typeCode);
         const tReq = store.types.find(t => t.type_code === typeCode)?.requires_asset_tag;
         const reqTag = root.querySelector('[data-req-tag]');
         if (reqTag) reqTag.hidden = !tReq;
         root.querySelector('[data-req-os]').hidden = !(team && mob);
-        root.querySelector('[data-os-field]').hidden = team && !mob && !d?.os_version;
+        root.querySelector('[data-os-field]').hidden = !mob;           // OS ใช้กับมือถือเท่านั้น
       };
       const mountModel = () => {
-        mp = modelPicker(root.querySelector('[data-model]'), { typeCodes: team ? [typeCode] : mobileTypes, value: d?.model_id || null });
+        mp = modelPicker(root.querySelector('[data-model]'), { typeCodes: team ? [typeCode] : mobileTypes, value: d?.model_id || null,
+                                                               onChange: () => fillOs() });
+        fillOs(d?.os_id ?? '');
       };
       mountModel();
       syncType();
@@ -946,7 +1081,9 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       const v = id => root.querySelector('#' + id)?.value.trim() ?? '';
       const model_id = mp.get();
       if (!model_id) throw new Error('เลือกรุ่นเครื่อง');
-      const p = { ownership, model_id, serial_number: v('dvSn'), os_version: v('dvOs'), note: v('dvNote') };
+      const mob = isMobileType(store.models.find(m => m.model_id === model_id)?.type_code);
+      const p = { ownership, model_id, serial_number: v('dvSn'), os_id: mob && v('dvOs') ? Number(v('dvOs')) : null, note: v('dvNote') };
+      if (team && mob && !p.os_id) throw new Error('เลือก OS Version');
       if (!isNew) p.device_id = d.device_id;
       if (team) {
         Object.assign(p, { internal_id: v('dvIid'), asset_tag: v('dvTag'), received_date: readDate(root, 'dvRecvDate', 'วันที่รับเข้าทีม', { required: true }) });
