@@ -76,6 +76,18 @@ boot('dashboard', async main => {
     const w = String(d.brand || d.model_name || '').trim().split(/\s+/)[0];
     return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : 'ไม่ระบุ';
   };
+  // Apple แยกแถวตามรุ่น (iPhone 13, iPhone 16 Pro…) — ยี่ห้ออื่นรวมเป็นแถวเดียว · ตัดความจุท้ายชื่อ / จัดรูป iPhone ให้รุ่นเดียวกันอยู่แถวเดียว
+  const MODEL_ROWS = new Set(['Apple']);
+  const rowOf = d => {
+    const b = brandOf(d);
+    if (!MODEL_ROWS.has(b)) return b;
+    const m = String(d.model_name || '').replace(/^apple\s*/i, '').replace(/\s*\d+\s*(gb|tb)\b.*$/i, '')
+      .replace(/^i\s*phon?e?\s*/i, 'iPhone ').replace(/^i\s*pad\s*/i, 'iPad ')
+      .replace(/\s*\b(pro\s*max|pm)$/i, ' Pro Max').replace(/\b(pro|max|plus|mini)\b/gi, w => w[0].toUpperCase() + w.slice(1).toLowerCase())
+      .replace(/\s+/g, ' ').trim();
+    return m || b;
+  };
+  const rowKey = d => rowOf(d).toLowerCase().replace(/[^0-9a-z]+/g, '');
   const osLabel = d => d.os_version || 'ไม่ระบุ';     // ชื่อจาก OS master — Huawei มีทั้ง HarmonyOS / Android
   const inScope = d => scope === 'all' || d.ownership === 'team';
 
@@ -97,16 +109,19 @@ boot('dashboard', async main => {
         const ds = list.filter(d => osLabel(d) === k);
         return { n: ds.length, free: ds.filter(d => d.ownership === 'team' && !d.holder_resource_id).length };
       };
-      const brands = [...new Set(pr.map(brandOf))].sort((a, b) => (a === 'ไม่ระบุ') - (b === 'ไม่ระบุ') || a.localeCompare(b));
-      const lines = brands.map(b => ({ b, label: b, cells: keys.map(k => count(pr.filter(d => brandOf(d) === b), k)) }));
-      if (brands.length > 1) lines.push({ b: '', label: 'รวม', total: true, cells: keys.map(k => count(pr, k)) });
+      const label = {};
+      pr.forEach(d => { label[rowKey(d)] = label[rowKey(d)] || rowOf(d); });
+      const rks = Object.keys(label).sort((a, b) => (label[a] === 'ไม่ระบุ') - (label[b] === 'ไม่ระบุ')
+                                                    || label[a].localeCompare(label[b], 'en', { numeric: true }));
+      const lines = rks.map(r => ({ b: r, label: label[r], cells: keys.map(k => count(pr.filter(d => rowKey(d) === r), k)) }));
+      if (rks.length > 1) lines.push({ b: '', label: 'รวม', total: true, cells: keys.map(k => count(pr, k)) });
       const max = Math.max(...lines.filter(l => !l.total).flatMap(l => l.cells.map(c => c.n)));
       const lvl = n => (n === 0 ? 'c0' : n >= max * 0.75 ? 'c3' : n >= max * 0.4 ? 'c2' : 'c1');
-      return `<div class="matrix" style="grid-template-columns: 76px repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:14px">
+      return `<div class="matrix" style="grid-template-columns: minmax(76px, max-content) repeat(${keys.length}, minmax(52px, 1fr)); margin-bottom:14px">
         <span class="corner">${esc(p)}</span>${keys.map(k => `<span class="h">${esc(k)}</span>`).join('')}
         ${lines.map(l => `<span class="rh${l.total ? ' tot' : ''}">${esc(l.label)}</span>${l.cells.map((c, i) => c.n
-          ? `<button type="button" class="cell ${l.total ? 'tot' : lvl(c.n)}" data-p="${esc(p)}" data-b="${esc(l.b)}" data-k="${esc(keys[i])}"
-              aria-label="${esc(`${p} ${l.b || 'รวม'} ${keys[i]}: ${c.n} เครื่อง — ดูผู้ถือ`)}">${c.n}${c.free ? `<small>ว่าง ${c.free}</small>` : ''}</button>`
+          ? `<button type="button" class="cell ${l.total ? 'tot' : lvl(c.n)}" data-p="${esc(p)}" data-b="${esc(l.b)}" data-l="${esc(l.total ? '' : l.label)}" data-k="${esc(keys[i])}"
+              aria-label="${esc(`${p} ${l.label} ${keys[i]}: ${c.n} เครื่อง — ดูผู้ถือ`)}">${c.n}${c.free ? `<small>ว่าง ${c.free}</small>` : ''}</button>`
           : '<span class="cell c0">–</span>').join('')}`).join('')}
       </div>`;
     }).join('');
@@ -114,14 +129,14 @@ boot('dashboard', async main => {
 
   // กดตัวเลข → รายการเครื่องใน OS นั้น (ยี่ห้อนั้น / ทุกยี่ห้อถ้าเป็นแถวรวม) + ผู้ถือ ตาม scope ที่เลือกอยู่
   const ownOrder = { team: 0, personal: 1, outsource: 2 };
-  const showCell = (p, b, k) => {
+  const showCell = (p, b, k, label) => {
     const list = activeMobile
-      .filter(d => platLabel(d) === p && osLabel(d) === k && (!b || brandOf(d) === b) && inScope(d))
+      .filter(d => platLabel(d) === p && osLabel(d) === k && (!b || rowKey(d) === b) && inScope(d))
       .sort((a, b) => (ownOrder[a.ownership] ?? 9) - (ownOrder[b.ownership] ?? 9)
                       || String(a.internal_id || '').localeCompare(String(b.internal_id || ''), 'th', { numeric: true })
                       || modelText(a).localeCompare(modelText(b)));
     openDialog({
-      title: `${p}${b ? ` · ${b}` : ''} · ${k} (${list.length} เครื่อง)`,
+      title: `${p}${label ? ` · ${label}` : ''} · ${k} (${list.length} เครื่อง)`,
       cancelText: 'ปิด',
       guardDirty: false,
       body: `<div class="cell-list">${list.map(d => `
@@ -138,7 +153,7 @@ boot('dashboard', async main => {
   };
   document.getElementById('matrix').onclick = ev => {
     const c = ev.target.closest('button.cell');
-    if (c) showCell(c.dataset.p, c.dataset.b, c.dataset.k);
+    if (c) showCell(c.dataset.p, c.dataset.b, c.dataset.k, c.dataset.l);
   };
   document.getElementById('scope').onclick = ev => { const b = ev.target.closest('[data-s]'); if (b) { scope = b.dataset.s; renderMatrix(); } };
   renderMatrix();
