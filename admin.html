@@ -1278,7 +1278,8 @@ function computeProjectPhaseMD(bookingRows, leaveRows){
   const leave = {};
   leaveRows.forEach(l => { leave[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
   const factor = {};
-  Object.keys(booked).forEach(k => { const b = booked[k]; factor[k] = b > 0 ? Math.max(0, b - (leave[k] || 0)) / b : 0; });
+  // §5.87: cap 1 MD ต่อคนต่อวัน (จองซ้อนหลาย project ได้) ก่อนหักลา — ตรงกับ dashboard computeAgg()
+  Object.keys(booked).forEach(k => { const b = booked[k]; factor[k] = b > 0 ? Math.max(0, Math.min(b, 1) - (leave[k] || 0)) / b : 0; });
   const byProject = {}, byProjectPhase = {};
   bookingRows.forEach(r => {
     const f = factor[r.resource_id + '|' + r.work_date];

@@ -230,10 +230,6 @@
     font-weight: 600;
     color: var(--dk-text);
   }
-  .os-name.conflict {
-    color: var(--conflict);
-    cursor: help;
-  }
   .role-badge {
     font-size: 10.5px;
     color: var(--dk-text3);
@@ -477,7 +473,6 @@
       </div>
       <button class="btn" id="clearFilterBtn">ล้าง</button>
       <button class="btn" id="applyBtn">ค้นหา</button>
-      <label class="chk"><input type="checkbox" id="chkConflict"> ⚠️ Show only conflict</label>
     </div>
 
     <div class="os-scroll-wrap" id="osScrollWrap">
@@ -752,7 +747,6 @@ function getDayRange() {
 /**
  * แปลง error จาก RPC/RLS ให้เป็นข้อความไทยที่เข้าใจง่าย
  * - can_write() ปฏิเสธ / RLS policy violation → toast "ไม่มีสิทธิ์แก้ไขข้อมูล"
- * - fn_save_booking / fn_save_bookings_batch คืนวันที่ MD เกิน (yyyy-mm-dd ในข้อความ) → error ใต้ฟอร์ม
  * - อื่นๆ → error ใต้ฟอร์ม (หรือ toast ถ้าไม่มี errEl)
  */
 function handleWriteError(error, errEl) {
@@ -765,13 +759,7 @@ function handleWriteError(error, errEl) {
     toast('ไม่มีสิทธิ์แก้ไขข้อมูล', true);
     return;
   }
-  const dates = msg.match(/\d{4}-\d{2}-\d{2}/g);
-  if (dates && dates.length) {
-    const disp = [...new Set(dates)].map(dDispShort).join(', ');
-    const text = `วันที่ ${disp} มีการ Booking เกิน MD ให้ปรับปรุง Start Date, End Date`;
-    if (errEl) errEl.textContent = text; else toast(text, true);
-    return;
-  }
+  // §5.87: เลิกเช็ค MD รวมต่อวันแล้ว — ไม่มี error "Booking เกิน MD" จาก RPC ให้แปลอีก
   const text = 'บันทึกไม่สำเร็จ: ' + msg;
   if (errEl) errEl.textContent = text; else toast(text, true);
 }
@@ -871,7 +859,6 @@ function restoreFilterPrefs() {
   if (typeof p.name === 'string')   $('fName').value = p.name;
   if (typeof p.skills === 'string') $('fSkills').value = p.skills;
   if (['booked', 'project', 'app', 'lead', 'none'].includes(p.groupByMode)) $('selGroupBy').value = p.groupByMode;
-  if (typeof p.conflict === 'boolean') $('chkConflict').checked = p.conflict;
   // Mode = Booked/Actual (§5.67) — whitelist validate ตามกติกา §5.21: ค่าที่ไม่รู้จักตกไป 'booked' เงียบๆ
   S.osMode = OS_MODES.includes(p.osMode) ? p.osMode : 'booked';
   $('osModeSelect').value = S.osMode;
@@ -908,7 +895,6 @@ function saveFilterPrefs() {
     start: S.range.s,
     end: S.range.e,
     groupByMode: groupByModeForPrefs(),
-    conflict: $('chkConflict').checked,
     osMode: S.osMode,
     projects: [...S.filter.projects],
     leads: [...S.filter.leads],
@@ -919,17 +905,10 @@ function saveFilterPrefs() {
 
 /* ============ MODE = ACTUAL MD — GATING + INFO POPUP (§4.6/§4.7) ============ */
 // ปิดใช้งานตัวกรองที่ไม่มีผลกับ Actual MD เมื่ออยู่โหมด Actual — เรียกซ้ำได้ตลอด (idempotent)
-// §5.76-D: Project filter + Group by = Project ใช้กับ Actual ได้แล้ว (Actual มี project_name) —
-// เหลือแค่ Show only conflict ที่ยังปิดในโหมด Actual
-function applyOsModeGating() {
-  const actual = isActualMode();
-
-  // Show only conflict — ไม่เกี่ยวกับ Actual MD (conflict มาจาก booking ชนกัน)
-  const chk = $('chkConflict');
-  chk.disabled = actual;
-  const chkLabel = chk.closest('.chk');
-  if (chkLabel) chkLabel.classList.toggle('disabled', actual);
-}
+// §5.76-D: Project filter + Group by = Project ใช้กับ Actual ได้แล้ว (Actual มี project_name)
+// §5.87 (2026-11-03): ตัด "Show only conflict" ทิ้งแล้ว (เลิกเช็ค MD รวมต่อวัน) — ตอนนี้ไม่มีตัวกรอง
+// ไหนต้องปิดในโหมด Actual เหลือเป็น hook ว่างไว้ให้ call site เดิม (เผื่อมีตัวกรองใหม่ในอนาคต)
+function applyOsModeGating() {}
 
 // popup บอกช่วงข้อมูล Actual MD — เด้งทุกครั้งที่ผู้ใช้สลับ "เข้า" โหมด Actual (ไม่จำว่าเคยเห็นแล้ว)
 // อ่านจาก pqa.v_actual_md_daily_range (แถวเดียว ไม่ต้องโหลดทั้งตารางมานับ) — โหลดพลาด/ยังไม่มีตาราง
@@ -1165,10 +1144,10 @@ function renderThead(days) {
   const row3 = `<tr>
     ${days.map(ds => {
       const wknd = isWknd(new Date(ds + 'T00:00:00'), S.holidays);
-      const total = S.bookings
-        .filter(b => ds >= b.start_date && ds <= b.end_date)
-        .reduce((sum, b) => sum + Number(b.md), 0);
-      return `<th class="th-count${wknd ? ' wknd' : ''}">${total ? fmtMD(total) : ''}</th>`;
+      // §5.87 (2026-11-03): นับ "จำนวนคน" ที่ถูก Book วันนั้น (คนละ 1 ไม่ว่าจะจองกี่ project
+      // / 1 หรือ 0.5) แทนผลรวม MD — จองซ้อนหลาย project ได้แล้ว ผลรวม MD จะนับคนซ้ำ
+      const total = osBookedCountOnDay(ds);
+      return `<th class="th-count${wknd ? ' wknd' : ''}" title="OS ที่ถูก Book วันนี้">${total || ''}</th>`;
     }).join('')}
   </tr>`;
 
@@ -1205,25 +1184,14 @@ function matchesFilters(p) {
   return true;
 }
 
-// 2026-08-12: ตัด leave ออกจากเงื่อนไข conflict แล้ว (ทีมขอ) — Book OS คร่อมช่วงที่มี
-// Leave ได้โดยไม่ต้องแจ้งเตือน เพราะตอนคำนวณ MD จริงของ Project Phase (Effective MD,
-// §5.20/§5.38) จะหักวันลาออกจาก Booked MD ให้เองอยู่แล้ว ที่นี่จึงเหลือเช็คแค่
-// "double-booking" จริง (คนเดียวถูกจองสอง project/phase ทับกันจนเกิน 1.0 ต่อวัน)
-// ตรงกับ fn_validate_md / fn_save_bookings_batch ฝั่ง RPC ที่แก้พร้อมกัน
-function computeConflictMap(days) {
-  const map = {};
-  S.osStaff.forEach(p => {
-    const bk = S.bookingsByResource[p.resourceId] || [];
-    if (!bk.length) return;
-    const bad = [];
-    days.forEach(ds => {
-      const bkMD = bk.filter(b => ds >= b.start_date && ds <= b.end_date)
-        .reduce((s, b) => s + Number(b.md), 0);
-      if (bkMD > 1.0) bad.push(ds);
-    });
-    if (bad.length) map[p.resourceId] = bad;
-  });
-  return map;
+// §5.87 (2026-11-03): ตัด computeConflictMap() ทิ้ง — เลิกเช็ค MD รวม ≤ 1.0 ต่อคนต่อวันแล้ว
+// (จองซ้อนหลาย project วันเดียวกันได้) จึงไม่มีแนวคิด "Booking Conflict" ในหน้านี้อีก
+
+// §5.87: จำนวน OS (คนไม่ซ้ำ) ที่มี booking คาบวันนี้ — ใช้ทำแถวตัวเลขบนหัวตาราง
+function osBookedCountOnDay(ds) {
+  const ids = new Set();
+  S.bookings.forEach(b => { if (ds >= b.start_date && ds <= b.end_date) ids.add(b.resource_id); });
+  return ids.size;
 }
 
 // rowFilter: ถ้าระบุ จะกรองเฉพาะ booking ที่ตรงเงื่อนไข ให้เห็นมิติ "คนคนนี้ทำงานอะไรให้กลุ่มนี้"
@@ -1422,12 +1390,12 @@ function unmatchedActualRowsFiltered() {
 // สร้างกลุ่มท้ายตาราง "ไม่พบใน OS master (N คน)" ของโหมด Actual — แยกเป็นฟังก์ชันเดี่ยว
 // (คืนรูปแบบเดียวกับ renderByProjectGroups()/renderByAttrGroups() คือ {html, count}) เพื่อให้
 // เทสต์เรียกตรงได้โดยไม่ต้องประกอบ DOM/state ทั้งหน้า — เรียกจาก renderTbody() เท่านั้น
-function renderUnmatchedActualGroup(days, conflictMap, colspan) {
+function renderUnmatchedActualGroup(days, colspan) {
   const unmatched = unmatchedActualRowsFiltered();
   if (!unmatched.length) return { html: '', count: 0 };
   const html =
     `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">👤 ไม่พบใน OS master (${unmatched.length} คน)</span></td></tr>` +
-    unmatched.map(u => buildRow(u, days, conflictMap)).join('');
+    unmatched.map(u => buildRow(u, days)).join('');
   return { html, count: unmatched.length };
 }
 
@@ -1488,16 +1456,10 @@ function buildActualDayCell(p, ds, rowFilter) {
   return `<td class="${cls}"${titleAttr}>${content}</td>`;
 }
 
-function buildRow(p, days, conflictMap, rowFilter) {
-  const conflictDates = conflictMap[p.resourceId] || [];
-  const isConflict = conflictDates.length > 0;
+function buildRow(p, days, rowFilter) {
   const roleName = roleLabel(p.roleCode);
   // req 4: มี Last Working Date (end_date ของ outsource_staff) ต่อท้าย Role
   const roleWithLastDay = roleName + (p.endDate ? ` (Last day ${dDisp(p.endDate)})` : '');
-  const nameTitle = isConflict
-    ? ` title="มีวันที่ Book เกิน MD: ${esc(conflictDates.map(dDispShort).join(', '))}"`
-    : '';
-  const nameCls = isConflict ? 'os-name conflict' : 'os-name';
   // โหมด Actual ใช้ cell builder คนละตัว (buildActualDayCell) — โหมด Booked เดิมไม่ถูกแตะ (buildDayCell)
   const cellFn = isActualMode() ? buildActualDayCell : buildDayCell;
   const dayCells = days.map(ds => cellFn(p, ds, rowFilter)).join('');
@@ -1507,7 +1469,7 @@ function buildRow(p, days, conflictMap, rowFilter) {
       <div class="name-cell">
         <button class="btn sm edit-btn" onclick="openLeavePlan('${p.resourceId}')" title="Edit">✏️</button>
         <div class="name-cell-text">
-          <div class="${nameCls}"${nameTitle}>${isConflict ? '⚠️ ' : ''}${esc(resName(p.nickname, p.fullName))}</div>
+          <div class="os-name">${esc(resName(p.nickname, p.fullName))}</div>
           <div class="role-badge">${esc(roleWithLastDay)}</div>
         </div>
       </div>
@@ -1531,14 +1493,14 @@ function sortFn(a, b) {
 // §5.76-D: Group by Project ของโหมด Actual — 1 section ต่อ project (ที่มี Actual หลังกรอง), แถว = คนที่
 // มี Actual ใน project นั้น (cell นับเฉพาะ Actual ของ project นั้น); ท้ายสุด "ไม่พบ Project" (Actual ที่
 // project_key = null) และ "ยังไม่มี Project" (คนที่ผ่านตัวกรองแต่ไม่มี Actual เลย) — ไม่ทิ้งแถวใด
-function renderActualByProjectGroups(withMeta, days, conflictMap, colspan) {
+function renderActualByProjectGroups(withMeta, days, colspan) {
   const byProj = S.actual.peopleByProject || {};
   let html = '';
   const uniqueRes = new Set();
   const section = (headHtml, rows, filterKey) => {
     rows.forEach(x => uniqueRes.add(x.p.resourceId));
     html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">${headHtml}</span></td></tr>`;
-    html += rows.map(x => buildRow(x.p, days, conflictMap, filterKey)).join('');
+    html += rows.map(x => buildRow(x.p, days, filterKey)).join('');
   };
   S.projectsActive.forEach(proj => {
     // ไม่เรียก projectPassesFilter() — Project/App/Lead กรองที่ระดับแถว Actual ใน refreshActualIndex() แล้ว
@@ -1561,7 +1523,7 @@ function renderActualByProjectGroups(withMeta, days, conflictMap, colspan) {
   if (rest.length) {
     rest.forEach(x => uniqueRes.add(x.p.resourceId));
     html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ยังไม่มี Project (${rest.length} คน)</span></td></tr>`;
-    html += rest.map(x => buildRow(x.p, days, conflictMap)).join('');
+    html += rest.map(x => buildRow(x.p, days)).join('');
   }
   return { html, uniqueCount: uniqueRes.size };
 }
@@ -1570,7 +1532,7 @@ function renderActualByProjectGroups(withMeta, days, conflictMap, colspan) {
 // (ในช่วงวันที่ที่เลือก) — คนคนเดียวกันจะมีหลายบรรทัดได้ถ้าถูกจองมากกว่า 1 project ในช่วงนี้
 // (แต่ละบรรทัดโชว์เฉพาะ booking ของ project นั้นๆ ผ่าน projectKey ที่ส่งให้ buildDayCell)
 // ท้ายสุด: OS ที่ไม่เข้ากลุ่มไหนเลย → กลุ่ม "ยังไม่มี Project" ต่อท้ายสุดของตาราง (2026-08-18)
-function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
+function renderByProjectGroups(withMeta, days, colspan) {
   const metaByResId = {};
   withMeta.forEach(x => { metaByResId[x.p.resourceId] = x; });
 
@@ -1598,7 +1560,7 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
     const headParts = [proj.project_name, appLabel, leadLabel, `(${rows.length} คน)`]
       .filter(Boolean).map(esc);
     html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📁 ${headParts.join(' · ')}</span></td></tr>`;
-    html += rows.map(x => buildRow(x.p, days, conflictMap, proj.project_key)).join('');
+    html += rows.map(x => buildRow(x.p, days, proj.project_key)).join('');
   });
 
   // req (2026-08-18): OS ที่ไม่ถูกจัดเข้ากลุ่ม Project ไหนเลย (ไม่มี booking ในช่วงนี้เลย,
@@ -1608,7 +1570,7 @@ function renderByProjectGroups(withMeta, days, conflictMap, colspan) {
   if (noProjectRows.length) {
     noProjectRows.forEach(x => uniqueRes.add(x.p.resourceId));
     html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ยังไม่มี Project (${noProjectRows.length} คน)</span></td></tr>`;
-    html += noProjectRows.map(x => buildRow(x.p, days, conflictMap)).join('');
+    html += noProjectRows.map(x => buildRow(x.p, days)).join('');
   }
 
   return { html, uniqueCount: uniqueRes.size };
@@ -1626,7 +1588,7 @@ function attrKeyOf(kind, info) {
   return info.uatLead || '';
 }
 
-function renderByAttrGroups(withMeta, days, conflictMap, colspan, kind) {
+function renderByAttrGroups(withMeta, days, colspan, kind) {
   const metaByResId = {};
   withMeta.forEach(x => { metaByResId[x.p.resourceId] = x; });
 
@@ -1661,14 +1623,14 @@ function renderByAttrGroups(withMeta, days, conflictMap, colspan, kind) {
       const info = S.projMap[b.project_key];
       return !!info && attrKeyOf(kind, info) === sec.key;
     };
-    html += rows.map(x => buildRow(x.p, days, conflictMap, rowFilter)).join('');
+    html += rows.map(x => buildRow(x.p, days, rowFilter)).join('');
   });
 
   const noneRows = withMeta.filter(x => !uniqueRes.has(x.p.resourceId)).sort(sortFn);
   if (noneRows.length) {
     noneRows.forEach(x => uniqueRes.add(x.p.resourceId));
     html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📂 ${noneLabel} (${noneRows.length} คน)</span></td></tr>`;
-    html += noneRows.map(x => buildRow(x.p, days, conflictMap)).join('');
+    html += noneRows.map(x => buildRow(x.p, days)).join('');
   }
 
   return { html, uniqueCount: uniqueRes.size };
@@ -1762,18 +1724,11 @@ function closeAllMsPanels() {
 document.addEventListener('click', closeAllMsPanels);
 
 function renderTbody(days) {
-  const conflictMap = computeConflictMap(days);
   const actualMode = isActualMode();
   // ตัวกรอง App/UAT Lead อาจเปลี่ยนไปตั้งแต่ครั้งก่อนที่ ensureActualData() fetch ข้อมูลมา —
   // rebuild index ทุกครั้งที่ render โหมด Actual (ในหน่วยความจำล้วน ไม่ query ซ้ำ, §4.4)
   if (actualMode) refreshActualIndex();
   let list = actualMode ? S.osStaff.filter(matchesActualFilters) : S.osStaff.filter(matchesFilters);
-
-  // Show only conflict ไม่มีผลกับ Actual MD (conflict มาจาก booking ชนกัน ไม่เกี่ยวกับ
-  // Actual — §4.6) — checkbox ถูก disabled แล้วแต่ค่า .checked ที่ค้างมาจากก่อนสลับโหมด
-  // ต้องไม่มีผลต่อการกรองด้วย
-  const chkConflict = !actualMode && $('chkConflict').checked;
-  if (chkConflict) list = list.filter(p => (conflictMap[p.resourceId] || []).length > 0);
 
   const withMeta = list.map(toMeta);
   const groupMode = $('selGroupBy').value; // 'booked' | 'project' | 'app' | 'lead' | 'none'
@@ -1782,11 +1737,11 @@ function renderTbody(days) {
   let shownCount = list.length;
 
   if (groupMode === 'project') {
-    const built = (actualMode ? renderActualByProjectGroups : renderByProjectGroups)(withMeta, days, conflictMap, colspan);
+    const built = (actualMode ? renderActualByProjectGroups : renderByProjectGroups)(withMeta, days, colspan);
     html = built.html;
     shownCount = built.uniqueCount;
   } else if (groupMode === 'app' || groupMode === 'lead') {
-    const built = renderByAttrGroups(withMeta, days, conflictMap, colspan, groupMode);
+    const built = renderByAttrGroups(withMeta, days, colspan, groupMode);
     html = built.html;
     shownCount = built.uniqueCount;
   } else if (groupMode === 'booked') {
@@ -1794,14 +1749,14 @@ function renderTbody(days) {
     const vacantList = withMeta.filter(x => !x.booked).sort(sortFn);
     if (bookedList.length) {
       html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">📌 Booked (${bookedList.length} คน)</span></td></tr>`;
-      html += bookedList.map(x => buildRow(x.p, days, conflictMap)).join('');
+      html += bookedList.map(x => buildRow(x.p, days)).join('');
     }
     if (vacantList.length) {
       html += `<tr class="grp-sep"><td colspan="${colspan}"><span class="grp-label">⭕ Vacant (${vacantList.length} คน)</span></td></tr>`;
-      html += vacantList.map(x => buildRow(x.p, days, conflictMap)).join('');
+      html += vacantList.map(x => buildRow(x.p, days)).join('');
     }
   } else {
-    html = withMeta.sort(sortFn).map(x => buildRow(x.p, days, conflictMap)).join('');
+    html = withMeta.sort(sortFn).map(x => buildRow(x.p, days)).join('');
   }
 
   // โหมด Actual: คนที่มี Actual MD แต่จับคู่ชื่อกับ OS master ไม่ได้เลย → กองเป็นกลุ่มท้ายสุด
@@ -1809,15 +1764,13 @@ function renderTbody(days) {
   // Project" §5.47) — นับรวมเข้า shownCount ด้วย ไม่งั้นตัวเลขหัวตาราง (osCount) จะไม่ตรงกับ
   // จำนวนแถวที่ render จริง
   if (actualMode) {
-    const built = renderUnmatchedActualGroup(days, conflictMap, colspan);
+    const built = renderUnmatchedActualGroup(days, colspan);
     html += built.html;
     shownCount += built.count;
   }
 
   if (!html) {
-    html = chkConflict
-      ? `<tr><td colspan="${colspan}" class="loading">ไม่พบ Booking Conflict</td></tr>`
-      : `<tr><td colspan="${colspan}" class="loading">ไม่พบข้อมูล</td></tr>`;
+    html = `<tr><td colspan="${colspan}" class="loading">ไม่พบข้อมูล</td></tr>`;
   }
 
   $('osTbody').innerHTML = html;
@@ -1830,7 +1783,6 @@ $('fSkills').addEventListener('input', () => { renderGrid(); saveFilterPrefs(); 
 $('selGroupBy').addEventListener('change', () => {
   renderGrid(); saveFilterPrefs();
 });
-$('chkConflict').addEventListener('change', () => { renderGrid(); saveFilterPrefs(); });
 $('osModeSelect').addEventListener('change', async () => {
   S.osMode = OS_MODES.includes($('osModeSelect').value) ? $('osModeSelect').value : 'booked';
   $('osModeSelect').value = S.osMode;
@@ -1874,7 +1826,6 @@ $('clearFilterBtn').addEventListener('click', async () => {
   $('selGroupBy').value = 'project';
   $('fName').value = '';
   $('fSkills').value = '';
-  $('chkConflict').checked = false;
   const today = new Date();
   $('fStart').value = d2s(addDaysToDate(today, -10));
   $('fEnd').value = defaultFilterEndStr();
@@ -1948,16 +1899,18 @@ function mbRenderTable() {
   }).join('');
 }
 
+// §5.87 (2026-11-03): เลิกเช็ค MD รวม ≤ 1.0 — ไม่ปิดปุ่ม Add แล้ว (จองเพิ่ม project ได้เสมอ)
+// สรุปเป็นจำนวน project ที่ถูกจองวันนี้ + วันลา (ถ้ามี) แทน "MD รวมวันนี้"
 function mbRefreshSummary() {
-  const bkMD = mbBookingsToday().reduce((s, b) => s + Number(b.md), 0);
+  const bk = mbBookingsToday();
+  const projCnt = new Set(bk.map(b => b.project_key)).size;
   const lv = (S.leavesByResource[MB_NAME] || []).find(l => MB_DATE >= l.start_date && MB_DATE <= l.end_date);
-  const lvMD = lv ? Number(lv.md) : 0;
-  const total = bkMD + lvMD;
-  $('mbMdSummary').innerHTML = `MD รวมวันนี้: <b>${fmtMD(total)}</b> (Booking: ${fmtMD(bkMD)} + Leave: ${fmtMD(lvMD)})`;
-  $('mbMdSummary').className = 'md-summary' + (total >= 1 ? ' full' : '');
+  const lvTxt = lv ? ` · Leave: ${esc(lv.leave_slot)}` : '';
+  $('mbMdSummary').innerHTML = `Booking วันนี้: <b>${projCnt}</b> Project${lvTxt}`;
+  $('mbMdSummary').className = 'md-summary';
   const addBtn = $('mbAddBtn');
-  addBtn.disabled = total >= 1;
-  addBtn.title = total >= 1 ? 'MD เต็มแล้วสำหรับวันนี้' : '';
+  addBtn.disabled = false;
+  addBtn.title = '';
 }
 
 function activeProjectsCoveringDate(ds) {

@@ -1489,10 +1489,13 @@ function computeAgg(bookingRows, leaveRows, projMap, opts){
 
   // factor ต่อ resource+วัน = สัดส่วน MD ที่เหลือหลังหักวันลา (0..1) — คำนวณจาก booked ทั้งระบบ
   // (pass 1 ข้างบน) เทียบกับ leave ของวันนั้น ไม่ขึ้นกับ restrict
+  // §5.87 (2026-11-03): จองซ้อนหลาย project วันเดียวกันได้แล้ว — 1 คน 1 วันทำงานได้รวมไม่เกิน 1 MD
+  // จึง cap booked ที่ 1 ก่อนหักลา แล้วปันส่วนตามสัดส่วนเดิม (booked ≤ 1 ได้ค่าเท่าสูตรเดิมทุกประการ)
+  // ต้องตรงกับ gantt.html buildEffFactorMap() เสมอ
   const effFactorByResDay = {};
   Object.keys(dailyBookedByResDay).forEach(k => {
     const booked = dailyBookedByResDay[k];
-    const eff = Math.max(0, booked - (leaveByResDay[k] || 0));
+    const eff = Math.max(0, Math.min(booked, 1) - (leaveByResDay[k] || 0));
     effFactorByResDay[k] = booked > 0 ? eff / booked : 0;
   });
 

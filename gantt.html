@@ -285,21 +285,6 @@
   /* co-edit OS column: let long names wrap instead of stretching the table and
      pushing the Start/End date fields off-screen; the tag drops to its own line */
   .bk-table td.bk-os-cell { white-space:normal; word-break:break-word; max-width:150px; }
-  /* 2026-09-02: co-edit table (#bkCoRows, 6 columns incl. long Project names) squished
-     the OS column down to single-character wrapping because .modal-body has
-     overflow-x:hidden and the table had nowhere to grow — controls became unreachable.
-     Wrap it in its own horizontal-scroll strip (same pattern as .phase-table-scroll in
-     theme.css) and let the OS column size to content instead of forcing a wrap. */
-  .bk-table-scroll {
-    overflow-x:auto; overflow-y:hidden; padding-bottom:4px;
-    scrollbar-width:thin; scrollbar-color:var(--dk-border-s) var(--dk-surface);
-  }
-  .bk-table-scroll::-webkit-scrollbar { height:8px; }
-  .bk-table-scroll::-webkit-scrollbar-track { background:var(--dk-surface); border-radius:4px; }
-  .bk-table-scroll::-webkit-scrollbar-thumb { background:var(--dk-border-s); border-radius:4px; }
-  .bk-table-scroll::-webkit-scrollbar-thumb:hover { background:var(--dk-text3); }
-  .bk-table-scroll .bk-table { min-width:800px; }
-  .bk-table-scroll .bk-table td.bk-os-cell { white-space:nowrap; max-width:none; }
   .bk-table input, .bk-table select { padding:5px 7px; border-radius:6px; border:1px solid var(--dk-border-s); font-size:12.5px; }
   /* co-edit Start/End: native <input type="date"> renders in the browser's own locale
      (often mm/dd/yyyy), which doesn't match the dd/mm/yyyy header above it. Hide the
@@ -567,28 +552,9 @@
         </div>
         <div class="bk-err" id="bkFormErr"></div>
         <div class="row-btns" style="margin-top:6px">
-          <button class="btn sm" onclick="bkCheckConflict()">🔎 Check MD Conflict</button>
           <span class="spacer" style="flex:1"></span>
           <button class="btn sm" onclick="bkCancelForm()">ยกเลิก</button>
           <button class="btn accent sm" id="bkSaveBtn" onclick="bkSaveForm()">บันทึก</button>
-        </div>
-      </div>
-
-      <!-- co-edit area -->
-      <div class="area hidden" id="bkCoArea">
-        <div class="sub-head">⚠️ Co-Edit — ปรับ Start/End/MD ให้ MD รวมไม่เกิน 1.0 ต่อวัน</div>
-        <div class="bk-table-scroll">
-          <table class="bk-table">
-            <thead><tr>
-              <th>OS</th><th>Project</th><th>Phase</th><th>Start</th><th>End</th><th>Booking</th>
-            </tr></thead>
-            <tbody id="bkCoRows"></tbody>
-          </table>
-        </div>
-        <div class="bk-err" id="bkCoErr"></div>
-        <div class="row-btns" style="margin-top:8px;justify-content:flex-end">
-          <button class="btn sm" onclick="bkCoCancel()">ยกเลิก</button>
-          <button class="btn accent sm" id="bkCoSaveBtn" onclick="bkCoSave()">💾 Save ทั้งหมด</button>
         </div>
       </div>
 
@@ -1747,10 +1713,13 @@ function buildEffFactorMap(){
   const leaveByResDay = {};
   S.leaveDaily.forEach(l => { leaveByResDay[l.resource_id + '|' + l.leave_date] = Number(l.leave_md) || 0; });
 
+  // §5.87 (2026-11-03): จองซ้อนหลาย project วันเดียวกันได้แล้ว — 1 คน 1 วันทำงานได้รวมไม่เกิน
+  // 1 MD จึง cap ที่ 1 ก่อนหักลา แล้วปันส่วนตามสัดส่วนเหมือนเดิม (จอง 3 project เต็มวัน = ได้
+  // project ละ 1/3) — booked ≤ 1 ได้ค่าเท่าสูตรเดิมทุกประการ ต้องตรงกับ dashboard.html computeAgg()
   const factorMap = {};
   Object.keys(bookedByResDay).forEach(k => {
     const booked = bookedByResDay[k];
-    const eff = Math.max(0, booked - (leaveByResDay[k] || 0));
+    const eff = Math.max(0, Math.min(booked, 1) - (leaveByResDay[k] || 0));
     factorMap[k] = booked > 0 ? eff / booked : 0;
   });
   S.effFactorByResDay = factorMap;
@@ -2351,7 +2320,6 @@ window.closeBookingPopup = function(){ $('bkOverlay').classList.add('hidden'); p
 function showArea(which){
   $('bkListArea').classList.toggle('hidden', which!=='list');
   $('bkFormArea').classList.toggle('hidden', which!=='form');
-  $('bkCoArea').classList.toggle('hidden', which!=='co');
 }
 
 function bookingsOfPhase(){
@@ -2454,22 +2422,6 @@ function readForm(){
   return { start, end, md, resIds };
 }
 
-window.bkCheckConflict = async function(){
-  const f=readForm(); const err=$('bkFormErr'); err.textContent='';
-  if (!f.resIds.length){ err.textContent='กรุณาเลือก Outsource'; return; }
-  if (!f.start || !f.end){ err.textContent='กรุณาระบุ Start/End'; return; }
-  const excl = formMode==='edit' && editBookingId ? [editBookingId] : [];
-  const { data, error } = await supabase.rpc('fn_validate_md', {
-    p_resource_ids:f.resIds, p_start:f.start, p_end:f.end, p_md:f.md, p_exclude_booking_ids:excl });
-  if (error){ err.textContent='ตรวจสอบไม่สำเร็จ: '+error.message; return; }
-  if (data && data.ok){ err.style.color='var(--today)'; err.textContent='✓ MD ไม่ชน สามารถบันทึกได้'; setTimeout(()=>{err.style.color='';},2500); }
-  else {
-    err.style.color='';
-    const dates=(data && data.dates||[]).map(dDisp).join(', ');
-    err.textContent=`⚠️ วันที่ ${dates} MD เกิน 1.0 — กด บันทึก เพื่อเปิด Co-Edit`;
-  }
-};
-
 window.bkSaveForm = async function(){
   const f=readForm(); const err=$('bkFormErr'); err.textContent=''; err.style.color='';
   if (!f.resIds.length){ err.textContent='กรุณาเลือก Outsource'; return; }
@@ -2497,7 +2449,6 @@ window.bkSaveForm = async function(){
     await afterBookingSave('บันทึก Booking แล้ว ✓');
   } catch (e) {
     if (isPermErr(e)) { err.textContent='ไม่มีสิทธิ์แก้ไขข้อมูล'; }
-    else if (isMdErr(e)) { openCoEdit(f); }
     else { err.textContent='บันทึกไม่สำเร็จ: '+(e.message||String(e)); }
   } finally {
     btn.disabled=false; btn.textContent='บันทึก';
@@ -2511,7 +2462,6 @@ window.bkDelete = async function(bid){
   await afterBookingSave('ลบ Booking แล้ว ✓');
 };
 
-function isMdErr(e){ return e && /เกิน MD|MD เกิน/.test(e.message||''); }
 function isPermErr(e){ return e && /ไม่มีสิทธิ์/.test(e.message||''); }
 
 async function afterBookingSave(msg){
@@ -2527,56 +2477,8 @@ async function afterBookingSave(msg){
   renderGantt();
 }
 
-let coRows = [];
-function openCoEdit(f){
-  const saving = (formMode==='edit')
-    ? [{ booking_id:editBookingId, resource_id:f.resIds[0], project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'edit' }]
-    : f.resIds.map(rid => ({ booking_id:null, resource_id:rid, project_key:popCtx.pk, phase_code:popCtx.phaseCode, start:f.start, end:f.end, md:f.md, tag:'new' }));
-
-  const savingBids = new Set(saving.filter(r=>r.booking_id).map(r=>r.booking_id));
-  const resIds = new Set(saving.map(r=>r.resource_id));
-
-  const others = S.bookings.filter(b =>
-    resIds.has(b.resource_id) && !savingBids.has(b.booking_id) &&
-    b.start_date <= f.end && b.end_date >= f.start
-  ).map(b => ({ booking_id:b.booking_id, resource_id:b.resource_id, project_key:b.project_key,
-    phase_code:b.phase_code, start:b.start_date, end:b.end_date, md:Number(b.md), tag:'' }));
-
-  coRows = [...saving, ...others];
-  renderCoRows();
-  $('bkCoErr').textContent='';
-  showArea('co');
-}
-// req 2026-09-02: หา Start/End ของ phase ที่ booking แถวนั้นสังกัดอยู่ — ใช้ทั้งจำกัด
-// min/max ของ date picker และ validate ก่อนเซฟ ('edit'/'new' = phase ที่กำลังจอง อยู่ใน
-// popCtx อยู่แล้ว, 'others' = booking เดิมของ resource คนเดียวกันที่คาบเกี่ยว อาจอยู่คนละ
-// project/phase เลยต้องเปิด S.phasesByProject หา — จับคู่แค่ phase_code เพราะ booking
-// ไม่เก็บ phase_label ไว้แยก Other1/Other2 เหมือน project_phase (§5.7), เท่าที่ข้อมูล booking มีให้)
-function coRowPhaseRange(r){
-  if (r.tag==='edit' || r.tag==='new') return { start:popCtx.phStart, end:popCtx.phEnd };
-  const ph = (S.phasesByProject[r.project_key]||[]).find(x => x.phase_code===r.phase_code);
-  return ph ? { start:ph.start_date, end:ph.end_date } : null;
-}
-function renderCoRows(){
-  $('bkCoRows').innerHTML = coRows.map((r,i) => {
-    const proj = S.projects.find(p=>p.project_key===r.project_key);
-    const tag = r.tag==='edit' ? '<span class="tag edit">กำลังแก้</span>' : r.tag==='new' ? '<span class="tag new">กำลังเพิ่มใหม่</span>' : '';
-    const range = coRowPhaseRange(r);
-    const minAttr = range && range.start ? ` min="${range.start}"` : '';
-    const maxAttr = range && range.end ? ` max="${range.end}"` : '';
-    return `<tr>
-      <td class="bk-os-cell">${esc(resName(r.resource_id))}${tag ? '<br>'+tag : ''}</td>
-      <td>${esc(proj?proj.project_name:r.project_key)}</td>
-      <td>${esc(phaseName(r.phase_code))}</td>
-      <td><span class="date-disp" data-display="${dDisp(r.start)}"><input type="date" value="${r.start}"${minAttr}${maxAttr} onchange="coEdit(${i},'start',this.value,this)"></span></td>
-      <td><span class="date-disp" data-display="${dDisp(r.end)}"><input type="date" value="${r.end}"${minAttr}${maxAttr} onchange="coEdit(${i},'end',this.value,this)"></span></td>
-      <td><select onchange="coEdit(${i},'md',this.value)">
-        <option value="1"${r.md===1?' selected':''}>1</option>
-        <option value="0.5"${r.md===0.5?' selected':''}>0.5</option>
-      </select></td>
-    </tr>`;
-  }).join('');
-}
+// §5.87 (2026-11-03): ตัด Co-Edit (ปรับ booking ที่ชนกันให้ MD รวม ≤ 1.0) ทิ้งทั้งชุด — เลิกเช็ค
+// MD รวมต่อวันแล้ว จองซ้อนหลาย project วันเดียวกันได้ ไม่มีเคสให้ต้องเกลี่ยอีก
 /* ============ ESC closes any open modal (req 2) ============ */
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -2586,47 +2488,6 @@ document.addEventListener('keydown', e => {
   // signoffReviewOverlay ESC handling lives in signoffReviewModal.js itself (element is
   // lazily injected, so it may not exist in the DOM yet).
 });
-
-window.coEdit = function(i, field, val, inputEl){
-  coRows[i][field] = field==='md'?Number(val):val;
-  // keep the overlaid dd/mm/yyyy label in sync with whatever the native picker set
-  if (inputEl && (field==='start' || field==='end')) {
-    const wrap = inputEl.closest('.date-disp');
-    if (wrap) wrap.dataset.display = dDisp(val);
-  }
-};
-window.bkCoCancel = function(){ showArea('form'); };
-window.bkCoSave = async function(){
-  const err=$('bkCoErr'); err.textContent='';
-  for (const r of coRows) {
-    const range = coRowPhaseRange(r);
-    if (range && range.start && range.end && (r.start < range.start || r.end > range.end)) {
-      err.textContent = `Start/End ของ ${resName(r.resource_id)} ต้องอยู่ในช่วงของเฟส ${phaseName(r.phase_code)} (${dDisp(range.start)} - ${dDisp(range.end)})`;
-      return;
-    }
-  }
-  const btn=$('bkCoSaveBtn'); btn.disabled=true; btn.textContent='กำลังบันทึก...';
-  const items = coRows.map(r => {
-    const it = { project_key:r.project_key, resource_id:r.resource_id, phase_code:r.phase_code,
-      start_date:r.start, end_date:r.end, md:r.md };
-    if (r.booking_id) it.booking_id = r.booking_id;
-    return it;
-  });
-  try {
-    const { error } = await supabase.rpc('fn_save_bookings_batch', { p_items:items });
-    if (error) throw error;
-    await afterBookingSave('บันทึกทั้งหมดแล้ว ✓');
-  } catch (e) {
-    if (isPermErr(e)) err.textContent='ไม่มีสิทธิ์แก้ไขข้อมูล';
-    else {
-      const m=(e.message||'').match(/:\s*(.+)$/);
-      const ds=(m?m[1]:'').split(',').map(s=>{ const t=s.trim(); return /^\d{4}-\d{2}-\d{2}$/.test(t)?dDisp(t):t; }).join(', ');
-      err.textContent=`วันที่ ${ds} มีการ Booking เกิน MD ให้ปรับปรุง Start Date, End Date`;
-    }
-  } finally {
-    btn.disabled=false; btn.textContent='💾 Save ทั้งหมด';
-  }
-};
 
 /* ============ always-visible custom horizontal scrollbar for gantt table ============
    2026-08-24: plain CSS (overflow-x:scroll + styled ::-webkit-scrollbar) — the fix
