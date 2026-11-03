@@ -384,6 +384,7 @@
       <button class="tab-btn" onclick="switchTab('phase')">Phase</button>
       <button class="tab-btn" onclick="switchTab('project_status')">Project Status</button>
       <button class="tab-btn" onclick="switchTab('tester_role')">Tester Role</button>
+      <button class="tab-btn" onclick="switchTab('pqa_lead')">PQA Lead</button>
       <button class="tab-btn" onclick="switchTab('app_user')">User</button>
       <button class="tab-btn" onclick="switchTab('browse_file')">Browse File</button>
     </div>
@@ -582,9 +583,45 @@
       </div>
     </div>
 
+    <!-- ============ PQA LEAD TAB ============ (2026-11-03, §5.83)
+         master pqa.pqa_lead — ใช้เป็น Main/Sub Lead/Executor ของ Project และผูกกับ User
+         (app_user.pqa_emp_id) — ลบ = ปิดใช้งานเสมอ เพราะมี FK ชี้มาหลายตาราง -->
+    <div id="tab-pqa_lead" class="tab-content">
+      <div class="toolbar">
+        <button class="btn accent" id="addPqaLeadBtn" onclick="openAddModal('pqa_lead')">+ เพิ่ม PQA Lead</button>
+        <select id="pqaLeadActiveFilter">
+          <option value="active">Active เท่านั้น</option>
+          <option value="all">ทั้งหมด</option>
+          <option value="inactive">Inactive เท่านั้น</option>
+        </select>
+        <input class="search" id="pqaLeadSearch" placeholder="ค้นหา ชื่อ / ชื่อเล่น / email / emp id...">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" data-table="pqa_lead" data-key="emp_id" onclick="sortAdminTable(this)">Emp ID<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="short_name" onclick="sortAdminTable(this)">Short Name<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="nickname" onclick="sortAdminTable(this)">ชื่อเล่น<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="name_en" onclick="sortAdminTable(this)">Name (EN)<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="email" onclick="sortAdminTable(this)">Email<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="role_code" onclick="sortAdminTable(this)">Role<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="app_role" onclick="sortAdminTable(this)">สิทธิ์แอป<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="login_user" onclick="sortAdminTable(this)">Login User<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="pqa_lead" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
+              <th class="center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows-pqa_lead"><tr><td colspan="10" class="loading">กำลังโหลด...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ============ USER TAB ============ -->
     <div id="tab-app_user" class="tab-content">
       <div class="toolbar">
+        <!-- §5.85: เพิ่ม User = เพิ่ม PQA Lead + สร้างบัญชี Login ในฟอร์มเดียว (ไม่ต้องไปทำที่ Supabase) -->
+        <button class="btn accent" id="addUserBtn" onclick="openAddModal('pqa_lead', { asUser: true })">+ Add User</button>
         <select id="userRoleFilter">
           <option value="all">ทุก Role</option>
           <option value="admin">admin</option>
@@ -602,11 +639,12 @@
               <th class="sortable" data-table="app_user" data-key="email" onclick="sortAdminTable(this)">Email<span class="sort-ico"></span></th>
               <th class="sortable" data-table="app_user" data-key="emp_id" onclick="sortAdminTable(this)">Emp ID<span class="sort-ico"></span></th>
               <th class="sortable" data-table="app_user" data-key="app_role" onclick="sortAdminTable(this)">Role<span class="sort-ico"></span></th>
+              <th class="sortable" data-table="app_user" data-key="pqa_lead" onclick="sortAdminTable(this)">PQA Lead<span class="sort-ico"></span></th>
               <th class="sortable" data-table="app_user" data-key="is_active" onclick="sortAdminTable(this)">Active<span class="sort-ico"></span></th>
               <th class="center">Action</th>
             </tr>
           </thead>
-          <tbody id="rows-app_user"><tr><td colspan="6" class="loading">กำลังโหลด...</td></tr></tbody>
+          <tbody id="rows-app_user"><tr><td colspan="7" class="loading">กำลังโหลด...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -829,7 +867,8 @@ window.STATE = {
   phases: [],
   testerRoles: [],
   appUsers: [],
-  pqaLeads: [],
+  pqaLeads: [],           // pqa_lead ที่ active (ใช้ในตัวเลือก Lead ของ Project / ผูก User)
+  pqaLeadsAll: [],        // pqa_lead ทั้งหมดรวม inactive (แท็บ PQA Lead)
   projectStatuses: [],
 
   // sort state ของตาราง App Release Schedule — key: 'default' = multi-key เรียง
@@ -1448,6 +1487,12 @@ if (_userRoleEl) _userRoleEl.addEventListener('change', () => renderRows('app_us
 const _userSearchEl = document.getElementById('userSearch');
 if (_userSearchEl) _userSearchEl.addEventListener('input', () => renderRows('app_user', STATE.appUsers));
 
+const _pqaLeadActiveEl = document.getElementById('pqaLeadActiveFilter');
+if (_pqaLeadActiveEl) _pqaLeadActiveEl.addEventListener('change', () => renderRows('pqa_lead', STATE.pqaLeadsAll));
+
+const _pqaLeadSearchEl = document.getElementById('pqaLeadSearch');
+if (_pqaLeadSearchEl) _pqaLeadSearchEl.addEventListener('input', () => renderRows('pqa_lead', STATE.pqaLeadsAll));
+
 /* ---- Lead pickers ในโมดัล Project (STATE.pqaLeads = pqa_lead ที่ active) ----
  * 2026-08-13: เปลี่ยนจาก <select> เป็น input พิมพ์ค้นหา (initLeadSearch/getLeadSearchValue
  * จาก common.js) ตามที่ขอ — mirror gantt.html เป๊ะ (ดู memory "pqa-gantt-admin-parallel-logic") */
@@ -1790,10 +1835,13 @@ async function loadData(table) {
     // app_release_schedule ไม่มี sort_order — เรียงตาม submitted_date ล่าสุดก่อน, ตารางอื่นเรียง sort_order
     const orderCol = table === 'holiday' ? 'holiday_date'
       : table === 'app_user' ? 'display_name'
+      : table === 'pqa_lead' ? 'short_name'
       : table === 'app_release_schedule' ? 'submitted_date'
       : 'sort_order';
     const ascending = table !== 'app_release_schedule';
-    const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending });
+    const { data, error } = await supabase.from(table).select(selectColsFor(table)).order(orderCol, { ascending });
+    // แท็บ PQA Lead โชว์ว่า lead แต่ละคนผูกกับ login user คนไหน — ต้องมี app_user พร้อม
+    if (table === 'pqa_lead' && !error) await ensureAppUsersLoaded();
     // sync cache สถานะใน common.js ด้วย (pill ในแท็บ Projects จะได้ใช้สีล่าสุด)
     if (table === 'project_status') await loadProjectStatuses({ includeInactive: true });
 
@@ -1808,11 +1856,128 @@ async function loadData(table) {
     else if (table === 'project_status') STATE.projectStatuses = data || [];
     else if (table === 'tester_role') STATE.testerRoles = data || [];
     else if (table === 'app_user') STATE.appUsers = data || [];
+    else if (table === 'pqa_lead') STATE.pqaLeadsAll = data || [];
 
     renderRows(table, data || []);
   } catch (err) {
     rows.innerHTML = `<tr><td colspan="6" class="loading" style="color:var(--danger)">โหลดไม่สำเร็จ: ${esc(err.message)}</td></tr>`;
   }
+}
+
+// pqa_lead: ไม่ select mobile_no (column-level revoke ใน 04_rls.sql — select('*') อาจถูกปฏิเสธ)
+const PQA_LEAD_COLS = 'emp_id,name_en,name_th,nickname,short_name,email,product,sub_team,role_code,incharge_role,manager_emp_id,app_role,is_active';
+function selectColsFor(table) {
+  return table === 'pqa_lead' ? PQA_LEAD_COLS : '*';
+}
+
+// โหลด app_user ใหม่ทั้งก้อน (ไม่สน cache) — หลังแก้ PQA Lead ที่ trigger ลอกค่าไป app_user (§5.84)
+async function reloadAppUsers() {
+  STATE.appUsers = [];
+  await ensureAppUsersLoaded();
+  renderRows('app_user', STATE.appUsers);   // แท็บ User (Add User / ปุ่มสร้างบัญชี) เห็นผลทันที
+}
+
+async function ensureAppUsersLoaded() {
+  if (STATE.appUsers.length) return;
+  const { data, error } = await supabase.from('app_user').select('*').order('display_name');
+  if (error) { console.warn('app_user', error); return; }
+  STATE.appUsers = data || [];
+}
+
+async function ensureTesterRolesLoaded() {
+  if (STATE.testerRoles.length) return;
+  const { data, error } = await supabase.from('tester_role').select('*').order('sort_order');
+  if (error) { console.warn('tester_role', error); return; }
+  STATE.testerRoles = data || [];
+}
+
+// ชื่อ lead ที่ใช้แสดง "ชื่อเล่น : ชื่อ" (§4.4) — ไม่เจอใน cache (เช่น inactive) fallback เป็น emp_id
+function pqaLeadDisplay(empId) {
+  if (!empId) return '';
+  const l = STATE.pqaLeadsAll.find(x => x.emp_id === empId) || STATE.pqaLeads.find(x => x.emp_id === empId);
+  if (!l) return empId;
+  return (l.nickname ? l.nickname + ' : ' : '') + (l.short_name || l.emp_id);
+}
+
+// ตัวกรองแท็บ PQA Lead: activeMode = active | inactive | all, q = ค้นหา emp_id/ชื่อ/ชื่อเล่น/email
+function filterPqaLeadRows(rows, activeMode, q) {
+  let out = rows || [];
+  if (activeMode === 'active') out = out.filter(l => l.is_active);
+  else if (activeMode === 'inactive') out = out.filter(l => !l.is_active);
+  const s = String(q || '').trim().toLowerCase();
+  if (s) out = out.filter(l => [l.emp_id, l.short_name, l.nickname, l.name_en, l.name_th, l.email]
+    .some(v => String(v || '').toLowerCase().includes(s)));
+  return out;
+}
+
+// validate ฟอร์ม PQA Lead — editingEmpId = emp_id ที่กำลังแก้ (null = เพิ่มใหม่), allLeads = รวม inactive
+// short_name ต้องไม่ซ้ำ (unique ใน DB) / email ต้องไม่ซ้ำ (ซ้ำแล้ว Approver ของ Actual MD map ไม่ได้)
+const APP_ROLES = ['admin', 'lead', 'tester', 'viewer'];
+
+function validatePqaLead(p, editingEmpId, allLeads) {
+  const others = (allLeads || []).filter(l => l.emp_id !== editingEmpId);
+  const lc = s => String(s || '').trim().toLowerCase();
+  if (!editingEmpId) {
+    if (!p.emp_id) return { ok: false, err: 'กรุณาระบุ Emp ID' };
+    if (others.some(l => lc(l.emp_id) === lc(p.emp_id))) return { ok: false, err: `Emp ID ${p.emp_id} มีอยู่แล้ว` };
+  }
+  if (!p.short_name) return { ok: false, err: 'กรุณาระบุ Short Name' };
+  if (!p.name_en) return { ok: false, err: 'กรุณาระบุ Name (EN)' };
+  const dupShort = others.find(l => lc(l.short_name) === lc(p.short_name));
+  if (dupShort) return { ok: false, err: `Short Name "${p.short_name}" ซ้ำกับ ${dupShort.emp_id}` };
+  if (p.email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return { ok: false, err: 'Email ไม่ถูกต้อง' };
+    const dupEmail = others.find(l => lc(l.email) === lc(p.email));
+    if (dupEmail) return { ok: false, err: `Email ซ้ำกับ ${dupEmail.emp_id}` };
+  }
+  if (!APP_ROLES.includes(p.app_role)) return { ok: false, err: 'สิทธิ์ใช้งานแอปไม่ถูกต้อง' };
+  if (p.manager_emp_id && p.manager_emp_id === (editingEmpId || p.emp_id)) {
+    return { ok: false, err: 'Manager ต้องไม่ใช่ตัวเอง' };
+  }
+  return { ok: true };
+}
+
+// §5.85 สร้างบัญชี Login ได้ต่อเมื่อ lead มี Email และ Active (Edge Function create-login-user เช็คซ้ำอีกชั้น)
+function validateCreateLogin(wantLogin, p) {
+  if (!wantLogin) return { ok: true };
+  if (!p.email) return { ok: false, err: 'ต้องมี Email ถึงจะสร้างบัญชี Login ได้ (หรือเอาติ๊ก "สร้างบัญชี Login" ออก)' };
+  if (!p.is_active) return { ok: false, err: 'PQA Lead ที่ปิดใช้งานสร้างบัญชี Login ไม่ได้' };
+  return { ok: true };
+}
+
+// เรียก Edge Function create-login-user — ต้องเป็น admin (เช็คที่ server)
+// สร้างแล้ว trigger §5.84 ผูก app_user กับ lead + ลอกสิทธิ์ให้เอง → โหลดแท็บ User ใหม่
+window.createLoginForLead = async function createLoginForLead(empId) {
+  if (!STATE.isAdmin) { toast('Admin only', true); return; }
+  let res;
+  try {
+    const { data, error } = await supabase.functions.invoke('create-login-user', { body: { emp_id: empId } });
+    res = data;
+    // non-2xx: supabase-js ส่ง error.context = Response — อ่าน reason จาก body จริง
+    if (error) {
+      try { res = await error.context.json(); } catch { res = { ok: false, reason: error.message }; }
+    }
+  } catch (e) {
+    res = { ok: false, reason: e.message || String(e) };
+  }
+  if (!res || !res.ok) {
+    toast('สร้างบัญชี Login ไม่สำเร็จ: ' + ((res && res.reason) || 'ไม่ทราบสาเหตุ'), true);
+    return;
+  }
+  await reloadAppUsers();
+  renderRows('pqa_lead', STATE.pqaLeadsAll);
+  if (res.status === 'exists') {
+    toast(`มีบัญชี ${res.email} อยู่แล้ว — ผูกกับ PQA Lead ให้แล้ว ✓`);
+  } else {
+    toast(`สร้างบัญชี ${res.email} แล้ว ✓`);
+    // prompt = คัดลอกส่งต่อให้ผู้ใช้ได้ (alert คัดลอกไม่ได้ในบางเบราว์เซอร์)
+    window.prompt('สร้างบัญชี Login แล้ว — คัดลอกไปแจ้งผู้ใช้', `Email: ${res.email}  Password: ${res.temp_password}`);
+  }
+};
+
+// login user ที่ผูกกับ lead คนนี้ (app_user.pqa_emp_id) — อาจมีมากกว่า 1 คน
+function loginUsersOfLead(empId) {
+  return STATE.appUsers.filter(u => u.pqa_emp_id === empId).map(u => u.email);
 }
 
 // ชื่อ App ที่แสดงในตาราง App Release Schedule — fallback เป็น code เอง เผื่อ cache ยังไม่มา
@@ -2006,6 +2171,18 @@ const SORT_KEYFNS = {
     email: r => (r.email || '').toLowerCase(),
     emp_id: r => (r.emp_id || '').toLowerCase(),
     app_role: r => (r.app_role || '').toLowerCase(),
+    pqa_lead: r => pqaLeadDisplay(r.pqa_emp_id).toLowerCase() || null,
+    is_active: r => r.is_active ? 1 : 0
+  },
+  pqa_lead: {
+    emp_id: r => (r.emp_id || '').toLowerCase(),
+    short_name: r => (r.short_name || '').toLowerCase(),
+    nickname: r => (r.nickname || '').toLowerCase() || null,
+    name_en: r => (r.name_en || '').toLowerCase(),
+    email: r => (r.email || '').toLowerCase() || null,
+    role_code: r => (r.role_code || '').toLowerCase() || null,
+    app_role: r => (r.app_role || '').toLowerCase() || null,
+    login_user: r => loginUsersOfLead(r.emp_id).join(', ').toLowerCase() || null,
     is_active: r => r.is_active ? 1 : 0
   }
 };
@@ -2044,7 +2221,8 @@ function getCachedRows(table) {
     phase: STATE.phases,
     project_status: STATE.projectStatuses,
     tester_role: STATE.testerRoles,
-    app_user: STATE.appUsers
+    app_user: STATE.appUsers,
+    pqa_lead: STATE.pqaLeadsAll
   };
   return map[table] || [];
 }
@@ -2084,6 +2262,10 @@ function renderRows(table, data) {
     const searchEl = $('userSearch');
     const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
     if (q) data = data.filter(u => [u.display_name, u.email, u.emp_id].some(v => (v || '').toLowerCase().includes(q)));
+  } else if (table === 'pqa_lead') {
+    data = filterPqaLeadRows(data,
+      $('pqaLeadActiveFilter') ? $('pqaLeadActiveFilter').value : 'active',
+      $('pqaLeadSearch') ? $('pqaLeadSearch').value : '');
   }
 
   // ---- generic sort (ยกเว้น app_release_schedule ที่มีระบบ sort/ตัวกรองของตัวเองอยู่แล้ว) ----
@@ -2212,30 +2394,58 @@ function renderRows(table, data) {
         <td>${esc(u.email || '')}</td>
         <td>${esc(u.emp_id || '') || '—'}</td>
         <td>${esc(u.app_role || '')}</td>
+        <td>${esc(pqaLeadDisplay(u.pqa_emp_id)) || '—'}</td>
         <td><span class="is-active-pill ${u.is_active ? 'yes' : 'no'}">${u.is_active ? 'Y' : 'N'}</span></td>
         <td class="center">
-          <button class="btn sm" onclick="openEditModal('app_user', '${esc(u.user_id)}')">✏️</button>
+          ${u.pqa_emp_id
+            ? `<button class="btn sm" title="ผูกกับ PQA Lead แล้ว — สิทธิ์/Active แก้ที่ PQA Lead" onclick="openEditModal('pqa_lead', '${esc(u.pqa_emp_id)}')">✏️ Lead</button>`
+            : `<button class="btn sm" onclick="openEditModal('app_user', '${esc(u.user_id)}')">✏️</button>`}
         </td>
       </tr>
     `).join('');
+  } else if (table === 'pqa_lead') {
+    html = data.map(l => {
+      const users = loginUsersOfLead(l.emp_id);
+      return `
+      <tr>
+        <td>${esc(l.emp_id)}</td>
+        <td><b>${esc(l.short_name || '')}</b></td>
+        <td>${esc(l.nickname || '') || '—'}</td>
+        <td>${esc(l.name_en || '')}</td>
+        <td>${esc(l.email || '') || '—'}</td>
+        <td>${esc(l.role_code || '') || '—'}</td>
+        <td>${esc(l.app_role || '') || '—'}</td>
+        <td>${users.length ? users.map(esc).join('<br>')
+          : (l.is_active && l.email)
+            ? `<button class="btn sm" onclick="createLoginForLead('${esc(l.emp_id)}')">＋ สร้างบัญชี</button>`
+            : '<span style="color:var(--dk-text3)">— ยังไม่ผูก —</span>'}</td>
+        <td><span class="is-active-pill ${l.is_active ? 'yes' : 'no'}">${l.is_active ? 'Y' : 'N'}</span></td>
+        <td class="center">
+          <button class="btn sm" onclick="openEditModal('pqa_lead', '${esc(l.emp_id)}')">✏️</button>
+          ${l.is_active ? `<button class="btn sm danger" onclick="deleteRecord('pqa_lead', '${esc(l.emp_id)}')">🗑️</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
   }
 
   rows.innerHTML = html;
 }
 
 /* ============ MODAL ============ */
-window.openAddModal = async function(table) {
+window.openAddModal = async function(table, opts = {}) {
   if (!STATE.isAdmin) {
     toast('Admin only', true);
     return;
   }
   // App Release Schedule ต้องมี release_app (dropdown App) มาก่อนเสมอ กันเคสกดเพิ่มเร็วกว่าโหลดตาราง Release App เสร็จ
   if (table === 'app_release_schedule') await ensureReleaseAppsLoaded();
+  if (table === 'pqa_lead') await ensureTesterRolesLoaded();   // dropdown Role
   STATE.editingMode = false;
   STATE.editingPK = null;
   STATE.currentTable = table;
   renderForm(table, null);
-  $('modalTitle').textContent = `เพิ่ม ${getTableLabel(table)}`;
+  $('modalTitle').textContent = (table === 'pqa_lead' && opts.asUser)
+    ? 'เพิ่ม User (PQA Lead + บัญชี Login)' : `เพิ่ม ${getTableLabel(table)}`;
   $('formErr').textContent = '';
   $('formOverlay').classList.remove('hidden');
 };
@@ -2246,13 +2456,14 @@ window.openEditModal = async function(table, pk) {
     return;
   }
   if (table === 'app_release_schedule') await ensureReleaseAppsLoaded();
+  if (table === 'pqa_lead') await ensureTesterRolesLoaded();
 
   STATE.editingMode = true;
   STATE.editingPK = pk;
   STATE.currentTable = table;
 
   // Fetch record
-  const { data, error } = await supabase.from(table).select('*').eq(getPKField(table), pk).maybeSingle();
+  const { data, error } = await supabase.from(table).select(selectColsFor(table)).eq(getPKField(table), pk).maybeSingle();
   if (error) {
     toast('โหลดไม่สำเร็จ: ' + error.message, true);
     return;
@@ -2277,7 +2488,8 @@ function getTableLabel(table) {
     phase: 'Phase',
     project_status: 'Project Status',
     tester_role: 'Tester Role',
-    app_user: 'User'
+    app_user: 'User',
+    pqa_lead: 'PQA Lead'
   };
   return map[table] || table;
 }
@@ -2291,7 +2503,8 @@ function getPKField(table) {
     phase: 'phase_code',
     project_status: 'status_code',
     tester_role: 'role_code',
-    app_user: 'user_id'
+    app_user: 'user_id',
+    pqa_lead: 'emp_id'
   };
   return map[table] || 'id';
 }
@@ -2487,6 +2700,7 @@ function renderForm(table, data) {
     `;
   } else if (table === 'app_user') {
     // User ไม่มีปุ่มเพิ่ม — เป็น edit-only, แก้ได้แค่ Role + Active
+    // ใช้กับ user ที่ยังไม่ผูก PQA Lead เท่านั้น — ผูกแล้ว trigger จะลอกค่าจาก lead ทับเสมอ (§5.84)
     html = `
       <div class="field">
         <label>Display Name</label>
@@ -2506,7 +2720,7 @@ function renderForm(table, data) {
         </select>
       </div>
       <div class="field">
-        <label>ผูกกับ PQA Lead (สำหรับ default filter)</label>
+        <label>ผูกกับ PQA Lead (ผูกแล้ว Role/Active จะถูกตั้งตาม PQA Lead คนนั้นแทน)</label>
         <select id="f-pqa_emp_id">
           <option value="">— ไม่ผูก —</option>
           ${STATE.pqaLeads.map(l => `
@@ -2518,6 +2732,79 @@ function renderForm(table, data) {
         <input type="checkbox" id="f-is_active" ${data && data.is_active ? 'checked' : ''}>
         <label for="f-is_active">Active</label>
       </div>
+    `;
+  } else if (table === 'pqa_lead') {
+    const v = k => (data && data[k] != null) ? esc(String(data[k])) : '';
+    const managerOpts = STATE.pqaLeads
+      .filter(l => !data || l.emp_id !== data.emp_id)   // หัวหน้าตัวเองไม่ได้
+      .map(l => `<option value="${esc(l.emp_id)}" ${data && data.manager_emp_id === l.emp_id ? 'selected' : ''}>${esc(pqaLeadDisplay(l.emp_id))}</option>`)
+      .join('');
+    // หัวหน้าเดิมที่ถูกปิดใช้งานแล้ว ยังต้องโชว์ค้างไว้ ไม่งั้นเซฟทับแล้วหายเงียบ
+    const managerStale = data && data.manager_emp_id && !STATE.pqaLeads.some(l => l.emp_id === data.manager_emp_id)
+      ? `<option value="${esc(data.manager_emp_id)}" selected>${esc(data.manager_emp_id)} (inactive)</option>` : '';
+    const roleOpts = STATE.testerRoles
+      .map(r => `<option value="${esc(r.role_code)}" ${data && data.role_code === r.role_code ? 'selected' : ''}>${esc(r.role_code)} — ${esc(r.role_name || '')}</option>`)
+      .join('');
+    html = `
+      <div class="field">
+        <label>Emp ID *</label>
+        <input type="text" id="f-emp_id" placeholder="e.g. 648109" value="${v('emp_id')}" ${STATE.editingMode ? 'disabled' : ''}>
+      </div>
+      <div class="field">
+        <label>Short Name * (ชื่อที่ใช้แสดงเป็น Lead เช่น Pailin K — ห้ามซ้ำ)</label>
+        <input type="text" id="f-short_name" placeholder="e.g. Pailin K" value="${v('short_name')}">
+      </div>
+      <div class="field">
+        <label>ชื่อเล่น</label>
+        <input type="text" id="f-nickname" value="${v('nickname')}">
+      </div>
+      <div class="field">
+        <label>Name (EN) *</label>
+        <input type="text" id="f-name_en" placeholder="e.g. Pailin Kaewkam" value="${v('name_en')}">
+      </div>
+      <div class="field">
+        <label>Name (TH)</label>
+        <input type="text" id="f-name_th" value="${v('name_th')}">
+      </div>
+      <div class="field">
+        <label>Email (ใช้ผูกบัญชี Login + map Approver ของ Actual MD)</label>
+        <input type="text" id="f-email" placeholder="name@company.com" value="${v('email')}">
+      </div>
+      <div class="field">
+        <label>สิทธิ์ใช้งานแอป * (ลอกไปที่บัญชี Login ที่ email ตรงกันอัตโนมัติ)</label>
+        <select id="f-app_role">
+          ${APP_ROLES.map(r => `<option value="${r}" ${(data ? data.app_role : 'viewer') === r ? 'selected' : ''}>${r}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="f-role_code"><option value="">— ไม่ระบุ —</option>${roleOpts}</select>
+      </div>
+      <div class="field">
+        <label>Incharge Role</label>
+        <input type="text" id="f-incharge_role" value="${v('incharge_role')}">
+      </div>
+      <div class="field">
+        <label>Product</label>
+        <input type="text" id="f-product" value="${v('product')}">
+      </div>
+      <div class="field">
+        <label>Sub Team</label>
+        <input type="text" id="f-sub_team" value="${v('sub_team')}">
+      </div>
+      <div class="field">
+        <label>Manager</label>
+        <select id="f-manager_emp_id"><option value="">— ไม่ระบุ —</option>${managerStale}${managerOpts}</select>
+      </div>
+      <div class="field checkbox">
+        <input type="checkbox" id="f-is_active" ${!data || data.is_active ? 'checked' : ''}>
+        <label for="f-is_active">Active</label>
+      </div>
+      ${(!data || !loginUsersOfLead(data.emp_id).length) ? `
+      <div class="field checkbox">
+        <input type="checkbox" id="f-create_login" checked>
+        <label for="f-create_login">สร้างบัญชี Login ให้เลย (ใช้ Email ด้านบน · รหัสผ่านเริ่มต้นจะแสดงหลังบันทึก)</label>
+      </div>` : ''}
     `;
   }
 
@@ -2532,11 +2819,18 @@ window.saveRecord = async function() {
 
   // Read form
   const payload = readFormData(table);
+  // §5.85: ติ๊ก "สร้างบัญชี Login" ในฟอร์ม PQA Lead (ไม่อยู่ใน payload — เป็นแค่คำสั่งหลังเซฟ)
+  const wantLogin = table === 'pqa_lead' && !!$('f-create_login') && $('f-create_login').checked;
 
   // Validate
   const validation = validateRecord(table, payload);
   if (!validation.ok) {
     err.textContent = validation.err;
+    return;
+  }
+  const loginCheck = validateCreateLogin(wantLogin, payload);
+  if (!loginCheck.ok) {
+    err.textContent = loginCheck.err;
     return;
   }
 
@@ -2545,17 +2839,27 @@ window.saveRecord = async function() {
   btn.textContent = 'กำลังบันทึก...';
 
   try {
+    // supabase-js ไม่ throw เอง — ต้องเช็ค error จาก result (เดิมไม่เช็ค = เซฟพลาดแต่ขึ้น toast สำเร็จ)
+    // + .select() นับแถวที่เขียนจริง กัน RLS บล็อกเงียบ (0 แถว ไม่มี error)
+    let res;
     if (STATE.editingMode) {
       const pkField = getPKField(table);
-      await supabase.from(table).update(payload).eq(pkField, STATE.editingPK);
+      res = await supabase.from(table).update(payload).eq(pkField, STATE.editingPK).select(getPKField(table));
     } else {
-      await supabase.from(table).insert(payload);
+      res = await supabase.from(table).insert(payload).select(getPKField(table));
     }
+    if (res.error) throw res.error;
+    if (!res.data || !res.data.length) throw new Error('ไม่มีสิทธิ์บันทึก (RLS) หรือไม่พบแถวนี้แล้ว');
+    // lead เพิ่ม/แก้แล้ว ตัวเลือก Lead ของ Project + ช่องผูก PQA Lead ของ User ต้องเห็นค่าใหม่ทันที
+    // + trigger ฝั่ง DB ลอกสิทธิ์/active ไป app_user แล้ว (§5.84) → โหลดแท็บ User ใหม่ด้วย
+    if (table === 'pqa_lead') { await loadPqaLeads(); await reloadAppUsers(); }
 
     btn.disabled = false;
     btn.textContent = 'บันทึก';
     closeModal();
     toast(STATE.editingMode ? 'อัปเดตแล้ว ✓' : 'เพิ่มแล้ว ✓');
+    // lead เซฟสำเร็จแล้ว — สร้างบัญชีพลาดก็ไม่ย้อน lead (กดปุ่ม ＋ สร้างบัญชี ในตารางซ้ำได้)
+    if (wantLogin) await createLoginForLead(STATE.editingMode ? STATE.editingPK : payload.emp_id);
     await loadData(table);
   } catch (e) {
     btn.disabled = false;
@@ -2622,6 +2926,22 @@ function readFormData(table) {
     payload.app_role = $('f-app_role').value;
     payload.pqa_emp_id = $('f-pqa_emp_id').value || null;
     payload.is_active = $('f-is_active').checked;
+  } else if (table === 'pqa_lead') {
+    const txt = id => { const s = $(id).value.trim().replace(/\s+/g, ' '); return s || null; };
+    payload.emp_id = txt('f-emp_id');
+    payload.short_name = txt('f-short_name');
+    payload.nickname = txt('f-nickname');
+    payload.name_en = txt('f-name_en');
+    payload.name_th = txt('f-name_th');
+    payload.email = txt('f-email');
+    payload.role_code = $('f-role_code').value || null;
+    payload.incharge_role = txt('f-incharge_role');
+    payload.product = txt('f-product');
+    payload.sub_team = txt('f-sub_team');
+    payload.manager_emp_id = $('f-manager_emp_id').value || null;
+    payload.app_role = $('f-app_role').value;
+    payload.is_active = $('f-is_active').checked;
+    if (STATE.editingMode) delete payload.emp_id;   // PK แก้ไม่ได้ (มี FK ชี้มาหลายตาราง)
   }
 
   return payload;
@@ -2658,6 +2978,15 @@ function validateRecord(table, payload) {
   } else if (table === 'app_user') {
     const validRoles = ['admin', 'lead', 'tester', 'viewer'];
     if (!validRoles.includes(payload.app_role)) return { ok: false, err: 'Role ไม่ถูกต้อง' };
+  } else if (table === 'pqa_lead') {
+    const v = validatePqaLead(payload, STATE.editingMode ? STATE.editingPK : null, STATE.pqaLeadsAll);
+    if (!v.ok) return v;
+    // กันล็อกตัวเองออก: lead ที่ผูกกับบัญชีที่ล็อกอินอยู่ ต้องยังเป็น admin + active
+    if (STATE.editingMode && STATE.editingPK && STATE.editingPK === STATE.myEmpId
+        && (payload.app_role !== 'admin' || !payload.is_active)) {
+      return { ok: false, err: 'ห้ามลดสิทธิ์หรือปิดใช้งานบัญชีของตัวเอง' };
+    }
+    return v;
   }
   return { ok: true };
 }
@@ -2669,12 +2998,19 @@ window.deleteRecord = async function(table, pk) {
     return;
   }
 
+  if (table === 'pqa_lead' && pk === STATE.myEmpId) {
+    toast('ห้ามปิดใช้งานบัญชีของตัวเอง', true);
+    return;
+  }
+
   const tableLabel = getTableLabel(table);
   // project_status: ปิดใช้งานแทนลบเสมอ — โปรเจกต์เก่าที่ใช้สถานะนี้อยู่จะได้ไม่ FK error
   // release_app: กันเหมือนกัน (app_release_schedule มี FK ชี้มา) / app_release_schedule: มีคอลัมน์ is_active
   // อยู่แล้วโดยตั้งใจให้เก็บประวัติไว้ ไม่ลบทิ้งจริง
+  // pqa_lead: ปิดใช้งานเสมอ — project_lead/app_user/resource/booking ฯลฯ อ้าง FK มาที่ emp_id
   const isSoftDelete = (table === 'app' || table === 'phase' || table === 'project_status'
-                         || table === 'release_app' || table === 'app_release_schedule');
+                         || table === 'release_app' || table === 'app_release_schedule'
+                         || table === 'pqa_lead');
   const msg = isSoftDelete
     ? `ยืนยันปิดใช้งาน ${tableLabel} ${pk}?`
     : `ยืนยันลบ ${tableLabel} ${pk}? (ไม่สามารถกู้คืนได้)`;
@@ -2692,6 +3028,7 @@ window.deleteRecord = async function(table, pk) {
     }
 
     if (res.error) throw res.error;
+    if (table === 'pqa_lead') { await loadPqaLeads(); await reloadAppUsers(); }
 
     toast(isSoftDelete ? 'ปิดใช้งานแล้ว ✓' : 'ลบแล้ว ✓');
     await loadData(table);
