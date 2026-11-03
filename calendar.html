@@ -233,6 +233,12 @@ function fmtNum(v) {
   if (isNaN(n)) return '0';
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
+// §5.89: "EID | ชื่อเล่น : ชื่อเต็ม | email" (แยกคนเดิมที่ย้ายบริษัทได้ EID ใหม่) — ส่วนว่างข้าม
+// sort ยังใช้ name เดิม
+function osFullLabel(r) {
+  return [r.outsource_eid, resName(r.nickname, r.full_name_en), r.email]
+    .map(x => (x == null ? '' : String(x).trim())).filter(Boolean).join(' | ');
+}
 function roleLabel(code) { return (S.roleMap[code] || {}).name || code || ''; }
 function roleRank(code) { return (S.roleMap[code] || {}).rank ?? 99; }
 function phaseLabel(code) { return (S.phaseMap[code] || {}).name || code; }
@@ -329,7 +335,7 @@ async function loadMaster() {
         .eq('is_active', true)
         .order('project_key', { ascending: true })
         .range(from, to)),
-      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type'),
+      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,outsource_eid,email'),
       // project_phase = projects × up to 7 phases — easily > 1000 rows as the project list grows
       // (dashboard.html paginated the identical query in §5.49 for the same reason).
       fetchAllRows((from, to) => supabase.from('project_phase')
@@ -613,14 +619,14 @@ function buildDayDetailHtml(ds) {
 
     const rows = [...g.resourceIds].map(rid => {
       const r = S.resourceMap[rid] || {};
-      return { name: resName(r.nickname, r.full_name_en) || rid, role: r.role_code };
+      return { name: resName(r.nickname, r.full_name_en) || rid, label: osFullLabel(r) || rid, role: r.role_code };
     }).sort((a, b) => (roleRank(a.role) - roleRank(b.role)) || String(a.name).localeCompare(String(b.name)));
 
     return `<div class="cal-group">
       <div class="cal-group-head">${esc(projName)}${leadTxt} · ${esc(phaseLabel(g.phase_code))}${rangeTxt}</div>
       <table class="mini-table">
         <thead><tr><th>Outsource / Resource Name</th><th>Role</th></tr></thead>
-        <tbody>${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${esc(roleLabel(r.role))}</td></tr>`).join('')}</tbody>
+        <tbody>${rows.map(r => `<tr><td>${esc(r.label)}</td><td>${esc(roleLabel(r.role))}</td></tr>`).join('')}</tbody>
       </table>
     </div>`;
   }).join('');

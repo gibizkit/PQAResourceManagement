@@ -230,6 +230,7 @@
   table.dash-os-table td.td-os-name, table.dash-os-table th.th-os-name {
     position:sticky; left:0; width:170px; min-width:170px; text-align:left; background:var(--dk-card); z-index:10;
   }
+  .os-sub-email { font-size:10.5px; font-weight:400; color:var(--dk-text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   table.dash-os-table td.td-os-role, table.dash-os-table th.th-os-role {
     position:sticky; left:170px; width:130px; min-width:130px; text-align:left; background:var(--dk-card); z-index:10;
   }
@@ -1107,7 +1108,7 @@ async function loadMasterData(){
       .order('project_key', { ascending: true })
       .range(from, to)),
     supabase.from('app').select('app_code,app_name,sort_order').order('sort_order', { nullsFirst:false }),
-    supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active,end_date'),
+    supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active,end_date,outsource_eid,email'),
     supabase.from('pqa_lead').select('emp_id,short_name,nickname,incharge_role,email').eq('is_active', true),
     fetchAllRows((from, to) => supabase.from('project_lead').select('project_key,pqa_emp_id,is_main,is_executor')
       .order('project_key', { ascending: true })
@@ -2571,7 +2572,7 @@ function renderOsView(container){
       }).join('');
       grandTotal += r.total;
       return `<tr>
-        <td class="td-os-name">${esc(resName(r.nickname, r.full_name_en))}</td>
+        <td class="td-os-name" title="${esc(osFullLabel(r))}">${osNameCellHTML(osIdName(r), r.email)}</td>
         <td class="td-os-role">${esc(roleLabelFor(r.role_code))}</td>
         <td class="td-os-total">${fmtMD(r.total)}</td>
         ${cells}
@@ -2664,7 +2665,7 @@ function renderOsView(container){
     }).join('');
     grandTotal += r.total;
     return `<tr>
-      <td class="td-os-name">${esc(resName(r.nickname, r.full_name_en))}</td>
+      <td class="td-os-name" title="${esc(osFullLabel(r))}">${osNameCellHTML(osIdName(r), r.email)}</td>
       <td class="td-os-role">${esc(roleLabelFor(r.role_code))}</td>
       <td class="td-os-total">${fmtMD(r.total)}</td>
       ${cells}
@@ -2767,6 +2768,9 @@ function buildCompareRows(bAgg, aAgg, resources, months, rangeStart, filterAppli
       return {
         resource_id: rid,
         name: resName(r.nickname, r.full_name_en),
+        idName: osIdName(r),           // §5.89 แสดงผล — name ยังใช้ sort
+        email: r.email || '',
+        fullLabel: osFullLabel(r),
         role_code: r.role_code,
         end_date: r.end_date,
         is_active: r.is_active,
@@ -2885,7 +2889,7 @@ function renderOsCompare(container){
       ? `<button class="os-expand" data-rid="${esc(r.resource_id)}">${expanded ? '▾' : '▸'} ${r.apps.length} Apps</button>`
       : (r.apps.length === 1 ? esc(r.apps[0].app) : '<span class="muted">—</span>');
     const parentTr = `<tr${r.unmatched ? ' class="os-unmatched-row"' : ''}>
-      <td class="col-cmp-name">${esc(r.name)}</td>
+      <td class="col-cmp-name"${r.fullLabel ? ` title="${esc(r.fullLabel)}"` : ''}>${r.idName ? osNameCellHTML(r.idName, r.email) : esc(r.name)}</td>
       <td class="col-cmp-role">${esc(roleLabelFor(r.role_code))}</td>
       <td class="col-cmp-app">${appCell}</td>
       ${cmpTotalCells(r.cells, months)}
@@ -2941,6 +2945,21 @@ function renderOsCompare(container){
     S.osExpanded = {};
     renderOsCompare(container);
   });
+}
+// §5.89: ชื่อ OS = "EID | ชื่อเล่น : ชื่อเต็ม" + email (แยกคนเดิมที่ย้ายบริษัทได้ EID ใหม่ — เหมือน
+// outsource.html osIdName/osFullLabel) — r = แถว v_resource · ส่วนว่างข้าม ไม่มี " | " ค้าง
+// sort (osName) ยังใช้ resName เดิม ไม่เรียงตาม EID
+function osIdName(r){
+  return [r.outsource_eid, resName(r.nickname, r.full_name_en)]
+    .map(x => (x == null ? '' : String(x).trim())).filter(Boolean).join(' | ');
+}
+function osFullLabel(r){
+  return [osIdName(r), r.email]
+    .map(x => (x == null ? '' : String(x).trim())).filter(Boolean).join(' | ');
+}
+// บนจอ: คอลัมน์ชื่อกว้าง 170px (sticky) → email ลงบรรทัดใหม่ตัวเล็ก ไม่ต่อบรรทัดเดียว
+function osNameCellHTML(idName, email){
+  return esc(idName) + (email ? `<div class="os-sub-email" title="${esc(email)}">${esc(email)}</div>` : '');
 }
 function roleLabelFor(code){
   return code==='SENIOR' ? '1.Senior Tester' : code==='TESTER' ? '2.Tester' : code==='JUNIOR' ? '3.Junior Tester' : (code||'');
@@ -3567,7 +3586,7 @@ async function downloadOsExcel(){
 
       finalRows.forEach(r => {
         const appLabel = r.apps.length === 1 ? r.apps[0].app : (r.apps.length ? `${r.apps.length} Apps` : '');
-        compareAoa.push(cellsToRow(r.name, roleLabelFor(r.role_code), appLabel, r.cells));
+        compareAoa.push(cellsToRow(r.fullLabel || r.name, roleLabelFor(r.role_code), appLabel, r.cells));
         r.apps.forEach(ap => {
           compareAoa.push(cellsToRow('', '', ap.app, ap.cells));
         });
@@ -3616,7 +3635,7 @@ async function downloadOsExcel(){
           const v = (shaped.byOsApp[r.resource_id] || {})[a] || 0;
           return v ? Number(fmtMD(v)) : 0;
         });
-        osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
+        osAoa.push([osFullLabel(r), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
       });
 
       // กลุ่ม "ไม่พบใน OS master" ต่อท้ายเหมือน renderOsView() (visibleUnmatched — Change C)
@@ -3670,7 +3689,7 @@ async function downloadOsExcel(){
         const v = (agg.byOsApp[r.resource_id] || {})[a] || 0;
         return v ? Number(fmtMD(v)) : 0;
       });
-      osAoa.push([resName(r.nickname, r.full_name_en), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
+      osAoa.push([osFullLabel(r), roleLabelFor(r.role_code), Number(fmtMD(r.total)), ...cells]);
     });
 
     const wb = XLSX.utils.book_new();

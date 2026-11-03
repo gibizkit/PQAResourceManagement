@@ -230,6 +230,13 @@
     font-weight: 600;
     color: var(--dk-text);
   }
+  .os-email {
+    font-size: 10.5px;
+    color: var(--dk-text3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .role-badge {
     font-size: 10.5px;
     color: var(--dk-text3);
@@ -496,7 +503,7 @@
         <thead>
           <tr>
             <th>Project</th><th>Phase</th><th>PQA Lead</th>
-            <th>Start</th><th>End</th><th>Booking</th><th>MD</th><th class="center">Action</th>
+            <th>Start</th><th>End</th><th>Booking</th><th title="Workday สุทธิ (ไม่รวมเสาร์-อาทิตย์/วันหยุด) ระหว่าง Start–End">WD</th><th class="center">Action</th>
           </tr>
         </thead>
         <tbody id="mbRows"><tr><td colspan="8" class="loading">กำลังโหลด...</td></tr></tbody>
@@ -709,11 +716,6 @@ function workingDaysBetween(startStr, endStr) {
   return count;
 }
 
-// Total MD ของ booking แถวเดียว = WD (Start–End) × Booking (MD ต่อวัน)
-function bookingTotalMD(b) {
-  return workingDaysBetween(b.start_date, b.end_date) * Number(b.md || 0);
-}
-
 function truncate(str, n) {
   if (!str) return '';
   return str.length > n ? str.slice(0, n) + '…' : str;
@@ -727,6 +729,21 @@ function addDaysToDate(d, n) {
 
 function addDaysStr(ds, n) {
   return d2s(addDaysToDate(new Date(ds + 'T00:00:00'), n));
+}
+
+// req 2026-11-03: คนเดียวกันย้ายบริษัทได้ EID ใหม่ → ชื่อซ้ำกันแยกไม่ออก (เหมือน gantt bkResPickLabel)
+// "EID | ชื่อเล่น : ชื่อเต็ม" + email แยก — ส่วนไหนว่างข้ามไป ไม่มี " | " ค้าง
+function osIdName(p) {
+  return [p.eid, resName(p.nickname, p.fullName)]
+    .map(x => (x == null ? '' : String(x).trim()))
+    .filter(Boolean)
+    .join(' | ');
+}
+function osFullLabel(p) {
+  return [osIdName(p), p.email]
+    .map(x => (x == null ? '' : String(x).trim()))
+    .filter(Boolean)
+    .join(' | ');
 }
 
 function roleLabel(roleCode) {
@@ -953,7 +970,7 @@ async function loadAll() {
       supabase.from('tester_role').select('role_code,role_name,sort_order').order('sort_order'),
       supabase.from('phase').select('phase_code,phase_name,sort_order').order('sort_order'),
       supabase.from('outsource_staff')
-        .select('eid,en_fullname,nickname,nickname_name,role_code,end_date,is_active')
+        .select('eid,en_fullname,nickname,nickname_name,role_code,end_date,is_active,office_email')
         .eq('is_active', true),
       // 2026-09-11: pqa.resource ไม่มีคอลัมน์ is_active ของตัวเองแล้ว (patch
       // single_is_active_source — จุดควบคุมเดียวคือ outsource_staff.is_active)
@@ -1015,7 +1032,8 @@ async function loadAll() {
         nicknameName: s.nickname_name,
         roleCode: s.role_code,
         skills: skillByEid[s.eid] || '',
-        endDate: s.end_date
+        endDate: s.end_date,
+        email: s.office_email || ''
       }))
       .filter(p => !!p.resourceId); // ต้องมีแถวใน resource ผูกอยู่ (สร้างจาก sync trigger)
 
@@ -1168,7 +1186,7 @@ function matchesFilters(p) {
   const nameQ = $('fName').value.trim().toLowerCase();
   const skillQ = $('fSkills').value.trim().toLowerCase();
   if (nameQ) {
-    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''}`.toLowerCase();
+    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''} ${p.eid ?? ''} ${p.email || ''}`.toLowerCase();
     if (!hay.includes(nameQ)) return false;
   }
   if (skillQ) {
@@ -1370,7 +1388,7 @@ function matchesActualFilters(p) {
   const nameQ = $('fName').value.trim().toLowerCase();
   const skillQ = $('fSkills').value.trim().toLowerCase();
   if (nameQ) {
-    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''}`.toLowerCase();
+    const hay = `${p.fullName || ''} ${p.nickname || ''} ${p.nicknameName || ''} ${p.eid ?? ''} ${p.email || ''}`.toLowerCase();
     if (!hay.includes(nameQ)) return false;
   }
   if (skillQ && !(p.skills || '').toLowerCase().includes(skillQ)) return false;
@@ -1469,7 +1487,8 @@ function buildRow(p, days, rowFilter) {
       <div class="name-cell">
         <button class="btn sm edit-btn" onclick="openLeavePlan('${p.resourceId}')" title="Edit">✏️</button>
         <div class="name-cell-text">
-          <div class="os-name">${esc(resName(p.nickname, p.fullName))}</div>
+          <div class="os-name" title="${esc(osFullLabel(p))}">${esc(osIdName(p))}</div>
+          ${p.email ? `<div class="os-email" title="${esc(p.email)}">${esc(p.email)}</div>` : ''}
           <div class="role-badge">${esc(roleWithLastDay)}</div>
         </div>
       </div>
@@ -1856,7 +1875,7 @@ window.openManageBooking = function (resourceId, ds) {
   if (!p) return;
   MB_NAME = resourceId;
   MB_DATE = ds;
-  $('mbTitle').textContent = `Manage Booking | ${resName(p.nickname, p.fullName)} | ${dDisp(ds)}`;
+  $('mbTitle').textContent = `Manage Booking | ${osFullLabel(p)} | ${dDisp(ds)}`;
   mbCancelAdd();
   mbRenderTable();
   mbRefreshSummary();
@@ -1890,7 +1909,7 @@ function mbRenderTable() {
       <td>${dDisp(b.start_date)}</td>
       <td>${dDisp(b.end_date)}</td>
       <td>${fmtMD(b.md)}</td>
-      <td>${fmtMD(bookingTotalMD(b))}</td>
+      <td>${workingDaysBetween(b.start_date, b.end_date)}</td>
       <td class="center">
         <button class="btn sm" onclick="mbEditInline('${b.booking_id}')">✏️</button>
         <button class="btn sm danger" onclick="mbDeleteBooking('${b.booking_id}')">🗑️</button>
@@ -2060,7 +2079,7 @@ window.openLeavePlan = async function (resourceId) {
   const p = S.osByResourceId[resourceId];
   if (!p) return;
   LP_RESOURCE_ID = resourceId;
-  $('lpTitle').textContent = `Edit | ${p.nickname ? p.nickname + ' : ' : ''}${p.fullName} | ${roleLabel(p.roleCode)}`;
+  $('lpTitle').textContent = `Edit | ${osFullLabel(p)} | ${roleLabel(p.roleCode)}`;
   $('lpSkills').value = p.skills || '';
   $('lpSkillsError').textContent = '';
   window.lpCancelAdd();

@@ -523,7 +523,7 @@
         </div>
         <table class="bk-table">
           <thead><tr>
-            <th>Booking Start</th><th>Booking End</th><th>OS Name</th><th>Booking</th><th>MD</th><th style="text-align:center">Action</th>
+            <th>Booking Start</th><th>Booking End</th><th>OS Name</th><th>Booking</th><th title="Workday สุทธิ (ไม่รวมเสาร์-อาทิตย์/วันหยุด) ระหว่าง Booking Start–End">WD</th><th style="text-align:center">Action</th>
           </tr></thead>
           <tbody id="bkRows"></tbody>
         </table>
@@ -2328,18 +2328,19 @@ function bookingsOfPhase(){
     .sort((a,b) => (a.start_date<b.start_date?-1:a.start_date>b.start_date?1:0) || resName(a.resource_id).localeCompare(resName(b.resource_id)));
 }
 function resName(rid){ const r=S.resourceMap[rid]; return r ? (fmtResName(r.nickname, r.full_name_en) || rid) : rid; }
+// §5.89: ป้ายเต็ม EID | ชื่อ | email (bkResPickLabel) ใช้ในตาราง booking + ชื่อตอนแก้ booking — sort ยังใช้ resName
+function resLabel(rid){ const r=S.resourceMap[rid]; return r ? (bkResPickLabel(r) || rid) : rid; }
 
 function renderBkRows(){
   const rows = bookingsOfPhase();
   // req 7: เพิ่มคอลัมน์ MD = จำนวนวันทำงานเต็มช่วง booking แถวนั้น × Booking (MD ต่อวัน 1/0.5)
   $('bkRows').innerHTML = rows.length ? rows.map(b => {
-    const totalMd = calcWD(b.start_date, b.end_date) * Number(b.md);
     return `<tr>
     <td>${dDisp(b.start_date)}</td>
     <td>${dDisp(b.end_date)}</td>
-    <td>${esc(resName(b.resource_id))}</td>
+    <td>${esc(resLabel(b.resource_id))}</td>
     <td>${fmtNum(Number(b.md))}</td>
-    <td>${fmtMD(totalMd)}</td>
+    <td>${calcWD(b.start_date, b.end_date)}</td>
     <td style="text-align:center">
       <button class="btn sm" onclick="bkEdit('${esc(b.booking_id)}')">✏️</button>
       <button class="btn sm danger" onclick="bkDelete('${esc(b.booking_id)}')">🗑️</button>
@@ -2403,7 +2404,7 @@ window.bkEdit = function(bid){
   $('bkFormTitle').textContent='✏️ แก้ไข Booking';
   $('bkResPickWrap').classList.add('hidden');
   $('bkEditName').classList.remove('hidden');
-  $('bkEditNameTxt').textContent = resName(b.resource_id);
+  $('bkEditNameTxt').textContent = resLabel(b.resource_id);
   setBkDateBounds();
   $('bkStart').value = b.start_date;
   $('bkEnd').value   = b.end_date;
