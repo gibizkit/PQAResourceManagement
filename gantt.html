@@ -932,7 +932,7 @@ async function loadAll(){
         .eq('is_active', true)
         .order('booking_id', { ascending: true })
         .range(from, to)),   // 2026-08-25: paginated — unbounded select() silently drops rows past Supabase's Max Rows cap, see fetchAllRows() in common.js
-      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active'),
+      supabase.from('v_resource').select('resource_id,full_name_en,nickname,role_code,resource_type,is_active,outsource_eid,email'),
       supabase.from('app').select('app_code,app_name').eq('is_active', true).order('app_code', { ascending: true }),
       supabase.from('project_comment').select('comment_id,project_key,phase_code,comment_date,comment_text').eq('is_active', true),
       supabase.from('phase').select('phase_code,sort_order,color'),   // master order + สีพื้นหลังแท่ง (config ได้จาก Admin) สำหรับ Order = Phase
@@ -2380,13 +2380,22 @@ function renderBkRows(){
   }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--dk-text3);padding:16px">ยังไม่มี Booking</td></tr>';
 }
 
+// req 2026-11-03: คนเดียวกันย้ายบริษัทได้ EID ใหม่ → ชื่อซ้ำกันใน picker แยกไม่ออก
+// แสดงเป็น "EID | ชื่อเล่น : ชื่อเต็ม | email" (ส่วนไหนว่างข้ามไป) — คำค้นหาครอบทั้ง EID/email ด้วย
+function bkResPickLabel(r){
+  return [r.outsource_eid, fmtResName(r.nickname, r.full_name_en), r.email]
+    .map(x => (x == null ? '' : String(x).trim()))
+    .filter(Boolean)
+    .join(' | ');
+}
+
 window.bkStartAdd = function(){
   formMode='add'; editBookingId=null;
   $('bkFormTitle').textContent='➕ Book Outsource';
   $('bkResPickWrap').classList.remove('hidden');
   $('bkEditName').classList.add('hidden');
   $('bkResPick').innerHTML = S.outsourceList.map(r => {
-    const label = fmtResName(r.nickname, r.full_name_en);
+    const label = bkResPickLabel(r);
     return `<label data-label="${esc(label.toLowerCase())}"><input type="checkbox" value="${esc(r.resource_id)}"><span>${esc(label)}</span></label>`;
   }).join('')
     || '<div style="color:var(--dk-text3);padding:8px">ไม่มี Outsource ที่ active</div>';
