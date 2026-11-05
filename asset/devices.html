@@ -118,7 +118,12 @@ boot('devices', async main => {
       .map(([k, l]) => `<button type="button" data-seg="${esc(k)}" class="${st.type === k ? 'on' : ''}">${esc(l)}<em>${counts[k] || 0}</em></button>`).join('');
     seg.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => { st.type = b.dataset.seg; drawer.close(); });   // close() → onClose → render()
 
-    const rows = base.filter(d => st.type === 'all' || d.type_code === st.type).sort(st.sort ? cmp(st.sort.key, st.sort.dir) : defaultCmp);
+    // view Windows / MAC (ประเภทที่ไม่ใช่มือถือ) ไม่แสดงคอลัมน์ Internal ID / รุ่น
+    const nonMobileView = st.type !== 'all' && !store.types.find(t => t.type_code === st.type)?.is_mobile;
+    const hidden = new Set(nonMobileView ? ['internal_id', 'model'] : []);
+    const cols = COLS.filter(([k]) => !hidden.has(k));
+    const sort = st.sort && !hidden.has(st.sort.key) ? st.sort : null;
+    const rows = base.filter(d => st.type === 'all' || d.type_code === st.type).sort(sort ? cmp(sort.key, sort.dir) : defaultCmp);
     document.getElementById('count').textContent = `${rows.length} เครื่อง`;
     const wrap = document.getElementById('tableWrap');
     if (!rows.length) { wrap.innerHTML = '<div class="empty">ไม่พบเครื่องตามตัวกรองนี้</div>'; return; }
@@ -127,17 +132,17 @@ boot('devices', async main => {
     rows.forEach(d => (groups[d.type_name] = groups[d.type_name] || []).push(d));
     const order = store.types.map(t => t.type_name);
     const sel = drawer.current()?.device_id;
-    const head = COLS.map(([k, l]) => k
-      ? `<th class="sortable" data-sort="${k}">${l}${st.sort?.key === k ? `<span class="arrow">${st.sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`
+    const head = cols.map(([k, l]) => k
+      ? `<th class="sortable" data-sort="${k}">${l}${sort?.key === k ? `<span class="arrow">${sort.dir > 0 ? '▲' : '▼'}</span>` : ''}</th>`
       : `<th>${l}</th>`).join('');
     const body = Object.keys(groups).sort((a, b) => order.indexOf(a) - order.indexOf(b)).map(g => {
       const col = st.collapsed.has(g);
-      return `<tr class="grp" data-grp="${esc(g)}"><td colspan="${COLS.length}"><span class="tw">${col ? '▸' : '▾'}</span>${esc(g)} · ${groups[g].length}</td></tr>`
+      return `<tr class="grp" data-grp="${esc(g)}"><td colspan="${cols.length}"><span class="tw">${col ? '▸' : '▾'}</span>${esc(g)} · ${groups[g].length}</td></tr>`
         + (col ? '' : groups[g].map(d => `<tr class="row ${d.device_id === sel ? 'sel' : ''}" data-id="${d.device_id}" tabindex="0">
           <td class="iid" data-card="${d.asset_tag ? 'full' : 'hide'}">${esc(d.asset_tag || '')}</td>
           <td data-card="hide">${esc(d.asset_year || '')}</td>
-          <td class="iid" data-card="side">${esc(d.internal_id || '')}</td>
-          <td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>
+          ${hidden.has('internal_id') ? '' : `<td class="iid" data-card="side">${esc(d.internal_id || '')}</td>`}
+          ${hidden.has('model') ? '' : `<td data-card="title">${esc(modelText(d))} ${statusPill(d.status)}</td>`}
           <td class="iid" data-card="hide">${esc(d.serial_number || '')}</td>
           <td data-card="full">${esc(d.received_by_name || d.received_by_emp_id || '')}</td>
           <td data-card="hide">${dDisp(d.received_date)}</td>
