@@ -793,7 +793,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
     }
     const st = d.status !== 'active'
       ? `<div class="holder-card" style="border-color:var(--as-bad);background:var(--as-bad-d)"><span class="lbl" style="color:var(--as-bad)">${esc(STATUS_LABEL[d.status])}</span>
-          <span>${d.status === 'retired' ? `ปลดระวางเมื่อ ${dDisp(d.retired_date)}` : d.status === 'repair' ? 'อยู่ระหว่างส่งซ่อม ส่งต่อให้คนอื่นไม่ได้จนกว่าจะกลับมาใช้งาน' : 'แจ้งหายแล้ว'}</span></div>` : '';
+          <span>${d.status === 'retired' ? `วันที่คืนเครื่อง ${dDisp(d.retired_date)}` : d.status === 'repair' ? 'อยู่ระหว่างส่งซ่อม ส่งต่อให้คนอื่นไม่ได้จนกว่าจะกลับมาใช้งาน' : 'แจ้งหายแล้ว'}</span></div>` : '';
     const rows = [
       ['ประเภท', `${esc(d.type_name)} ${ownershipPill(d.ownership)}`],
       ['รุ่น', esc(modelText(d))],
@@ -939,7 +939,7 @@ export function statusDialog(d, status, onDone) {
     okText: { active: 'กลับมาใช้งาน', repair: 'ยืนยันส่งซ่อม', lost: 'ยืนยันแจ้งหาย', retired: 'ยืนยันปลดระวาง' }[status],
     okClass: needsDate ? 'danger' : 'accent',
     guardDirty: false,
-    body: `${needsDate ? `<div class="field"><label for="stDate">วันที่<span class="req">*</span></label>${dateFieldHTML('stDate', todayISO())}</div>` : ''}
+    body: `${needsDate ? `<div class="field"><label for="stDate">${status === 'retired' ? 'วันที่คืนเครื่อง' : 'วันที่'}<span class="req">*</span></label>${dateFieldHTML('stDate', todayISO())}</div>` : ''}
       <div class="preview">${{
         active: 'เครื่องจะกลับมาอยู่ในสถานะใช้งาน ให้ยืม / ส่งต่อได้ตามปกติ',
         repair: 'ผู้ถือคงเดิม แต่ส่งต่อให้คนอื่นไม่ได้จนกว่าจะกลับมาใช้งาน',
@@ -948,7 +948,7 @@ export function statusDialog(d, status, onDone) {
       }[status]}${closes ? `<br>ช่วงถือครองของ <b>${esc(d.holder_name)}</b> จะถูกปิดให้อัตโนมัติ` : ''}</div>`,
     onMount: root => wireDateFields(root),
     async onOk(root) {
-      const date = needsDate ? readDate(root, 'stDate', 'วันที่', { required: true }) : todayISO();
+      const date = needsDate ? readDate(root, 'stDate', status === 'retired' ? 'วันที่คืนเครื่อง' : 'วันที่', { required: true }) : todayISO();
       await api.setStatus(d.device_id, status, date);
       await onDone(`เปลี่ยนสถานะเป็น "${STATUS_LABEL[status]}" แล้ว`);
     },
@@ -1174,7 +1174,7 @@ export async function exportDevicesXlsx(devices, filename = `pqa-assets-${todayI
       'รับเข้าทีมโดย': d.received_by_name || '',
       'Emp ID ผู้รับเข้าทีม': d.received_by_emp_id || '',
       'วันที่รับเข้าทีม': dDisp(d.received_date),
-      'วันที่ปลดระวาง': dDisp(d.retired_date),
+      'วันที่คืนเครื่อง': dDisp(d.retired_date),
       'Note': d.note || '',
     }));
   const ws = XLSX.utils.json_to_sheet(rows);
