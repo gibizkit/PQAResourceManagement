@@ -52,6 +52,13 @@ export function dDisp(s) {
   return `${d}/${m}/${y}`;
 }
 
+/** timestamptz (UTC) → 'dd/mm/yyyy' ตามเวลาไทย — ห้ามตัด 10 ตัวแรกตรงๆ (ก่อน 07:00 จะได้วันก่อนหน้า) */
+export function tsDisp(ts) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return dDisp(ts);
+  return dDisp(new Date(t + 7 * 3600 * 1000).toISOString().slice(0, 10));
+}
+
 /** วันนี้ตามเวลาไทย (ตรงกับ asset.fn_today() ฝั่ง DB) */
 export function todayISO() {
   return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
@@ -833,7 +840,7 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
     const rows = await api.osLog(d.device_id);
     if (!rows.length) return '<div class="muted">ยังไม่มีประวัติ OS</div>';
     return `<div class="tl">${rows.map((r, i) => `<div class="tl-i ${i === 0 ? 'now' : ''}"><span class="tl-dot"></span><div>
-      <b>${esc(r.os_version)}</b><small>${dDisp(String(r.changed_at).slice(0, 10))}</small></div></div>`).join('')}</div>`;
+      <b>${esc(r.os_version)}</b><small>${tsDisp(r.changed_at)}</small></div></div>`).join('')}</div>`;
   }
 
   async function render() {
