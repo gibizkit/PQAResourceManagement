@@ -15,7 +15,7 @@
    ส่งต่อ / ประวัติผู้ถือ เปิดเฉพาะมือถือ (Laptop รองรับใน DB แล้ว เปิดปุ่มทีหลังได้ที่ LAPTOP_ASSIGN) */
 import {
   boot, store, loadStore, deviceById, createDrawer, deviceDialog, multiChip, prefs, sorter,
-  esc, holderEmpId, dDisp, statusPill, holderHTML, modelText, toast,
+  esc, holderEmpId, dDisp, statusPill, holderHTML, modelText, toast, errMsg, exportDevicesXlsx,
 } from './asset.js';
 
 const LAPTOP_ASSIGN = false;
@@ -33,6 +33,7 @@ boot('devices', async main => {
     <div class="page-head">
       <h2>อุปกรณ์ทีม</h2><span class="badge" id="count">…</span>
       <span class="spacer"></span>
+      <button class="btn" id="xlsBtn" type="button" title="ทุกเครื่องทุกประเภท ทุกสถานะ (ไม่สนตัวกรอง)">⬇ Download Excel</button>
       <button class="btn accent" id="addBtn" type="button">+ เพิ่มเครื่องทีม</button>
     </div>
     <div class="filters">
@@ -76,6 +77,14 @@ boot('devices', async main => {
     Object.assign(st, { q: '', inactive: false, years: [], receivers: [] });
     q.value = ''; chips.year.set([]); chips.recv.set([]); render();
   };
+  // ดาวน์โหลดทุกเครื่องในระบบ (มือถือ + Laptop ทุกสถานะ) — ไม่ขึ้นกับตัวกรองบนหน้า (เหมือนหน้า Mobile)
+  const xlsBtn = document.getElementById('xlsBtn');
+  xlsBtn.onclick = async () => {
+    xlsBtn.disabled = true;
+    try { toast(`ดาวน์โหลด ${await exportDevicesXlsx(store.devices)} เครื่องแล้ว`); }
+    catch (e) { toast('ดาวน์โหลดไม่สำเร็จ: ' + errMsg(e), true); }
+    finally { xlsBtn.disabled = false; }
+  };
   document.getElementById('addBtn').onclick = () => deviceDialog(null, {
     kind: 'team', presetType: st.type !== 'all' ? st.type : undefined,
     onSaved: async msg => { toast(msg); await loadStore(['devices', 'models', 'os']); render(); },
@@ -95,7 +104,7 @@ boot('devices', async main => {
   const defaultCmp = (a, b) => String(a.internal_id || a.asset_tag || '~').localeCompare(String(b.internal_id || b.asset_tag || '~'), 'th', { numeric: true });
   const COLS = [
     ['asset_tag', 'Asset Tag'], ['asset_year', 'ปี'], ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['serial_number', 'S/N'],
-    ['received_by_name', 'รับเข้าโดย'], ['received', 'วันที่รับ'], ['returned', 'วันที่คืนเครื่อง'], ['holder', 'ผู้ถือ'], [null, 'Note'],
+    ['received_by_name', 'รับเข้าโดย'], ['received', 'วันที่รับ'], ['returned', 'วันที่คืนเครื่อง'], ['holder', 'ผู้ถือ'], ['note', 'Note'],
   ];
 
   function render() {
