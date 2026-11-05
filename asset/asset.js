@@ -181,7 +181,7 @@ export function prefs(page) {
 }
 
 export const OWNERSHIP_LABEL = { team: 'ทีม PQA', personal: 'Personal', outsource: 'Outsource' };
-export const STATUS_LABEL = { active: 'ใช้งาน', repair: 'ส่งซ่อม', lost: 'หาย', retired: 'ปลดระวาง' };
+export const STATUS_LABEL = { active: 'ใช้งาน', repair: 'ส่งซ่อม', lost: 'หาย', retired: 'คืนเครื่อง' };
 
 export function ownershipPill(o) { return `<span class="pill p-${esc(o)}">${esc(OWNERSHIP_LABEL[o] || o)}</span>`; }
 export function statusPill(s) { return s === 'active' ? '' : `<span class="pill p-${esc(s)}">${esc(STATUS_LABEL[s] || s)}</span>`; }
@@ -807,9 +807,9 @@ export function createDrawer(host, { layoutEl, onChanged, canAssign = () => true
       ['Note', esc(d.note || '-')],
     ].filter(Boolean);
     const actions = {
-      active: [['repair', 'ส่งซ่อม'], ['lost', 'แจ้งหาย'], ['retired', 'ปลดระวาง']],
-      repair: [['active', 'กลับมาใช้งาน'], ['lost', 'แจ้งหาย'], ['retired', 'ปลดระวาง']],
-      lost: [['active', 'เจอแล้ว กลับมาใช้งาน'], ['retired', 'ปลดระวาง']],
+      active: [['repair', 'ส่งซ่อม'], ['lost', 'แจ้งหาย'], ['retired', 'คืนเครื่อง']],
+      repair: [['active', 'กลับมาใช้งาน'], ['lost', 'แจ้งหาย'], ['retired', 'คืนเครื่อง']],
+      lost: [['active', 'เจอแล้ว กลับมาใช้งาน'], ['retired', 'คืนเครื่อง']],
       retired: [['active', 'กลับมาใช้งาน']],
     }[d.status] || [];
     return `${st}${holder}
@@ -936,7 +936,7 @@ export function statusDialog(d, status, onDone) {
   const needsDate = status === 'lost' || status === 'retired';
   openDialog({
     title: `${STATUS_LABEL[status]}: ${deviceTitle(d)}`,
-    okText: { active: 'กลับมาใช้งาน', repair: 'ยืนยันส่งซ่อม', lost: 'ยืนยันแจ้งหาย', retired: 'ยืนยันปลดระวาง' }[status],
+    okText: { active: 'กลับมาใช้งาน', repair: 'ยืนยันส่งซ่อม', lost: 'ยืนยันแจ้งหาย', retired: 'ยืนยันคืนเครื่อง' }[status],
     okClass: needsDate ? 'danger' : 'accent',
     guardDirty: false,
     body: `${needsDate ? `<div class="field"><label for="stDate">${status === 'retired' ? 'วันที่คืนเครื่อง' : 'วันที่'}<span class="req">*</span></label>${dateFieldHTML('stDate', todayISO())}</div>` : ''}
@@ -984,7 +984,7 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
     ${team ? `<div class="field"><label for="dvType">ประเภท<span class="req">*</span></label>
       <select id="dvType" ${isNew ? '' : 'disabled'}>${store.types.filter(t => t.is_active !== false || t.type_code === typeCode)
         .map(t => `<option value="${esc(t.type_code)}" ${t.type_code === typeCode ? 'selected' : ''}>${esc(t.type_name)}</option>`).join('')}</select>
-      ${isNew ? '' : '<div class="help">เปลี่ยนประเภทไม่ได้ ถ้าลงผิดให้ปลดระวางแล้วลงใหม่</div>'}</div>` : ''}
+      ${isNew ? '' : '<div class="help">เปลี่ยนประเภทไม่ได้ ถ้าลงผิดให้คืนเครื่องแล้วลงใหม่</div>'}</div>` : ''}
     <div class="field"><label>รุ่น<span class="req">*</span></label><div class="picker" data-model></div></div>
     ${teamFields ? `<div class="grid2" data-team-only>
         <div class="field"><label for="dvIid">Internal ID</label><input id="dvIid" value="${esc(d?.internal_id || '')}" placeholder="PQA18"></div>
@@ -1001,7 +1001,7 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
     ${ownerField ? `<div data-owner-field><div class="field"><label>เจ้าของเครื่อง<span class="req">*</span></label><div class="picker" data-owner></div></div>
       ${isNew ? `<div class="field"><label for="dvSince">ลงทะเบียนตั้งแต่</label>${dateFieldHTML('dvSince', todayISO())}</div>` : ''}</div>` : ''}
     ${!isNew && d.status === 'retired' ? `<div class="field"><label for="dvRetDate">วันที่คืนเครื่อง<span class="req">*</span></label>${dateFieldHTML('dvRetDate', d.retired_date || '')}
-      <div class="help">แก้ได้เฉพาะเครื่องที่ปลดระวางแล้ว — ช่วงถือครองที่ปิดตอนปลดระวางจะเลื่อนตามให้</div></div>` : ''}
+      <div class="help">แก้ได้เฉพาะเครื่องที่สถานะ "คืนเครื่อง" — ช่วงถือครองที่ปิดตอนคืนเครื่องจะเลื่อนตามให้</div></div>` : ''}
     <div class="field"><label for="dvNote">Note</label><textarea id="dvNote" rows="2">${esc(d?.note || '')}</textarea></div>`;
 
   openDialog({
