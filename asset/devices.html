@@ -91,11 +91,11 @@ boot('devices', async main => {
     return true;
   }
 
-  const cmp = sorter({ model: modelText, received: d => d.received_date, holder: d => d.holder_name || '' });
+  const cmp = sorter({ model: modelText, received: d => d.received_date, returned: d => d.retired_date, holder: d => d.holder_name || '' });
   const defaultCmp = (a, b) => String(a.internal_id || a.asset_tag || '~').localeCompare(String(b.internal_id || b.asset_tag || '~'), 'th', { numeric: true });
   const COLS = [
     ['asset_tag', 'Asset Tag'], ['asset_year', 'ปี'], ['internal_id', 'Internal ID'], ['model', 'รุ่น'], ['serial_number', 'S/N'],
-    ['received_by_name', 'รับเข้าโดย'], ['received', 'วันที่รับ'], ['holder', 'ผู้ถือ'], [null, 'Note'],
+    ['received_by_name', 'รับเข้าโดย'], ['received', 'วันที่รับ'], ['returned', 'วันที่คืนเครื่อง'], ['holder', 'ผู้ถือ'], [null, 'Note'],
   ];
 
   function render() {
@@ -132,6 +132,7 @@ boot('devices', async main => {
           <td class="iid" data-card="hide">${esc(d.serial_number || '')}</td>
           <td data-card="full">${esc(d.received_by_name || d.received_by_emp_id || '')}</td>
           <td data-card="hide">${dDisp(d.received_date)}</td>
+          <td data-card="hide">${dDisp(d.retired_date)}</td>
           <td data-card="${d.is_mobile ? 'full' : 'hide'}">${d.is_mobile || LAPTOP_ASSIGN ? holderHTML(d) : (d.status === 'active' ? '' : statusPill(d.status))}</td>
           <td class="muted" data-card="${d.note ? 'full' : 'hide'}">${esc(d.note || '')}</td>
         </tr>`).join(''));

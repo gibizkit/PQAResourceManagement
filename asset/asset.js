@@ -1000,6 +1000,8 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       <div class="field"><label for="dvRecvDate">วันที่รับเข้าทีม<span class="req">*</span></label>${dateFieldHTML('dvRecvDate', d?.received_date || '')}</div></div>` : ''}
     ${ownerField ? `<div data-owner-field><div class="field"><label>เจ้าของเครื่อง<span class="req">*</span></label><div class="picker" data-owner></div></div>
       ${isNew ? `<div class="field"><label for="dvSince">ลงทะเบียนตั้งแต่</label>${dateFieldHTML('dvSince', todayISO())}</div>` : ''}</div>` : ''}
+    ${!isNew && d.status === 'retired' ? `<div class="field"><label for="dvRetDate">วันที่คืนเครื่อง<span class="req">*</span></label>${dateFieldHTML('dvRetDate', d.retired_date || '')}
+      <div class="help">แก้ได้เฉพาะเครื่องที่ปลดระวางแล้ว — ช่วงถือครองที่ปิดตอนปลดระวางจะเลื่อนตามให้</div></div>` : ''}
     <div class="field"><label for="dvNote">Note</label><textarea id="dvNote" rows="2">${esc(d?.note || '')}</textarea></div>`;
 
   openDialog({
@@ -1108,6 +1110,10 @@ export function deviceDialog(d, { kind = d ? (d.ownership === 'team' ? 'team' : 
       const p = { ownership, model_id, serial_number: v('dvSn'), os_id: mob && v('dvOs') ? Number(v('dvOs')) : null, note: v('dvNote') };
       if (isTeam() && mob && !p.os_id) throw new Error('เลือก OS Version');
       if (!isNew) p.device_id = d.device_id;
+      if (!isNew && d.status === 'retired') {
+        p.retired_date = readDate(root, 'dvRetDate', 'วันที่คืนเครื่อง', { required: true });
+        if (p.retired_date > todayISO()) throw new Error('วันที่คืนเครื่องต้องไม่เกินวันนี้');
+      }
       if (isTeam()) {
         Object.assign(p, { internal_id: v('dvIid'), asset_tag: v('dvTag'), received_date: readDate(root, 'dvRecvDate', 'วันที่รับเข้าทีม', { required: true }) });
         const rp = store.people.find(x => x.resource_id === recvPicker.get());
